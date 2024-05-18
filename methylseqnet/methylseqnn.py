@@ -6,8 +6,8 @@ from methylseqnet.layers import *
 batch_size = 64
 num_epochs = 100
 input_channels = 5
-seq_length = 1344
-output_channels = 3
+seq_length = 896
+output_channels = 1
 
 class MethylSeqNN(nn.Module):
     def __init__(self, input_channels, seq_length, output_channels):

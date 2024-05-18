@@ -4,7 +4,7 @@ from . import (
     layers,
     methylseqnn,
     trainer,
-    preprocesser,
+    datawriter,
 )
 
 __all__ = [
@@ -13,5 +13,5 @@ __all__ = [
     "layers",
     "methylseqnn",
     "trainer",
-    "preprocesser",
+    "datawriter",
 ]
