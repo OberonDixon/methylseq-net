@@ -6,6 +6,7 @@ import pysam
 import numpy as np
 from tqdm import tqdm
 from Bio.Seq import Seq
+import time
     
 genome_path = '/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta'
 
@@ -13,7 +14,7 @@ CpG_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/cpg_bam_whole_genome/pi
 mA_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/allcontext_bam_whole_genome/pileup.sorted.bed.gz'
 
 write_chunk_len = 1000
-early_stop = 10000000
+early_stop = 1000000000
 
 bin_size = 128
 seq_input_bins = 7
@@ -33,9 +34,9 @@ cpg_file = CpG_pileup
 cpg_motif = 'CG,0'
 
 datasets_dict = {
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train.h5':['chr1'],
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation.h5':['chr2'],
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test.h5':['chr3'],
+    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_chr1.h5':['chr1'],
+    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_chr2.h5':['chr2'],
+    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_chr3.h5':['chr3'],
 }
 
 ref_fasta = pysam.FastaFile(genome_path)
@@ -49,19 +50,42 @@ for dataset_path,chromosomes in datasets_dict.items():
     )
     for chromosome in chromosomes:
         contig_length = ref_fasta.get_reference_length(chromosome)
+        # Load up seq, cpg, mA for whole chromosome
+        start_time = time.time()
+        print('loading sequence from fasta')
+        whole_chrom_sequence = ref_fasta.fetch(chromosome,0,contig_length)
+        print('took',time.time()-start_time)
+        
+        if cpg_input:
+            start_time = time.time()
+            print('loading cpg from bedmethyl')
+            whole_chrom_cpg_mod,whole_chrom_cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                bedmethyl_file = cpg_file,
+                motif = cpg_motif,
+                regions = f'{chromosome}:{0}-{contig_length}'
+            )
+            print('took',time.time()-start_time)
+        start_time = time.time()
+        print('loading track from bedmethyl')
+        whole_chrom_track_mod,whole_chrom_track_val = load_processed.pileup_vectors_from_bedmethyl(
+            bedmethyl_file = track_file,
+            motif = track_motif,
+            regions = f'{chromosome}:{0}-{contig_length}'
+        )       
+        print('took',time.time()-start_time)
         # Loop through chromosome in seq_len size chunks
         onehot_seq_list = []
         track_value_list = []
         for chunk_start in tqdm(range(0,contig_length,seq_length)):
             chunk_end = chunk_start + seq_length
             # For each chunk, we find the peaks then from there decide whether to send one or more seqs to the dataset
-            track_mod,track_val = load_processed.pileup_vectors_from_bedmethyl(
-                bedmethyl_file = track_file,
-                motif = track_motif,
-                regions = f'{chromosome}:{chunk_start}-{chunk_end}',
-            )
-            track_mod_sums = track_mod.reshape(seq_input_bins, 128).sum(axis=1)
-            track_val_sums = track_val.reshape(seq_input_bins, 128).sum(axis=1)
+            # track_mod,track_val = load_processed.pileup_vectors_from_bedmethyl(
+            #     bedmethyl_file = track_file,
+            #     motif = track_motif,
+            #     regions = f'{chromosome}:{chunk_start}-{chunk_end}',
+            # )
+            track_mod_sums = whole_chrom_track_mod[chunk_start:chunk_end].reshape(seq_input_bins, 128).sum(axis=1)
+            track_val_sums = whole_chrom_track_val[chunk_start:chunk_end].reshape(seq_input_bins, 128).sum(axis=1)
             # To safely handle division by zero, create a mask for non-zero denominators
             non_zero_mask = track_val_sums != 0
 
@@ -88,14 +112,17 @@ for dataset_path,chromosomes in datasets_dict.items():
                         seq_start = seq_center - (seq_length // 2)
                         seq_end = seq_center + (seq_length // 2)
                         # print(chromosome,chunk_start,chunk_end,seq_center,seq_start,seq_end)
-                        sequence = ref_fasta.fetch(chromosome,seq_start,seq_end)
+                        # sequence = ref_fasta.fetch(chromosome,seq_start,seq_end)
+                        sequence = whole_chrom_sequence[chunk_start:chunk_end]
                         rev_comp_sequence = str(Seq(sequence).reverse_complement())
                         if cpg_input:
-                            cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
-                                bedmethyl_file = cpg_file,
-                                motif = cpg_motif,
-                                regions = f'{chromosome}:{seq_start}-{seq_end}'
-                            )
+                            # cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                            #     bedmethyl_file = cpg_file,
+                            #     motif = cpg_motif,
+                            #     regions = f'{chromosome}:{seq_start}-{seq_end}'
+                            # )
+                            cpg_mod = whole_chrom_cpg_mod[chunk_start:chunk_end]
+                            cpg_val = whole_chrom_cpg_val[chunk_start:chunk_end]
                             # To safely handle division by zero, create a mask for non-zero denominators
                             non_zero_mask = cpg_val != 0
 
@@ -111,14 +138,17 @@ for dataset_path,chromosomes in datasets_dict.items():
                         track_value_list.append(np.array([track_value]))
                         track_value_list.append(np.array([track_value]))
             else: # if there are not peaks, that's ok, just add the chunk
-                sequence = ref_fasta.fetch(chromosome,chunk_start,chunk_end)
+                # sequence = ref_fasta.fetch(chromosome,chunk_start,chunk_end)
+                sequence = whole_chrom_sequence[chunk_start:chunk_end]
                 rev_comp_sequence = str(Seq(sequence).reverse_complement())
                 if cpg_input:
-                    cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
-                        bedmethyl_file = cpg_file,
-                        motif = cpg_motif,
-                        regions = f'{chromosome}:{chunk_start}-{chunk_end}'
-                    )
+                    # cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                    #     bedmethyl_file = cpg_file,
+                    #     motif = cpg_motif,
+                    #     regions = f'{chromosome}:{chunk_start}-{chunk_end}'
+                    # )
+                    cpg_mod = whole_chrom_cpg_mod[chunk_start:chunk_end]
+                    cpg_val = whole_chrom_cpg_val[chunk_start:chunk_end]
                     # To safely handle division by zero, create a mask for non-zero denominators
                     non_zero_mask = cpg_val != 0
 
