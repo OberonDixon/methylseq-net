@@ -14,7 +14,7 @@ CpG_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/cpg_bam_whole_genome/pi
 mA_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/allcontext_bam_whole_genome/pileup.sorted.bed.gz'
 
 write_chunk_len = 1000
-early_stop = 1000000000
+early_stop = 1000000000 # set to less than length of chrom if you want to process less than the whole chrom
 
 bin_size = 128
 seq_input_bins = 7
@@ -34,9 +34,9 @@ cpg_file = CpG_pileup
 cpg_motif = 'CG,0'
 
 datasets_dict = {
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_chr1.h5':['chr1'],
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_chr2.h5':['chr2'],
-    '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_chr3.h5':['chr3'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_{track_threshold}.h5':['chr1'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_{track_threshold}.h5':['chr2'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_{track_threshold}.h5':['chr3'],
 }
 
 ref_fasta = pysam.FastaFile(genome_path)
@@ -76,7 +76,7 @@ for dataset_path,chromosomes in datasets_dict.items():
         # Loop through chromosome in seq_len size chunks
         onehot_seq_list = []
         track_value_list = []
-        for chunk_start in tqdm(range(0,contig_length,seq_length)):
+        for chunk_start in tqdm(range(0,min(contig_length-seq_length,early_stop),seq_length)):
             chunk_end = chunk_start + seq_length
             # For each chunk, we find the peaks then from there decide whether to send one or more seqs to the dataset
             # track_mod,track_val = load_processed.pileup_vectors_from_bedmethyl(
@@ -168,9 +168,6 @@ for dataset_path,chromosomes in datasets_dict.items():
                 dataset_writer.write_chunk(onehot_seq_list,track_value_list)
                 onehot_seq_list = []
                 track_value_list = []
-                
-            if chunk_end>early_stop:
-                break
                 
                     
             
