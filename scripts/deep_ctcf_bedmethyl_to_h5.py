@@ -27,16 +27,16 @@ num_tracks = 1
 track_file = mA_pileup
 track_motif = 'A,0'
 # track index: mod fraction threshold, None means floating point track
-track_threshold = 0.05,
+track_threshold = 0.05
 
 # (source file, motif to extract)
 cpg_file = CpG_pileup
 cpg_motif = 'CG,0'
 
 datasets_dict = {
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_{track_threshold}.h5':['chr1'],
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_{track_threshold}.h5':['chr2'],
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_{track_threshold}.h5':['chr3'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_{track_threshold}.h5':['chr1','chr2','chr3','chr4'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_{track_threshold}.h5':['chr18','chr19'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_{track_threshold}.h5':['chr14','chrX'],
 }
 
 ref_fasta = pysam.FastaFile(genome_path)

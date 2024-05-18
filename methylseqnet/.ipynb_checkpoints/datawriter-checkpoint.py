@@ -33,7 +33,7 @@ class DatasetWriter:
                 'sequence',
                 (0,self.seq_length,5),
                 maxshape=(None,self.seq_length,5),
-                dtype='float',
+                dtype=np.float16,
                 compression='gzip',
                 compression_opts=5
             )

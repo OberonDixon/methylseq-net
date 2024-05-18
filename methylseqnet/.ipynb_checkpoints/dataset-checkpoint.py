@@ -2,6 +2,9 @@ import h5py
 from torch.utils.data import Dataset
 import torch
 import numpy as np
+from tqdm import tqdm
+
+MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
     def __init__(self, file_path, transform=None):
@@ -9,11 +12,30 @@ class CustomH5Dataset(Dataset):
         self.transform = transform
         # Load the entire dataset into memory
         with h5py.File(self.file_path, 'r') as f:
-            self.sequence_data = np.array(f['sequence']).astype(np.float16)
-            self.target_data = np.array(f['tracks']).astype(bool)
-            # with h5py.File(self.file_path, 'r') as f:
+            # Determine the length of the dataset
             self.length = len(f['sequence'])
+            
+            # Initialize empty numpy arrays with the correct dtype and shape
+            sequence_shape = f['sequence'].shape
+            target_shape = f['tracks'].shape
+            self.sequence_data = np.empty(sequence_shape, dtype=np.float16)
+            self.target_data = np.empty(target_shape, dtype=bool)
+            
+            # Load data in chunks and convert dtype
+            for start_idx in tqdm(range(0, self.length, MEM_LOADER_CHUNKS),desc='Loading dataset to memory'):
+                end_idx = min(start_idx + MEM_LOADER_CHUNKS, self.length)
+                self.sequence_data[start_idx:end_idx] = f['sequence'][start_idx:end_idx].astype(np.float16)
+                self.target_data[start_idx:end_idx] = f['tracks'][start_idx:end_idx].astype(bool)
+        # print('sequence footprint')
+        # print(self.sequence_data.dtype)
+        # print(self.sequence_data.shape)
+        # print('itemsize',self.sequence_data.itemsize)
+        # print('target footprint')
+        # print(self.target_data.dtype)
+        # print(self.target_data.shape)
+        # print('itemsize',self.target_data.itemsize)
 
+        
     def __len__(self):
         return self.length
 
