@@ -34,9 +34,9 @@ cpg_file = CpG_pileup
 cpg_motif = 'CG,0'
 
 datasets_dict = {
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_{track_threshold}.h5':['chr1','chr2','chr3','chr4'],
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_{track_threshold}.h5':['chr18','chr19'],
-    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_{track_threshold}.h5':['chr14','chrX'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th{track_threshold}_allchrom.h5':['chr1','chr2','chr3','chr4','chr5','chr6','chr8','chr9','chr10','chr11','chr12','chr13','chr15','chr16','chr17','chr18','chr21'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th{track_threshold}_allchrom.h5':['chr7','chr20'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th{track_threshold}_allchrom.h5':['chr14','chr19','chrX'],
 }
 
 ref_fasta = pysam.FastaFile(genome_path)

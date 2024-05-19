@@ -7,7 +7,7 @@ import torch.nn.functional as F
 import torch
 from tqdm import tqdm
 
-batch_size = 1024
+batch_size = 64
 num_epochs = 100
 input_channels = 5
 seq_length = 896
@@ -53,12 +53,12 @@ test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_0.
 
 
 train_dataset = CustomH5Dataset(train_dataset)
-validation_dataset = CustomH5Dataset(validation_dataset)
+# validation_dataset = CustomH5Dataset(validation_dataset)
 # # test_dataset = CustomH5Dataset(test_dataset)
 
 # Create a DataLoader instance
 train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True)
+# validation_dataloader = DataLoader(validation_dataset, batch_size=batch_size, shuffle=True)
 # test_dataloader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True)
 
 # # Iterate through the DataLoader
@@ -86,7 +86,7 @@ batchwise_losses = []
 for epoch in range(num_epochs):
     print(f"Epoch {epoch+1}/{num_epochs}")
 
-    for phase in ['train', 'val']:
+    for phase in ['train']:
         if phase == 'train':
             model.train()
             dataloader = train_dataloader
