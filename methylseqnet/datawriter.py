@@ -1,6 +1,7 @@
 import pysam
 import h5py
 from pathlib import Path
+import numpy as np
 
 class DatasetWriter:
     def __init__(

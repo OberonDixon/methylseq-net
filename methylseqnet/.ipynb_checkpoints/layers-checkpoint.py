@@ -7,8 +7,12 @@ class ConvDNA(nn.Module):
         super(ConvDNA, self).__init__()
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.pool = nn.MaxPool1d(pool_size)
+        self.in_channels = in_channels
 
     def forward(self, x):
+        # If in_channels in only 4, and the input data has cpg methylation, we want to trim that off!
+        if x.shape[1] > self.in_channels:
+            x = x[:, :self.in_channels, :]
         x = self.conv(x)
         x = F.gelu(x)
         x = self.pool(x)
@@ -63,5 +67,5 @@ class Final(nn.Module):
 
     def forward(self, x):
         x = self.fc(x)
-        x = torch.relu(x)
+        # x = torch.sigmoid(x)
         return x

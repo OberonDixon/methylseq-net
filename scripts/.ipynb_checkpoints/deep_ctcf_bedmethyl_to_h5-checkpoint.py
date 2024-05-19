@@ -52,13 +52,13 @@ for dataset_path,chromosomes in datasets_dict.items():
         contig_length = ref_fasta.get_reference_length(chromosome)
         # Load up seq, cpg, mA for whole chromosome
         start_time = time.time()
-        print('loading sequence from fasta')
+        print(f'loading {chromosome} sequence from fasta')
         whole_chrom_sequence = ref_fasta.fetch(chromosome,0,contig_length)
         print('took',time.time()-start_time)
         
         if cpg_input:
             start_time = time.time()
-            print('loading cpg from bedmethyl')
+            print(f'loading {chromosome} cpg from bedmethyl')
             whole_chrom_cpg_mod,whole_chrom_cpg_val = load_processed.pileup_vectors_from_bedmethyl(
                 bedmethyl_file = cpg_file,
                 motif = cpg_motif,
@@ -66,7 +66,7 @@ for dataset_path,chromosomes in datasets_dict.items():
             )
             print('took',time.time()-start_time)
         start_time = time.time()
-        print('loading track from bedmethyl')
+        print(f'loading {chromosome} track from bedmethyl')
         whole_chrom_track_mod,whole_chrom_track_val = load_processed.pileup_vectors_from_bedmethyl(
             bedmethyl_file = track_file,
             motif = track_motif,

@@ -22,7 +22,7 @@ class CustomH5Dataset(Dataset):
             self.target_data = np.empty(target_shape, dtype=bool)
             
             # Load data in chunks and convert dtype
-            for start_idx in tqdm(range(0, self.length, MEM_LOADER_CHUNKS),desc='Loading dataset to memory'):
+            for start_idx in tqdm(range(0, self.length, MEM_LOADER_CHUNKS),desc='Loading dataset to memory',unit='chunk'):
                 end_idx = min(start_idx + MEM_LOADER_CHUNKS, self.length)
                 self.sequence_data[start_idx:end_idx] = f['sequence'][start_idx:end_idx].astype(np.float16)
                 self.target_data[start_idx:end_idx] = f['tracks'][start_idx:end_idx].astype(bool)
