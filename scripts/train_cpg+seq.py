@@ -6,6 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from tqdm import tqdm
+from sklearn.metrics import accuracy_score, precision_score, recall_score
+import numpy as np
 
 batch_size = 2048
 num_epochs = 100
@@ -96,6 +98,9 @@ for epoch in range(num_epochs):
 
         running_loss = 0.0
         running_corrects = 0
+        
+        targets_list = []
+        outputs_list = []
 
         for inputs, targets in tqdm(dataloader,unit='batch',desc='model passes'):
             inputs, targets = inputs.to(device), targets.to(device)
@@ -109,9 +114,15 @@ for epoch in range(num_epochs):
                 if phase == 'train':
                     loss.backward()
                     optimizer.step()
+                    
+                targets_list.extend(targets.cpu().detach().numpy().tolist())
+                outputs_list.extend(outputs.cpu().detach().numpy().tolist())
 
             running_loss += loss.item() * inputs.size(0)
             batchwise_losses.append(loss.item() * inputs.size(0))
+            
+            if len(targets_list)>1000000:
+                break
 
         epoch_loss = running_loss / len(dataloader.dataset)
         if phase=='train':
@@ -138,6 +149,25 @@ for epoch in range(num_epochs):
             else:
                 epochs_since_improvement+=1
         print(f"{phase} Loss: {epoch_loss:.4f}")
+        # print('targets:',targets_list,'outputs:',outputs_list)
+        probabilities = torch.sigmoid(torch.tensor(outputs_list))
+        predictions = (probabilities >= 0.5).int()
+        # Convert to numpy arrays for use with sklearn
+        targets = torch.tensor(targets_list).numpy()
+        predictions = predictions.numpy()
+        
+        print(np.sum(targets))
+        print(np.sum(predictions))
+
+        # Calculate accuracy, precision, and recall
+        accuracy = accuracy_score(targets, predictions)
+        precision = precision_score(targets, predictions,zero_division=0)
+        recall = recall_score(targets, predictions,zero_division=0)
+
+        print(f"Accuracy: {accuracy:.4f}")
+        print(f"Precision: {precision:.4f}")
+        print(f"Recall: {recall:.4f}")
+        
     if epochs_since_improvement>patience:
         print(f"Early stopping after {epoch+1} epochs")
         break
