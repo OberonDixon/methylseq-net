@@ -26,7 +26,7 @@ in_channels = int(args.in_channels)
 seq_length = 896
 output_channels = 1
 
-training_epoch_stop = 1000000
+training_epoch_stop = 100000000000
 
 hyperparams = {
     "ConvDNA":{
@@ -192,7 +192,7 @@ for epoch in range(num_epochs):
         
     # Save epoch performance
     metadata_list.append(performance_dict)
-    performance_save_path = Path(train_dataset_file).parent / f'model_{commit}_{time_str}_in{in_channels}_meta.json'
+    performance_save_path = Path(train_dataset_file).parent / 'models' / f'{commit}_{time_str}_in{in_channels}_meta.json'
     # Save performance data as JSON
     with open(performance_save_path, 'w') as f:
         json.dump(metadata_list, f, indent=4)
@@ -208,7 +208,7 @@ for epoch in range(num_epochs):
             'last_epoch':epoch,
             'train_file':train_dataset,
         }
-        model_save_path = Path(train_dataset_file).parent / f'model_{commit}_{time_str}_in{in_channels}_state.pth'
+        model_save_path = Path(train_dataset_file).parent / 'models' / f'{commit}_{time_str}_in{in_channels}_state.pth'
         torch.save(model_metadata, model_save_path)
         
     if epochs_since_improvement>patience:
