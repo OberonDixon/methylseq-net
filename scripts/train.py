@@ -9,10 +9,17 @@ from tqdm import tqdm
 from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc, f1_score
 import numpy as np
 import argparse
+from datetime import datetime as dt
+from pathlib import Path
+import json
 
-parser = argparse.ArgumentParser(description="Trains methylseq-net. Provide in_channels.")
+parser = argparse.ArgumentParser(description="Trains methylseq-net. Provide in_channels and script commit.")
+
 parser.add_argument("-i","--in_channels",help="5: seq+cpg, 4: seq only, 1: cpg only")
+parser.add_argument("-c","--commit",help="git commit id string for script version")
+
 args = parser.parse_args()
+commit = args.commit
 batch_size = 2048
 num_epochs = 100
 in_channels = int(args.in_channels)
@@ -54,15 +61,15 @@ hyperparams = {
 }
 
 
-train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.08_fd6d75e.h5'
-validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.08_fd6d75e.h5'
-test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.08_fd6d75e.h5'
+train_dataset_file = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.05_fd6d75e.h5'
+validation_dataset_file = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.05_fd6d75e.h5'
+test_dataset_file = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.05_fd6d75e.h5'
 
 
 
-train_dataset = CustomH5Dataset(train_dataset,batch_size=batch_size)
-validation_dataset = CustomH5Dataset(validation_dataset,batch_size=batch_size)
-# # test_dataset = CustomH5Dataset(test_dataset)
+train_dataset = CustomH5Dataset(train_dataset_file,batch_size=batch_size)
+validation_dataset = CustomH5Dataset(validation_dataset_file,batch_size=batch_size)
+# # test_dataset = CustomH5Dataset(test_dataset_file)
 
 # Create a DataLoader instance
 train_dataloader = DataLoader(train_dataset, batch_size=None, shuffle=True, num_workers=1)
@@ -84,17 +91,23 @@ model = MethylSeqNN(hyperparams)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.005, momentum=0.98)
-pos_weight = torch.tensor([98 / 2]).to(device)
+pos_weight = torch.tensor([96 / 4]).to(device)
 criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
-patience = 3
+patience = 5
 best_val_loss = float('inf')
 epochs_since_improvement = 0
+
+metadata_list = [hyperparams]
 batchwise_losses = []
+
+time_str = dt.now().strftime('%Y-%m-%d_%H-%M-%S')
 
 for epoch in range(num_epochs):
     print(f"\n\nEpoch {epoch+1}/{num_epochs}")
-
+    
+    performance_dict = {}
+    
     for phase in ['train','val']:
         if phase == 'train':
             model.train()
@@ -134,20 +147,6 @@ for epoch in range(num_epochs):
         epoch_loss = running_loss / len(dataloader.dataset)
         if phase=='train':
             training_loss = epoch_loss
-            # # Save model with additional metadata
-            # model_metadata = {
-            #     'model_state_dict': model.state_dict(),
-            #     'optimizer_state_dict': optimizer.state_dict(),
-            #     'training_loss': training_loss,
-            #     'validation_loss': validation_loss,
-            #     'num_epochs': num_epochs,
-            #     'last_epoch':epoch,
-            #     'train_file':f"{datasets_dir}{train_file}",
-            #     'architecture_hparam':(input_channels, seq_length, output_channels),
-            #     'batchwise_losses':batchwise_losses
-            # }
-            # model_save_path = f'{models_dir}model_{train_file[0:-3]}_{time_str}_epoch{epoch}.pth'
-            # torch.save(model_metadata, model_save_path)
         elif phase=='val':
             validation_loss = epoch_loss
             if validation_loss < best_val_loss:
@@ -180,6 +179,37 @@ for epoch in range(num_epochs):
         print(f"Recall: {recall_overall:.4f}")
         print(f'F1 Score: {f1:.4f}')
         print(f'Precision-Recall AUC: {pr_auc:.4f}')
+        
+        performance_dict[phase] = {
+            "epoch":epoch,
+            "loss":epoch_loss,
+            "accuracy":accuracy,
+            "precision":precision_overall,
+            "recall":recall_overall,
+            "f1":f1,
+            "prc_auc":pr_auc,
+        }
+        
+    # Save epoch performance
+    metadata_list.append(performance_dict)
+    performance_save_path = Path(train_dataset_file).parent / f'model_{commit}_{time_str}_in{in_channels}_meta.json'
+    # Save performance data as JSON
+    with open(performance_save_path, 'w') as f:
+        json.dump(metadata_list, f, indent=4)
+    
+    # Save model with additional metadata
+    if epochs_since_improvement == 0:
+        model_metadata = {
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'training_loss': training_loss,
+            'validation_loss': validation_loss,
+            'num_epochs': num_epochs,
+            'last_epoch':epoch,
+            'train_file':train_dataset,
+        }
+        model_save_path = Path(train_dataset_file).parent / f'model_{commit}_{time_str}_in{in_channels}_state.pth'
+        torch.save(model_metadata, model_save_path)
         
     if epochs_since_improvement>patience:
         print(f"Early stopping after {epoch+1} epochs")
