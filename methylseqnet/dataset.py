@@ -44,8 +44,8 @@ class CustomH5Dataset(Dataset):
         start_idx = idx * self.batch_size
         end_idx = min(start_idx + self.batch_size, self.length)
         with h5py.File(self.file_path, 'r') as f:
-            input_data = np.array(f['sequence'][start_idx:end_idx])
-            target = np.array(f['tracks'][start_idx:end_idx])
+            input_data = f['sequence'][start_idx:end_idx]
+            target = f['tracks'][start_idx:end_idx]
         # input_data = self.sequence_data[idx]
         # target = self.target_data[idx]
         

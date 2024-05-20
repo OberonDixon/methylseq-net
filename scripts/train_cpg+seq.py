@@ -46,9 +46,9 @@ hyperparams = {
 }
 
 
-train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_(0.05,).h5'
-validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_0.05.h5'
-test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_0.05.h5'
+train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.05_allchrom.h5'
+validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.05_allchrom.h5'
+test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.05_allchrom.h5'
 
 
 

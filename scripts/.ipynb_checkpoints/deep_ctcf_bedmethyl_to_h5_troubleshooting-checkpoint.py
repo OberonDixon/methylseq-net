@@ -1,0 +1,180 @@
+from methylseqnet import dna_io
+from dimelo import parse_bam, load_processed
+from methylseqnet.datawriter import DatasetWriter
+from pathlib import Path
+import pysam
+import numpy as np
+from tqdm import tqdm
+from Bio.Seq import Seq
+import time
+    
+genome_path = '/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta'
+
+CpG_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/cpg_bam_whole_genome/pileup.sorted.bed.gz'
+mA_pileup = '/clusterfs/nilah/oberon/datasets/deep_ctcf/allcontext_bam_whole_genome/pileup.sorted.bed.gz'
+
+write_chunk_len = 1000
+early_stop = 179200000 # set to less than length of chrom if you want to process less than the whole chrom
+
+bin_size = 128
+seq_input_bins = 7
+seq_length = bin_size * seq_input_bins
+cpg_input = True
+track_length = 1
+# track is centered on seq_input, each track pred covering bin_size bp
+num_tracks = 1
+# track index: (source file, motif to extract)
+track_file = mA_pileup
+track_motif = 'A,0'
+# track index: mod fraction threshold, None means floating point track
+track_threshold = 0.05
+
+# (source file, motif to extract)
+cpg_file = CpG_pileup
+cpg_motif = 'CG,0'
+
+datasets_dict = {
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_check.h5':['chr1'], #['chr1','chr2','chr3','chr4','chr5','chr6','chr8','chr9','chr10','chr11','chr12','chr13','chr15','chr16','chr17','chr18','chr21'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_check.h5':[],#['chr7','chr20'],
+    f'/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_check.h5':[],#['chr14','chr19','chrX'],
+}
+
+ref_fasta = pysam.FastaFile(genome_path)
+for dataset_path,chromosomes in datasets_dict.items():
+    # dataset_writer = DatasetWriter(
+    #     seq_length=seq_length,
+    #     cpg_input=cpg_input,
+    #     track_length=track_length,
+    #     num_tracks=num_tracks,
+    #     output_path=dataset_path,
+    # )
+    for chromosome in chromosomes:
+        contig_length = ref_fasta.get_reference_length(chromosome)
+        # Load up seq, cpg, mA for whole chromosome
+        start_time = time.time()
+        print(f'loading {chromosome} sequence from fasta')
+        whole_chrom_sequence = ref_fasta.fetch(chromosome,0,min(contig_length,early_stop))
+        print('took',time.time()-start_time)
+        
+        if cpg_input:
+            start_time = time.time()
+            print(f'loading {chromosome} cpg from bedmethyl')
+            whole_chrom_cpg_mod,whole_chrom_cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                bedmethyl_file = cpg_file,
+                motif = cpg_motif,
+                regions = f'{chromosome}:{0}-{min(contig_length,early_stop)}'
+            )
+            print('took',time.time()-start_time)
+        start_time = time.time()
+        print(f'loading {chromosome} track from bedmethyl')
+        whole_chrom_track_mod,whole_chrom_track_val = load_processed.pileup_vectors_from_bedmethyl(
+            bedmethyl_file = track_file,
+            motif = track_motif,
+            regions = f'{chromosome}:{0}-{min(contig_length,early_stop)}'
+        )       
+        print('took',time.time()-start_time)
+        # Count all above threshold
+        whole_chrom_peaks = whole_chrom_track_mod.reshape(len(whole_chrom_track_mod)//128,128).sum(axis=1)/whole_chrom_track_val.reshape(len(whole_chrom_track_mod)//128,128).sum(axis=1)>track_threshold
+        print(len(whole_chrom_peaks),np.sum(whole_chrom_peaks))
+        recorded_peak_counter = 0
+        recorded_labels_counter = 0
+        # Loop through chromosome in seq_len size chunks
+        onehot_seq_list = []
+        track_value_list = []
+        for chunk_start in tqdm(range(0,min(contig_length-seq_length,early_stop),seq_length)):
+            chunk_end = chunk_start + seq_length
+            # For each chunk, we find the peaks then from there decide whether to send one or more seqs to the dataset
+            # track_mod,track_val = load_processed.pileup_vectors_from_bedmethyl(
+            #     bedmethyl_file = track_file,
+            #     motif = track_motif,
+            #     regions = f'{chromosome}:{chunk_start}-{chunk_end}',
+            # )
+            track_mod_sums = whole_chrom_track_mod[chunk_start:chunk_end].reshape(seq_input_bins, 128).sum(axis=1)
+            track_val_sums = whole_chrom_track_val[chunk_start:chunk_end].reshape(seq_input_bins, 128).sum(axis=1)
+            # To safely handle division by zero, create a mask for non-zero denominators
+            non_zero_mask = track_val_sums != 0
+
+            # Initialize the ratio array with zeros
+            track_ratio = np.zeros_like(track_mod_sums, dtype=float)
+
+            # Perform division only where the denominator is non-zero
+            track_ratio[non_zero_mask] = track_mod_sums[non_zero_mask] / track_val_sums[non_zero_mask]
+            track_peaks = track_ratio > track_threshold
+            if track_peaks.sum()>0: # if there are peaks, we add them plus nearby non-peak regions separately
+                for track_chunk_index in range(len(track_ratio)):
+                    # If we are in a peak OR adjacent to a peak and NOT in a peak, then we want to use this as a data point
+                    if (track_peaks[track_chunk_index] 
+                        or (not track_peaks[track_chunk_index] 
+                            and (
+                                (track_chunk_index-1>=0 and track_peaks[track_chunk_index-1]) or 
+                                 (track_chunk_index+1<seq_input_bins and track_peaks[track_chunk_index+1])
+                                )
+                           )
+                       ): 
+                        track_value = track_peaks[track_chunk_index]
+                        seq_center = (2*chunk_start + 2*track_chunk_index*bin_size + bin_size) // 2
+                        seq_start = seq_center - (seq_length // 2)
+                        seq_end = seq_center + (seq_length // 2)
+                        # print(chromosome,chunk_start,chunk_end,seq_center,seq_start,seq_end)
+                        # sequence = ref_fasta.fetch(chromosome,seq_start,seq_end)
+                        sequence = whole_chrom_sequence[seq_start:seq_end]
+                        rev_comp_sequence = str(Seq(sequence).reverse_complement())
+                        if cpg_input:
+                            # cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                            #     bedmethyl_file = cpg_file,
+                            #     motif = cpg_motif,
+                            #     regions = f'{chromosome}:{seq_start}-{seq_end}'
+                            # )
+                            cpg_mod = whole_chrom_cpg_mod[seq_start:seq_end]
+                            cpg_val = whole_chrom_cpg_val[seq_start:seq_end]
+                            # To safely handle division by zero, create a mask for non-zero denominators
+                            non_zero_mask = cpg_val != 0
+
+                            # Initialize the ratio array with zeros
+                            cpg_ratio = np.zeros_like(cpg_mod, dtype=float)
+
+                            # Perform division only where the denominator is non-zero
+                            cpg_ratio[non_zero_mask] = cpg_mod[non_zero_mask] / cpg_val[non_zero_mask]
+                        else:
+                            cpg_ratio = None
+                        onehot_seq_list.append(dna_io.one_hot_encode_dna(sequence,cpg_ratio))
+                        onehot_seq_list.append(dna_io.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
+                        track_value_list.append(np.array([track_value]))
+                        track_value_list.append(np.array([track_value]))
+            else: # if there are not peaks, that's ok, just add the chunk
+                # sequence = ref_fasta.fetch(chromosome,chunk_start,chunk_end)
+                sequence = whole_chrom_sequence[chunk_start:chunk_end]
+                rev_comp_sequence = str(Seq(sequence).reverse_complement())
+                if cpg_input:
+                    # cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+                    #     bedmethyl_file = cpg_file,
+                    #     motif = cpg_motif,
+                    #     regions = f'{chromosome}:{chunk_start}-{chunk_end}'
+                    # )
+                    cpg_mod = whole_chrom_cpg_mod[chunk_start:chunk_end]
+                    cpg_val = whole_chrom_cpg_val[chunk_start:chunk_end]
+                    # To safely handle division by zero, create a mask for non-zero denominators
+                    non_zero_mask = cpg_val != 0
+
+                    # Initialize the ratio array with zeros
+                    cpg_ratio = np.zeros_like(cpg_mod, dtype=float)
+
+                    # Perform division only where the denominator is non-zero
+                    cpg_ratio[non_zero_mask] = cpg_mod[non_zero_mask] / cpg_val[non_zero_mask]
+                else:
+                    cpg_ratio = None    
+                onehot_seq_list.append(dna_io.one_hot_encode_dna(sequence,cpg_ratio))
+                onehot_seq_list.append(dna_io.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
+                track_value_list.append(np.array([False]))
+                track_value_list.append(np.array([False]))
+                    
+            if len(onehot_seq_list)>=write_chunk_len:
+                # dataset_writer.write_chunk(onehot_seq_list,track_value_list)
+                recorded_peak_counter+=sum(track_value_list)[0]
+                recorded_labels_counter+=len(track_value_list)
+                onehot_seq_list = []
+                track_value_list = []
+        print(recorded_labels_counter,recorded_peak_counter)
+                
+                    
+            
