@@ -27,7 +27,7 @@ num_tracks = 1
 track_file = mA_pileup
 track_motif = 'A,0'
 # track index: mod fraction threshold, None means floating point track
-track_threshold = 0.05
+track_threshold = 0.08
 
 # (source file, motif to extract)
 cpg_file = CpG_pileup

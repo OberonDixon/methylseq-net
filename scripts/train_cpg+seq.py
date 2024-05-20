@@ -11,7 +11,7 @@ import numpy as np
 
 batch_size = 2048
 num_epochs = 100
-input_channels = 5
+input_channels = 4
 seq_length = 896
 output_channels = 1
 
@@ -48,8 +48,8 @@ hyperparams = {
 }
 
 
-train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.05_allchrom.h5'
-validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.05_allchrom.h5'
+train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.05_fd6d75e.h5'
+validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.05_fd6d75e.h5'
 test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.05_allchrom.h5'
 
 
