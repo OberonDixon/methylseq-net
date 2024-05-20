@@ -76,7 +76,9 @@ for dataset_path,chromosomes in datasets_dict.items():
         # Loop through chromosome in seq_len size chunks
         onehot_seq_list = []
         track_value_list = []
-        for chunk_start in tqdm(range(0,min(contig_length-seq_length,early_stop),seq_length)):
+        # the -2*seq_length is because we want to be guaranteed that our reaching outward for 
+        # edge-of-context peaks doesn't go past the end of the contig
+        for chunk_start in tqdm(range(0,min(contig_length-2*seq_length,early_stop),seq_length)):
             chunk_end = chunk_start + seq_length
             # For each chunk, we find the peaks then from there decide whether to send one or more seqs to the dataset
             # track_mod,track_val = load_processed.pileup_vectors_from_bedmethyl(
@@ -100,20 +102,24 @@ for dataset_path,chromosomes in datasets_dict.items():
                 for track_chunk_index in range(len(track_ratio)):
                     # If we are in a peak OR adjacent to a peak and NOT in a peak, then we want to use this as a data point
                     if (track_peaks[track_chunk_index] 
-                        or (not track_peaks[track_chunk_index] 
-                            and (
+                        or (# if we are not currently in a peak
+                            not track_peaks[track_chunk_index] 
+                            and (# if we are just right of a peak
                                 (track_chunk_index-1>=0 and track_peaks[track_chunk_index-1]) or 
+                                # if we are just left of a peak
                                  (track_chunk_index+1<seq_input_bins and track_peaks[track_chunk_index+1])
                                 )
                            )
                        ): 
                         track_value = track_peaks[track_chunk_index]
+                        # the center of the peak is determined from the large chunk location plus the track minichunk index
                         seq_center = (2*chunk_start + 2*track_chunk_index*bin_size + bin_size) // 2
+                        # from the center of the peak (or the not-peak-but-adjacent) we define a sequence context
                         seq_start = seq_center - (seq_length // 2)
                         seq_end = seq_center + (seq_length // 2)
                         # print(chromosome,chunk_start,chunk_end,seq_center,seq_start,seq_end)
                         # sequence = ref_fasta.fetch(chromosome,seq_start,seq_end)
-                        sequence = whole_chrom_sequence[chunk_start:chunk_end]
+                        sequence = whole_chrom_sequence[seq_start:seq_end]
                         rev_comp_sequence = str(Seq(sequence).reverse_complement())
                         if cpg_input:
                             # cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
@@ -121,8 +127,8 @@ for dataset_path,chromosomes in datasets_dict.items():
                             #     motif = cpg_motif,
                             #     regions = f'{chromosome}:{seq_start}-{seq_end}'
                             # )
-                            cpg_mod = whole_chrom_cpg_mod[chunk_start:chunk_end]
-                            cpg_val = whole_chrom_cpg_val[chunk_start:chunk_end]
+                            cpg_mod = whole_chrom_cpg_mod[seq_start:seq_end]
+                            cpg_val = whole_chrom_cpg_val[seq_start:seq_end]
                             # To safely handle division by zero, create a mask for non-zero denominators
                             non_zero_mask = cpg_val != 0
 
@@ -139,6 +145,7 @@ for dataset_path,chromosomes in datasets_dict.items():
                         track_value_list.append(np.array([track_value]))
             else: # if there are not peaks, that's ok, just add the chunk
                 # sequence = ref_fasta.fetch(chromosome,chunk_start,chunk_end)
+                # no special seq centered on anything, just the chunk itself
                 sequence = whole_chrom_sequence[chunk_start:chunk_end]
                 rev_comp_sequence = str(Seq(sequence).reverse_complement())
                 if cpg_input:
