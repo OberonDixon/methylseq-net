@@ -11,8 +11,14 @@ class ConvDNA(nn.Module):
 
     def forward(self, x):
         # If in_channels in only 4, and the input data has cpg methylation, we want to trim that off!
+        # On the other hand, if in_channels is 1, we *only* keep cpg methylation
         if x.shape[1] > self.in_channels:
-            x = x[:, :self.in_channels, :]
+            if self.in_channels>1:
+                x = x[:, :self.in_channels, :]
+            elif self.in_channels==1:
+                x = x[:, -1:, :]
+            else:
+                raise ValueError(f"in_channels {self.in_channels} invalid value.")
         x = self.conv(x)
         x = F.gelu(x)
         x = self.pool(x)

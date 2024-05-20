@@ -6,18 +6,24 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score, precision_score, recall_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc
 import numpy as np
+import argparse
 
+parser = argparse.ArgumentParser(description="Trains methylseq-net. Provide in_channels.")
+parser.add_argument("-i","--in_channels",help="5: seq+cpg, 4: seq only, 1: cpg only")
+args = parser.parse_args()
 batch_size = 2048
 num_epochs = 100
-input_channels = 4
+in_channels = int(args.in_channels)
 seq_length = 896
 output_channels = 1
 
+training_epoch_stop = 1000000
+
 hyperparams = {
     "ConvDNA":{
-        "in_channels":input_channels,
+        "in_channels":in_channels,
         "filters":50,
         "kernel_size":17,
         "pool_size":3,   
@@ -48,9 +54,9 @@ hyperparams = {
 }
 
 
-train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.05_fd6d75e.h5'
-validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.05_fd6d75e.h5'
-test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.05_allchrom.h5'
+train_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/train_th0.08_fd6d75e.h5'
+validation_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/validation_th0.08_fd6d75e.h5'
+test_dataset = '/clusterfs/nilah/oberon/datasets/methylseq-net_deep-ctcf/test_th0.08_fd6d75e.h5'
 
 
 
@@ -86,7 +92,7 @@ epochs_since_improvement = 0
 batchwise_losses = []
 
 for epoch in range(num_epochs):
-    print(f"Epoch {epoch+1}/{num_epochs}")
+    print(f"\n\nEpoch {epoch+1}/{num_epochs}")
 
     for phase in ['train','val']:
         if phase == 'train':
@@ -121,7 +127,7 @@ for epoch in range(num_epochs):
             running_loss += loss.item() * inputs.size(0)
             batchwise_losses.append(loss.item() * inputs.size(0))
             
-            if len(targets_list)>1000000:
+            if len(targets_list)>training_epoch_stop:
                 break
 
         epoch_loss = running_loss / len(dataloader.dataset)
@@ -155,18 +161,22 @@ for epoch in range(num_epochs):
         # Convert to numpy arrays for use with sklearn
         targets = torch.tensor(targets_list).numpy()
         predictions = predictions.numpy()
-        
-        print(np.sum(targets))
-        print(np.sum(predictions))
 
         # Calculate accuracy, precision, and recall
         accuracy = accuracy_score(targets, predictions)
-        precision = precision_score(targets, predictions,zero_division=0)
-        recall = recall_score(targets, predictions,zero_division=0)
-
+        precision_overall = precision_score(targets, predictions,zero_division=0)
+        recall_overall = recall_score(targets, predictions,zero_division=0)
+        # Calculate precision, recall, and thresholds
+        precision, recall, thresholds = precision_recall_curve(targets, probabilities)
+        # Calculate the area under the precision-recall curve
+        pr_auc = auc(recall, precision)
+        
+        print('targets=True:',np.sum(targets))
+        print('predictions=True:',np.sum(predictions))
         print(f"Accuracy: {accuracy:.4f}")
-        print(f"Precision: {precision:.4f}")
-        print(f"Recall: {recall:.4f}")
+        print(f"Precision: {precision_overall:.4f}")
+        print(f"Recall: {recall_overall:.4f}")
+        print(f'Precision-Recall AUC: {pr_auc:.4f}')
         
     if epochs_since_improvement>patience:
         print(f"Early stopping after {epoch+1} epochs")
