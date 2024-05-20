@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from tqdm import tqdm
-from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc
+from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc, f1_score
 import numpy as np
 import argparse
 
@@ -84,7 +84,8 @@ model = MethylSeqNN(hyperparams)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)
 optimizer = optim.SGD(model.parameters(), lr=0.005, momentum=0.98)
-criterion = nn.BCEWithLogitsLoss()
+pos_weight = torch.tensor([98 / 2]).to(device)
+criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
 
 patience = 3
 best_val_loss = float('inf')
@@ -170,12 +171,14 @@ for epoch in range(num_epochs):
         precision, recall, thresholds = precision_recall_curve(targets, probabilities)
         # Calculate the area under the precision-recall curve
         pr_auc = auc(recall, precision)
+        f1 = f1_score(targets, predictions, average='binary')
         
         print('targets=True:',np.sum(targets))
         print('predictions=True:',np.sum(predictions))
         print(f"Accuracy: {accuracy:.4f}")
         print(f"Precision: {precision_overall:.4f}")
         print(f"Recall: {recall_overall:.4f}")
+        print(f'F1 Score: {f1:.4f}')
         print(f'Precision-Recall AUC: {pr_auc:.4f}')
         
     if epochs_since_improvement>patience:
