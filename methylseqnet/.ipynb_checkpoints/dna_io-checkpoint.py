@@ -1,4 +1,7 @@
 import numpy as np
+import pysam
+from pathlib import Path
+from dimelo import load_processed
 
 def one_hot_encode_dna(dna_strand, cpg_methylation=None):
     """
@@ -42,3 +45,27 @@ def one_hot_encode_dna(dna_strand, cpg_methylation=None):
             encoded_strand.append([0, 0, 0, 0, methylation_prob])
 
     return encoded_strand
+
+def one_hot_dna_from_file(
+    chromosome: str,
+    start: int,
+    end: int,
+    ref_genome: str | Path,
+    cpg = False,
+    cpg_bedmethyl: str | Path | None = None,
+):
+    ref_fasta = pysam.FastaFile(ref_genome)
+    dna_strand = ref_fasta.fetch(chromosome,start,end)
+    if cpg and cpg_bedmethyl is not None:
+        cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
+            bedmethyl_file = cpg_bedmethyl,
+            motif = 'CG,0',
+            regions = f'{chromosome}:{start}-{end}'
+        )
+        non_zero_mask = cpg_val != 0
+        cpg_ratio = np.zeros_like(cpg_mod, dtype=float)
+        cpg_ratio[non_zero_mask] = cpg_mod[non_zero_mask] / cpg_val[non_zero_mask]
+    else:
+        cpg_ratio = None
+    
+    return one_hot_encode_dna(dna_strand=dna_strand,cpg_methylation=cpg_ratio)

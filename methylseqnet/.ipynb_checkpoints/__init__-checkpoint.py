@@ -3,7 +3,7 @@ from . import (
     dna_io,
     layers,
     methylseqnn,
-    trainer,
+    inference,
     datawriter,
 )
 
@@ -12,6 +12,6 @@ __all__ = [
     "dna_io",
     "layers",
     "methylseqnn",
-    "trainer",
+    "inference",
     "datawriter",
 ]
