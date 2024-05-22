@@ -5,6 +5,8 @@ from . import (
     methylseqnn,
     inference,
     datawriter,
+    metrics,
+    motifs,
 )
 
 __all__ = [
@@ -14,4 +16,6 @@ __all__ = [
     "methylseqnn",
     "inference",
     "datawriter",
+    "metrics",
+    "motifs",
 ]
