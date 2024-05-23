@@ -5,7 +5,7 @@ env_name="methylseqnet"                 # Name of the conda environment
 env_dir="/clusterfs/nilah/oberon/environments/"                  # Directory to create the environment in
 home_conda_dir="/global/home/users/dixonluinenburg/.conda/envs/"
 channels="conda-forge nanoporetech defaults"                 # Channels to install packages from
-packages="python=3.11 nanoporetech::modkit==0.2.4 bioconda::samtools"                 # Core packages to install
+packages="python=3.11 nanoporetech::modkit==0.2.4 bioconda::samtools bioconda::bedtools"                 # Core packages to install
 pip_editable_packages="-e /clusterfs/nilah/oberon/repos/dimelo_v2"        # Local directory containing the pip package
 
 module load python

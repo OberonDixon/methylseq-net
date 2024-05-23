@@ -53,9 +53,15 @@ def one_hot_dna_from_file(
     ref_genome: str | Path,
     cpg = False,
     cpg_bedmethyl: str | Path | None = None,
+    ablate_list = [],#(start,end)
 ):
     ref_fasta = pysam.FastaFile(ref_genome)
     dna_strand = ref_fasta.fetch(chromosome,start,end)
+    strand_list = list(dna_strand)
+    ablate_list_inframe = [ablate_range for ablate_range in ablate_list if ablate_range[0]>=start and ablate_range[1]<end]
+    
+    dna_strand = edit_dna_strand(dna_strand,ablate_list_inframe)
+        
     if cpg and cpg_bedmethyl is not None:
         cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
             bedmethyl_file = cpg_bedmethyl,
@@ -69,3 +75,31 @@ def one_hot_dna_from_file(
         cpg_ratio = None
     
     return one_hot_encode_dna(dna_strand=dna_strand,cpg_methylation=cpg_ratio)
+
+def edit_dna_strand(
+    dna_strand,
+    ranges,
+    replace_with = 'N',
+):
+    # Sort ranges to ensure correct order of replacement
+    ranges = sorted(ranges)
+    
+    # Initialize a list to store parts of the final string
+    parts = []
+    last_index = 0
+    
+    for start, end in ranges:
+        # Append the part of the string before the current range
+        parts.append(original_string[last_index:start])
+        # Append 'N' for the length of the current range
+        parts.append('N' * (end - start))
+        # Update the last index to the end of the current range
+        last_index = end
+    
+    # Append the remaining part of the string after the last range
+    parts.append(original_string[last_index:])
+    
+    # Join all parts together to form the final modified string
+    modified_string = ''.join(parts)
+    
+    return modified_string
