@@ -58,7 +58,7 @@ def one_hot_dna_from_file(
     ref_fasta = pysam.FastaFile(ref_genome)
     dna_strand = ref_fasta.fetch(chromosome,start,end)
     strand_list = list(dna_strand)
-    ablate_list_inframe = [ablate_range for ablate_range in ablate_list if ablate_range[0]>=start and ablate_range[1]<end]
+    ablate_list_inframe = [(ablate_range[0]-start,ablate_range[1]-start) for ablate_range in ablate_list if ablate_range[0]>=start and ablate_range[1]<end]
     
     dna_strand = edit_dna_strand(dna_strand,ablate_list_inframe)
         
