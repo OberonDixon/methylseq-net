@@ -58,9 +58,11 @@ def one_hot_dna_from_file(
     ref_fasta = pysam.FastaFile(ref_genome)
     dna_strand = ref_fasta.fetch(chromosome,start,end)
     strand_list = list(dna_strand)
+    # print(start)
     ablate_list_inframe = [(ablate_range[0]-start,ablate_range[1]-start) for ablate_range in ablate_list if ablate_range[0]>=start and ablate_range[1]<end]
-    
+    # print(ablate_list_inframe)
     dna_strand = edit_dna_strand(dna_strand,ablate_list_inframe)
+    # print(dna_strand)
         
     if cpg and cpg_bedmethyl is not None:
         cpg_mod,cpg_val = load_processed.pileup_vectors_from_bedmethyl(
@@ -76,13 +78,32 @@ def one_hot_dna_from_file(
     
     return one_hot_encode_dna(dna_strand=dna_strand,cpg_methylation=cpg_ratio)
 
+def merge_ranges(ranges):
+    # Sort ranges by start index
+    sorted_ranges = sorted(ranges)
+    merged_ranges = []
+    
+    for current_range in sorted_ranges:
+        if not merged_ranges:
+            merged_ranges.append(current_range)
+        else:
+            last_range = merged_ranges[-1]
+            if current_range[0] <= last_range[1]:  # Check if ranges overlap
+                # Merge the ranges
+                merged_ranges[-1] = (last_range[0], max(last_range[1], current_range[1]))
+            else:
+                merged_ranges.append(current_range)
+    
+    return merged_ranges
+
 def edit_dna_strand(
-    dna_strand,
+    original_string,
     ranges,
-    replace_with = 'N',
+    replace_with = 'A',
 ):
     # Sort ranges to ensure correct order of replacement
     ranges = sorted(ranges)
+    ranges = merge_ranges(ranges)
     
     # Initialize a list to store parts of the final string
     parts = []
@@ -92,7 +113,7 @@ def edit_dna_strand(
         # Append the part of the string before the current range
         parts.append(original_string[last_index:start])
         # Append 'N' for the length of the current range
-        parts.append('N' * (end - start))
+        parts.append(replace_with * (end - start))
         # Update the last index to the end of the current range
         last_index = end
     
