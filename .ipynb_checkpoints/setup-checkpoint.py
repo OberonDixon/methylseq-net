@@ -10,5 +10,6 @@ setup(
         "scikit-learn",
         "captum",
         "modisco",
+        "scipy",
     ],
 )
