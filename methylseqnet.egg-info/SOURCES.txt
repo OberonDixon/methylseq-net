@@ -2,11 +2,14 @@ README.md
 setup.py
 methylseqnet/__init__.py
 methylseqnet/dataset.py
+methylseqnet/datawriter.py
 methylseqnet/dna_io.py
+methylseqnet/inference.py
 methylseqnet/layers.py
 methylseqnet/methylseqnn.py
-methylseqnet/preprocesser.py
-methylseqnet/trainer.py
+methylseqnet/metrics.py
+methylseqnet/motifs.py
+methylseqnet/peaks.py
 methylseqnet.egg-info/PKG-INFO
 methylseqnet.egg-info/SOURCES.txt
 methylseqnet.egg-info/dependency_links.txt

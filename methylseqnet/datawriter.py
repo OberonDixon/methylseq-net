@@ -54,11 +54,11 @@ class DatasetWriter:
         labels_list,
     ):
         if len(onehot_seq_list)!=len(labels_list):
-            raise ValueError(f'Cannont write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
+            raise ValueError(f'Cannot write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
         if len(onehot_seq_list[0])!=self.seq_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {seq_length}.')
+            raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {self.seq_length}.')
         if len(labels_list[0])!=self.track_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(labels_list[0])} and should be {track_length}.')
+            raise ValueError(f'Cannot write chunk, seq length is {len(labels_list[0])} and should be {self.track_length}.')
             
         with h5py.File(self.output_path, 'a') as f:
             seq_dataset = f['sequence']

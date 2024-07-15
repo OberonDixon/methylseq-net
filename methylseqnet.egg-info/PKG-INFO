@@ -1,4 +1,9 @@
 Metadata-Version: 2.1
 Name: methylseqnet
 Version: 0.0.1
-Requires-Dist: torch
+Requires-Dist: torch==2.0.0
+Requires-Dist: biopython
+Requires-Dist: scikit-learn
+Requires-Dist: captum
+Requires-Dist: modisco
+Requires-Dist: scipy

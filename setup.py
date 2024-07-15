@@ -11,5 +11,6 @@ setup(
         "captum",
         "modisco",
         "scipy",
+        "gin-config",
     ],
 )
