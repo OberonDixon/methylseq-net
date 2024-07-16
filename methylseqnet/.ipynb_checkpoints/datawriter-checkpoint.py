@@ -11,6 +11,7 @@ class DatasetWriter:
         track_length: int,
         num_tracks: int,
         output_path: str | Path,
+        mask: bool = True,
     ):
         # The length of the input sequence
         self.seq_length = seq_length
@@ -25,6 +26,8 @@ class DatasetWriter:
             self.output_path = Path(output_path)
         else:
             raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')
+        # True means we are using a mask for the loss function
+        self.mask = mask
         self.initialize_h5()
     def initialize_h5(self):
         with h5py.File(self.output_path,'w') as f:
@@ -36,7 +39,7 @@ class DatasetWriter:
                 maxshape=(None,self.seq_length,5),
                 dtype=np.float16,
                 compression='gzip',
-                compression_opts=5
+                compression_opts=2
             )
             if 'tracks' in f:
                 del f['tracks']
@@ -44,34 +47,60 @@ class DatasetWriter:
                 'tracks',
                 (0,self.track_length,self.num_tracks),
                 maxshape=(None,self.track_length,self.num_tracks),
-                dtype='bool',
+                dtype='float',
                 compression='gzip',
-                compression_opts=5,
+                compression_opts=2,
             )
+            if self.mask:
+                if 'mask' in f:
+                    del f['mask']
+                f.create_dataset(
+                    'mask',
+                    (0,self.track_length,self.num_tracks),
+                    maxshape=(None,self.track_length,self.num_tracks),
+                    dtype='bool',
+                    compression='gzip',
+                    compression_opts=2,
+                )
     def write_chunk(
         self,
         onehot_seq_list,
         labels_list,
+        mask_list=None,
     ):
         if len(onehot_seq_list)!=len(labels_list):
             raise ValueError(f'Cannot write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
         if len(onehot_seq_list[0])!=self.seq_length:
             raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {self.seq_length}.')
-        if len(labels_list[0])!=self.track_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(labels_list[0])} and should be {self.track_length}.')
+        if labels_list[0].shape[0]!=self.track_length:
+            raise ValueError(f'Cannot write chunk, track length is {labels_list[0].shape[0]} and should be {self.track_length}.')
+
+        if self.mask:
+            if mask_list is None:
+                raise ValueError("Datasetwriter initialized with 'mask=True', must provide a mask_list when writing chunk. Got 'None'")
+            if mask_list[0].shape[0]!=self.track_length:
+                raise ValueError(f'Cannot write chunk, mask length is {mask_list[0].shape[0]} and should be {self.track_length}.')
+                
             
         with h5py.File(self.output_path, 'a') as f:
             seq_dataset = f['sequence']
             track_dataset = f['tracks']
 
             current_seq_size = seq_dataset.shape[0]
-            current_track_size = track_dataset.shape[0]
-
+            current_track_size = track_dataset.shape[0]          
+            
             new_seq_size = current_seq_size + len(onehot_seq_list)
-            new_track_size = current_track_size + len(labels_list)
+            new_track_size = current_track_size + len(labels_list)            
 
             seq_dataset.resize(new_seq_size, axis=0)
-            track_dataset.resize(new_track_size, axis=0)
+            track_dataset.resize(new_track_size, axis=0)            
 
             seq_dataset[current_seq_size:new_seq_size, :, :] = onehot_seq_list
             track_dataset[current_track_size:new_track_size, :, :] = labels_list
+            
+            if self.mask:
+                mask_dataset = f['mask']
+                current_mask_size = mask_dataset.shape[0]
+                new_mask_size = current_mask_size + len(mask_list)
+                mask_dataset.resize(new_mask_size, axis=0)
+                mask_dataset[current_mask_size:new_mask_size, :, :] = mask_list

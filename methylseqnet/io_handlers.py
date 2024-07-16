@@ -4,6 +4,7 @@ import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
 from pathlib import Path
 import matplotlib.pyplot as plt
+from tqdm.auto import tqdm
 
 class GenomeRegionGenerator:
     def __init__(self, **kwargs):
@@ -82,9 +83,9 @@ class FastaHandler(SequenceHandler):
             raise OSError(f"{ref_genome} does not exist.")
     def load_sequence(self,chrom,start,end,fastafile):
         return fastafile.fetch(chrom,start,end)
-    def load_sequence_batch(self,region_list):
+    def load_sequence_batch(self,regions_list):
         fastafile = pysam.FastaFile(self.ref_genome)
-        return [self.load_sequence(**region,fastafile=fastafile) for region in region_list]
+        return [self.load_sequence(**region,fastafile=fastafile) for region in regions_list]
 
 class MultiBigWigCpGHandler(CpGHandler):
     """
@@ -126,9 +127,9 @@ class MultiBigWigCpGHandler(CpGHandler):
             return mean_values       
         else:
             raise NotImplementedError     
-    def load_cpg_batch(self,region_list):
+    def load_cpg_batch(self,regions_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
-        cpgs = [self.load_cpg(**region,bws=bws) for region in region_list]
+        cpgs = [self.load_cpg(**region,bws=bws) for region in regions_list]
         for bw in bws:
             bw.close()
         return cpgs
@@ -173,9 +174,9 @@ class MultiBigWigLabelHandler(LabelHandler):
             stacked_values = np.stack(values_list, axis=0)
             mean_values = np.mean(stacked_values, axis=0)
             return mean_values            
-    def load_labels_batch(self,region_list):
+    def load_labels_batch(self,regions_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
-        label_data = [self.load_labels(**region,bws=bws) for region in region_list]    
+        label_data = [self.load_labels(**region,bws=bws) for region in regions_list]    
         for bw in bws:
             bw.close()
         labels = [label_datum.reshape(-1,self.label_bin_size).mean(axis=1) for label_datum in label_data]
@@ -248,32 +249,45 @@ class BigWigCellAtlas(MultitaskIOHandler):
 
     def process_batch(
         self,
-        region_list,
+        indices_list,
+        regions_list,
         dataset_writer,
     ):
         onehot_dna_list = []
         label_list = []
-        for label_specifier_dict in self.labels_specifier_list:
-            sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(region_list)
-            cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(region_list)
-            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(region_list)
-            label_arrays = [np.zeros([self.label_num_bins,self.num_tracks],dtype=float) for _ in label_columns_list]
+        mask_list = []
+        for label_specifier_dict in tqdm(self.labels_specifier_list,desc=f'running through labels for {regions_list}'):
+            sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
+            cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
+            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list)
+            label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
                 label_array[:,label_specifier_dict['index']]=label_column 
 
             label_list+=label_arrays
+
+            mask_arrays = [np.full((self.label_num_bins,self.num_tracks),False) for _ in label_columns_list]
+            for mask_array in mask_arrays:
+                mask_array[:,label_specifier_dict['index']] = True
+
+            mask_list += mask_arrays
+            
+            # onehot_dna_list+=[np.random.rand(131072,5) for _ in sequence_list]
             onehot_dna_list+=[one_hot_encode_dna(sequence,cpg) for sequence,cpg in zip(sequence_list,cpg_list)]
             
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
-                dataset_writer.write_chunk(
-                    onehot_dna_list,
-                    label_list,
-                )
+                # dataset_writer.write_chunk(
+                #     onehot_dna_list,
+                #     label_list,
+                #     mask_list,
+                # )
                 onehot_dna_list = []
                 label_list = []
+                mask_list = []
         dataset_writer.write_chunk(
             onehot_dna_list,
             label_list,
+            mask_list,
         )
         # plt.imshow(np.sum(np.array(label_list),axis=0))
         # plt.show()
