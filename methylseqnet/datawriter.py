@@ -42,8 +42,8 @@ class DatasetWriter:
                 del f['tracks']
             f.create_dataset(
                 'tracks',
-                (0,self.num_tracks),
-                maxshape=(None,self.num_tracks),
+                (0,self.track_length,self.num_tracks),
+                maxshape=(None,self.track_length,self.num_tracks),
                 dtype='bool',
                 compression='gzip',
                 compression_opts=5,
@@ -74,4 +74,4 @@ class DatasetWriter:
             track_dataset.resize(new_track_size, axis=0)
 
             seq_dataset[current_seq_size:new_seq_size, :, :] = onehot_seq_list
-            track_dataset[current_track_size:new_track_size, :] = labels_list
+            track_dataset[current_track_size:new_track_size, :, :] = labels_list

@@ -42,8 +42,8 @@ class DatasetWriter:
                 del f['tracks']
             f.create_dataset(
                 'tracks',
-                (0,self.num_tracks),
-                maxshape=(None,self.num_tracks),
+                (0,self.track_length,self.num_tracks),
+                maxshape=(None,self.track_length,self.num_tracks),
                 dtype='bool',
                 compression='gzip',
                 compression_opts=5,
@@ -54,11 +54,11 @@ class DatasetWriter:
         labels_list,
     ):
         if len(onehot_seq_list)!=len(labels_list):
-            raise ValueError(f'Cannont write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
+            raise ValueError(f'Cannot write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
         if len(onehot_seq_list[0])!=self.seq_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {seq_length}.')
+            raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {self.seq_length}.')
         if len(labels_list[0])!=self.track_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(labels_list[0])} and should be {track_length}.')
+            raise ValueError(f'Cannot write chunk, seq length is {len(labels_list[0])} and should be {self.track_length}.')
             
         with h5py.File(self.output_path, 'a') as f:
             seq_dataset = f['sequence']
@@ -74,4 +74,4 @@ class DatasetWriter:
             track_dataset.resize(new_track_size, axis=0)
 
             seq_dataset[current_seq_size:new_seq_size, :, :] = onehot_seq_list
-            track_dataset[current_track_size:new_track_size, :] = labels_list
+            track_dataset[current_track_size:new_track_size, :, :] = labels_list

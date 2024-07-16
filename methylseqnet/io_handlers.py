@@ -2,6 +2,8 @@ import gin, dimelo, pyBigWig, pysam
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
+from pathlib import Path
+import matplotlib.pyplot as plt
 
 class GenomeRegionGenerator:
     def __init__(self, **kwargs):
@@ -72,7 +74,7 @@ class FastaHandler(SequenceHandler):
     This subclass handles simple fasta sequence loading
     """
     def __init__(self,ref_genome: str):
-        if os.isfile(ref_genome):
+        if os.path.isfile(ref_genome):
             # check that pysam can open the fasta file
             _ = pysam.FastaFile(ref_genome)
             self.ref_genome = ref_genome
@@ -97,8 +99,12 @@ class MultiBigWigCpGHandler(CpGHandler):
         if not isinstance(bigwig_files,list):
             raise ValueError("bigwig_files input is not a list.")
         for bigwig_file in bigwig_files:   
-            if os.isfile(bigwig_file):
-                _ = pyBigWig(bigwig_file)
+            if os.path.isfile(bigwig_file):
+                try:
+                    bw = pyBigWig.open(str(bigwig_file))
+                    bw.close()
+                except:
+                    raise ValueError(f"{bigwig_file} cannot be opened by pyBigWig.")
             else:
                 raise OSError(f"{bigwig_file} does not exist.")
         self.bigwig_files = bigwig_files
@@ -108,7 +114,7 @@ class MultiBigWigCpGHandler(CpGHandler):
     def load_cpg(self,chrom,start,end,bws):
         values_list = []
         for bw in bws:
-            raw_values = bw.values(chrom,start,end)
+            raw_values = np.array(bw.values(chrom,start,end))
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
             # set nan (not a CpG) to zero
@@ -121,8 +127,11 @@ class MultiBigWigCpGHandler(CpGHandler):
         else:
             raise NotImplementedError     
     def load_cpg_batch(self,region_list):
-        bws = [pyBigWig(bigwig_file) for bigwig_file in self.bigwig_files]
-        return [self.load_cpg(**region,bws=bws) for region in region_list]
+        bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
+        cpgs = [self.load_cpg(**region,bws=bws) for region in region_list]
+        for bw in bws:
+            bw.close()
+        return cpgs
     
 class MultiBigWigLabelHandler(LabelHandler):
     def __init__(
@@ -137,8 +146,12 @@ class MultiBigWigLabelHandler(LabelHandler):
         if not isinstance(bigwig_files,list):
             raise ValueError("bigwig_files input is not a list.")
         for bigwig_file in bigwig_files:   
-            if os.isfile(bigwig_file):
-                _ = pyBigWig(bigwig_file)
+            if os.path.isfile(bigwig_file):
+                try:
+                    bw = pyBigWig.open(str(bigwig_file))
+                    bw.close()
+                except:
+                    raise ValueError(f"{bigwig_file} cannot be opened by pyBigWig.")
             else:
                 raise OSError(f"{bigwig_file} does not exist.")
         self.bigwig_files = bigwig_files
@@ -161,8 +174,12 @@ class MultiBigWigLabelHandler(LabelHandler):
             mean_values = np.mean(stacked_values, axis=0)
             return mean_values            
     def load_labels_batch(self,region_list):
-        bws = [pyBigWig(bigwig_file) for bigwig_file in self.bigwig_files]
-        return [self.load_labels(**region,bws=bws) for region in region_list]    
+        bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
+        label_data = [self.load_labels(**region,bws=bws) for region in region_list]    
+        for bw in bws:
+            bw.close()
+        labels = [label_datum.reshape(-1,self.label_bin_size).mean(axis=1) for label_datum in label_data]
+        return labels
     
 class BigWigCellAtlas(MultitaskIOHandler):
     def __init__(
@@ -197,16 +214,18 @@ class BigWigCellAtlas(MultitaskIOHandler):
                     fields = line.split('\t')
                     methylation_names = fields[0].split(',')
                     atac_names = fields[1].split(',')
-                    split = fields[2] if len(fields)>2 else "train"
+                    # split = fields[2] if len(fields)>2 else "train"
                     methylation_celltype_files = []
                     atac_celltype_files = []
                     for methylation_name in methylation_names:
-                        methylation_celltype_files+=[(methylation_directory / f) for f in methylation_files if methylation_name in f]  
+                        if methylation_name!='':
+                            methylation_celltype_files+=[(Path(methylation_directory) / f) for f in methylation_files if methylation_name in f]  
                     for atac_name in atac_names:
-                        atac_name_20 = atac_name.replace(' ','%20')
-                        atac_celltype_files += [(targets_directory / f) for f in atac_files if atac_name_20 in f]
+                        if atac_name!='':
+                            atac_name_20 = atac_name.replace(' ','%20')
+                            atac_celltype_files += [(Path(targets_directory) / f) for f in atac_files if atac_name_20 in f]
                         
-                    if len(methylation_celltype_files)>0 and len(atac_celltype_files)>0 and split=="train":
+                    if len(methylation_celltype_files)>0 and len(atac_celltype_files)>0:
                         # We have a cell type match; add to the label specifier list
                         self.labels_specifier_list.append(
                             {
@@ -223,7 +242,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
                                     label_bin_size=label_bin_size,
                                 )
                             }
-                        )
+                        )            
                         label_index+=1
         self.num_tracks = label_index
 
@@ -237,14 +256,14 @@ class BigWigCellAtlas(MultitaskIOHandler):
         for label_specifier_dict in self.labels_specifier_list:
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(region_list)
             cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(region_list)
-            label_columns_list = label_specifier_dict['label_handler'].load_label_batch(region_list)
-            label_arrays = [np.zeros(self.label_num_bins,self.num_tracks) for _ in label_columns_list]
+            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(region_list)
+            label_arrays = [np.zeros([self.label_num_bins,self.num_tracks],dtype=float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
                 label_array[:,label_specifier_dict['index']]=label_column 
 
             label_list+=label_arrays
             onehot_dna_list+=[one_hot_encode_dna(sequence,cpg) for sequence,cpg in zip(sequence_list,cpg_list)]
-
+            
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
                 dataset_writer.write_chunk(
                     onehot_dna_list,
@@ -252,5 +271,12 @@ class BigWigCellAtlas(MultitaskIOHandler):
                 )
                 onehot_dna_list = []
                 label_list = []
+        dataset_writer.write_chunk(
+            onehot_dna_list,
+            label_list,
+        )
+        # plt.imshow(np.sum(np.array(label_list),axis=0))
+        # plt.show()
+    
 
 
