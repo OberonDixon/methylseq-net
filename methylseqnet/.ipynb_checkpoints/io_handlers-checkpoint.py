@@ -123,10 +123,14 @@ class MultiBigWigCpGHandler(CpGHandler):
         if self.combine_operation=='mean':
             # Stack the arrays along a new axis (0) and compute the mean along this axis
             stacked_values = np.stack(values_list, axis=0)
-            mean_values = np.mean(stacked_values, axis=0)
-            return mean_values       
+            aggregated_values = np.mean(stacked_values, axis=0)
         else:
-            raise NotImplementedError     
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.binarize:
+            return aggregated_values>self.threshold
+        else:
+            return aggregated_values       
+   
     def load_cpg_batch(self,regions_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
         cpgs = [self.load_cpg(**region,bws=bws) for region in regions_list]
@@ -172,14 +176,19 @@ class MultiBigWigLabelHandler(LabelHandler):
         if self.combine_operation=='mean':
             # Stack the arrays along a new axis (0) and compute the mean along this axis
             stacked_values = np.stack(values_list, axis=0)
-            mean_values = np.mean(stacked_values, axis=0)
-            return mean_values            
+            aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
+        else:
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.binarize:
+            return aggregated_values>self.threshold
+        else:
+            return aggregated_values       
+            
     def load_labels_batch(self,regions_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
-        label_data = [self.load_labels(**region,bws=bws) for region in regions_list]    
+        labels = [self.load_labels(**region,bws=bws) for region in regions_list]    
         for bw in bws:
             bw.close()
-        labels = [label_datum.reshape(-1,self.label_bin_size).mean(axis=1) for label_datum in label_data]
         return labels
     
 class BigWigCellAtlas(MultitaskIOHandler):
@@ -193,9 +202,14 @@ class BigWigCellAtlas(MultitaskIOHandler):
             trim_off_ends,
             label_bin_size,
             label_num_bins,
+            binarize_cpg: bool=False,
+            binarize_labels: bool=False,
+            threshold_cpg: float | None=None,
+            threshold_labels: float | None=None,
     ):
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
+        self.binarize_labels=binarize_labels
 
         self.labels_specifier_list = [
             # List of dicts defined as follows:
@@ -236,11 +250,15 @@ class BigWigCellAtlas(MultitaskIOHandler):
                                 ),
                                 'cpg_handler':MultiBigWigCpGHandler(
                                     bigwig_files = methylation_celltype_files,
+                                    binarize = binarize_cpg,
+                                    threshold = threshold_cpg,
                                 ),
                                 'label_handler':MultiBigWigLabelHandler(
                                     bigwig_files = atac_celltype_files,
                                     trim_off_ends=trim_off_ends,
                                     label_bin_size=label_bin_size,
+                                    binarize=binarize_labels,
+                                    threshold=threshold_labels,
                                 )
                             }
                         )            
@@ -260,7 +278,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
             cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
             label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list)
-            label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=float) for _ in label_columns_list]
+            label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=bool if self.binarize_labels else float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
                 label_array[:,label_specifier_dict['index']]=label_column 
 
@@ -274,13 +292,14 @@ class BigWigCellAtlas(MultitaskIOHandler):
             
             # onehot_dna_list+=[np.random.rand(131072,5) for _ in sequence_list]
             onehot_dna_list+=[one_hot_encode_dna(sequence,cpg) for sequence,cpg in zip(sequence_list,cpg_list)]
+            # onehot_dna_list+=one_hot_encode_dna_batch(sequence_list,cpg_list)
             
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
-                # dataset_writer.write_chunk(
-                #     onehot_dna_list,
-                #     label_list,
-                #     mask_list,
-                # )
+                dataset_writer.write_chunk(
+                    onehot_dna_list,
+                    label_list,
+                    mask_list,
+                )
                 onehot_dna_list = []
                 label_list = []
                 mask_list = []
@@ -289,7 +308,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
             label_list,
             mask_list,
         )
-        # plt.imshow(np.sum(np.array(label_list),axis=0))
+        # plt.figure(figsize=(10,5))
+        # plt.imshow(np.sum(np.array(label_list),axis=0),aspect='auto',interpolation='none')
         # plt.show()
     
 
