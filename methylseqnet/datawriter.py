@@ -2,7 +2,9 @@ import pysam
 import h5py
 from pathlib import Path
 import numpy as np
+import gin
 
+@gin.configurable
 class DatasetWriter:
     def __init__(
         self,
