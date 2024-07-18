@@ -11,10 +11,18 @@ class CustomH5Dataset(Dataset):
         self.file_path = file_path
         self.batch_size = batch_size
         self.transform = transform
-        # Load the entire dataset into memory
+        # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
             # Determine the length of the dataset
             self.length = len(f['sequence'])
+            if len(f['sequence']) != len(f['tracks']):
+                raise ValueError(f"sequence and tracks datasets do not line up: {len(f['sequence'])} vs {len(f['tracks'])} entries respectively.")
+            if 'mask' in f:
+                self.mask = True
+                if len(f['tracks']) != len(f['mask']):
+                    raise ValueError(f"tracks and mask datasets do not line up: {len(f['tracks'])} vs {len(f['mask'])} entries respectively.")
+            else:
+                self.mask = False
             
             # Initialize empty numpy arrays with the correct dtype and shape
 #             sequence_shape = f['sequence'].shape
@@ -46,6 +54,10 @@ class CustomH5Dataset(Dataset):
         with h5py.File(self.file_path, 'r') as f:
             input_data = f['sequence'][start_idx:end_idx]
             target = f['tracks'][start_idx:end_idx]
+            if self.mask:
+                mask = f['mask'][start_idx:end_idx]
+            else:
+                mask = None
         # input_data = self.sequence_data[idx]
         # target = self.target_data[idx]
         
@@ -57,5 +69,7 @@ class CustomH5Dataset(Dataset):
         input_data = np.transpose(input_data, (0,2,1))
         input_data = torch.tensor(input_data, dtype=torch.float32)
         target = torch.tensor(target, dtype=torch.float32)
+        if self.mask:
+            mask = torch.tensor(mask, dtype=torch.bool)
 
-        return input_data, target
+        return input_data, target, mask

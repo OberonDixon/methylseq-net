@@ -11,10 +11,8 @@ class PreprocessingPipeline:
             multitask_io_handler,
             dataset_writer_class,
             regions_per_batch,
-            config_path='config.gin',
             output_directory=None,
             ):
-        gin.parse_config_file(config_path)
         # run sampler
         # create dataset_writer
         # create IO handler
