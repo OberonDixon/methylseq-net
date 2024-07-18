@@ -12,7 +12,7 @@ class PreprocessingPipeline:
             dataset_writer_class,
             regions_per_batch,
             config_path='config.gin',
-            output_directory='',
+            output_directory=None,
             ):
         gin.parse_config_file(config_path)
         # run sampler
@@ -78,7 +78,7 @@ class PreprocessingPipeline:
                     
     def initialize_dataset_writer(self,split_name):
         num_tracks = self.multitask_io_handler.num_tracks
-        output_path = Path(self.output_directory) / (split_name + ".h5")
+        output_path = Path(self.output_directory) / (split_name.strip() + ".h5")
         dataset_writer = self.dataset_writer_class(output_path=output_path,num_tracks=num_tracks)
         return dataset_writer
     def sequential_region_process(self):
