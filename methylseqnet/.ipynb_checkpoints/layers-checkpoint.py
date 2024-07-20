@@ -54,24 +54,44 @@ class ConvBlock(nn.Module):
         x = F.gelu(x)
         return x
 
-class DenseBlock(nn.Module):
-    def __init__(self, in_features, units, dropout):
-        super(DenseBlock, self).__init__()
-        self.fc = nn.Linear(in_features, units)
+class ConvDropout(nn.Module):
+    def __init__(self, in_channels, filters, kernel_size, dropout):
+        super(ConvDropout, self).__init__()
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
-        x = self.fc(x)
-#         x = F.gelu(x)
+        x = self.conv(x)
         x = self.dropout(x)
         return x
 
-class Final(nn.Module):
-    def __init__(self, in_features, units):
-        super(Final, self).__init__()
-        self.fc = nn.Linear(in_features, units)
+class ConvFinal(nn.Module):
+    def __init__(self, in_channels, filters):
+        super(ConvFinal, self).__init__()
+        self.conv = nn.Conv1d(in_channels, filters, 1)
 
     def forward(self, x):
-        x = self.fc(x)
-        # x = torch.sigmoid(x)
+        x = self.conv(x)
         return x
+
+# class DenseBlock(nn.Module):
+#     def __init__(self, in_features, units, dropout):
+#         super(DenseBlock, self).__init__()
+#         self.fc = nn.Linear(in_features, units)
+#         self.dropout = nn.Dropout(dropout)
+
+#     def forward(self, x):
+#         x = self.fc(x)
+# #         x = F.gelu(x)
+#         x = self.dropout(x)
+#         return x
+
+# class Final(nn.Module):
+#     def __init__(self, in_features, units):
+#         super(Final, self).__init__()
+#         self.fc = nn.Linear(in_features, units)
+
+#     def forward(self, x):
+#         x = self.fc(x)
+#         # x = torch.sigmoid(x)
+#         return x
