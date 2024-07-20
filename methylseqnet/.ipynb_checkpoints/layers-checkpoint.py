@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import gin
 
+@gin.configurable
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size):
         super(ConvDNA, self).__init__()
@@ -24,6 +26,7 @@ class ConvDNA(nn.Module):
         x = self.pool(x)
         return x
 
+@gin.configurable
 class ConvTower(nn.Module):
     def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat):
         super(ConvTower, self).__init__()
@@ -44,6 +47,7 @@ class ConvTower(nn.Module):
             x = layer(x)
         return x
 
+@gin.configurable
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, filters, kernel_size):
         super(ConvBlock, self).__init__()
@@ -54,6 +58,7 @@ class ConvBlock(nn.Module):
         x = F.gelu(x)
         return x
 
+@gin.configurable
 class ConvDropout(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dropout):
         super(ConvDropout, self).__init__()
@@ -65,6 +70,7 @@ class ConvDropout(nn.Module):
         x = self.dropout(x)
         return x
 
+@gin.configurable
 class ConvFinal(nn.Module):
     def __init__(self, in_channels, filters):
         super(ConvFinal, self).__init__()

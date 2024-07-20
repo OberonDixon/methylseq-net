@@ -6,19 +6,20 @@ from methylseqnet.layers import *
 class MethylSeqNN(nn.Module):
     def __init__(
         self, 
-        hyperparams,
+        in_channels,
+        out_tracks,
     ):
         super(MethylSeqNN, self).__init__()
 
         # Trunk
-        self.conv_dna = ConvDNA(**hyperparams["ConvDNA"])
-        self.conv_tower = ConvTower(**hyperparams["ConvTower"])
-        self.conv_block = ConvBlock(**hyperparams["ConvBlock"])
-        self.conv_dropout = ConvDropout(**hyperparams["ConvDropout"])
+        self.conv_dna = ConvDNA(in_channels=in_channels)
+        self.conv_tower = ConvTower()
+        self.conv_block = ConvBlock()
+        self.conv_dropout = ConvDropout()
         # self.dense_block = DenseBlock(**hyperparams["DenseBlock"])
 
         # Head
-        self.conv_final = ConvFinal(**hyperparams["ConvFinal"])
+        self.conv_final = ConvFinal(filters=out_tracks)
         # self.final = Final(**hyperparams["Final"])
 
     def forward(self, x):
