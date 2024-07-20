@@ -1,3 +1,4 @@
+import argparse
 from methylseqnet.io_handlers import *
 from tqdm.auto import tqdm
 import concurrent.futures
@@ -116,4 +117,26 @@ class PreprocessingPipeline:
     #                 future.result()
     #             except Exception as e:
     #                 print(f"Batch processing failed with exception: {e}")
-    
+
+def main():
+    parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
+    parser.add_argument("--config", required=True, help="Path to the gin config file")
+    parser.add_argument("--bed_file", required=True, help="Path to the BED file")
+    parser.add_argument("--subset", required=True, help="Subset to process (e.g., train, test, validation, or all)")
+
+    args = parser.parse_args()
+
+    # Initialize gin-config with the provided config file
+    gin.parse_config_file(args.config)
+
+    # Create an instance of the PreprocessingPipeline class
+    pipeline = PreprocessingPipeline()
+
+    # Set the BED file for the pipeline
+    pipeline.set_sample_regions(args.bed_file)
+
+    # Run the pipeline with the specified subset
+    pipeline.sequential_region_process(subset=args.subset)
+
+if __name__ == "__main__":
+    main()
