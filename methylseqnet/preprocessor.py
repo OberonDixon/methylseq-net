@@ -4,6 +4,7 @@ import concurrent.futures
 from collections import defaultdict
 import gin
 
+@gin.configurable
 class PreprocessingPipeline:
     def __init__(
             self,
@@ -43,7 +44,7 @@ class PreprocessingPipeline:
                 chrom = fields[0]
                 start = int(fields[1])
                 end = int(fields[2])
-                split = fields[3]
+                split = fields[3].strip()
                 self.region_list_by_split[split].append({'chrom':chrom,'start':start,'end':end,})   
 
     def create_region_batches(self):
@@ -79,12 +80,20 @@ class PreprocessingPipeline:
         output_path = Path(self.output_directory) / (split_name.strip() + ".h5")
         dataset_writer = self.dataset_writer_class(output_path=output_path,num_tracks=num_tracks)
         return dataset_writer
-    def sequential_region_process(self):
+    def sequential_region_process(
+        self,
+        subset = 'all',
+    ):
         self.create_region_batches()
-        for split,batch in self.region_batches_by_split.items():
+        if subset=='all' and subset not in self.region_batches_by_split.keys():
+            splits = list(self.region_batches_by_split.keys())
+        else:
+            splits = [subset]
+        for split in splits:
+            batches = self.region_batches_by_split[split]
             # Each key here is a data split that will want its own dataset
             dataset_writer = self.initialize_dataset_writer(split)
-            for indices_list,regions_list in tqdm(batch):
+            for indices_list,regions_list in tqdm(batches,desc=f'processing all batches for {split}'):
                 self.multitask_io_handler.process_batch(
                     indices_list,
                     regions_list,

@@ -4,6 +4,7 @@ from pathlib import Path
 import numpy as np
 import gin
 
+@gin.register
 @gin.configurable
 class DatasetWriter:
     def __init__(

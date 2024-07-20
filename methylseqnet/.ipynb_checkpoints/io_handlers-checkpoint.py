@@ -87,6 +87,8 @@ class FastaHandler(SequenceHandler):
         fastafile = pysam.FastaFile(self.ref_genome)
         return [self.load_sequence(**region,fastafile=fastafile) for region in regions_list]
 
+@gin.register
+@gin.configurable
 class MultiBigWigCpGHandler(CpGHandler):
     """
     This subclass handles CpG methylation data from one or more bigwig files, combining the files by the specified operation and binarizing by a threshold if binarize=True
@@ -138,6 +140,8 @@ class MultiBigWigCpGHandler(CpGHandler):
             bw.close()
         return cpgs
     
+@gin.register
+@gin.configurable
 class MultiBigWigLabelHandler(LabelHandler):
     def __init__(
             self,
@@ -191,6 +195,8 @@ class MultiBigWigLabelHandler(LabelHandler):
             bw.close()
         return labels
     
+@gin.register
+@gin.configurable
 class BigWigCellAtlas(MultitaskIOHandler):
     def __init__(
             self,
@@ -274,7 +280,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
         onehot_dna_list = []
         label_list = []
         mask_list = []
-        for label_specifier_dict in tqdm(self.labels_specifier_list,desc=f'running through labels for {regions_list}'):
+        for label_specifier_dict in tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
             cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
             label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list)
