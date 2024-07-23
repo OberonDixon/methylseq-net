@@ -1,0 +1,31 @@
+ConvDNA.filters=50 #288
+ConvDNA.kernel_size=17
+ConvDNA.pool_size=2
+
+ConvTower.in_channels=50 #288
+ConvTower.filters_init=50 #288
+ConvTower.filters_end=100 #512
+ConvTower.divisible_by=16
+ConvTower.kernel_size=5
+ConvTower.pool_size=2
+ConvTower.repeat=6
+
+ConvBlock.in_channels=100 #508
+ConvBlock.filters=256
+ConvBlock.kernel_size=1
+
+ConvDropout.in_channels=256
+ConvDropout.filters=768
+ConvDropout.kernel_size=6
+ConvDropout.dropout=0.2
+
+ConvFinal.in_channels=768
+ConvFinal.shared_head=False
+
+MethylSeqNN.in_channels=1
+MethylSeqNN.out_tracks=35 
+
+Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/train.h5"
+Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/valid.h5"
+Trainer.batch_size=16
+Trainer.training_epoch_stop=1500
