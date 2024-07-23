@@ -74,8 +74,9 @@ class ConvDropout(nn.Module):
 class ConvFinal(nn.Module):
     def __init__(self, in_channels, filters, shared_head=False):
         super(ConvFinal, self).__init__()
+        self.filters = filters
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
-        if shared_head:
+        if self.shared_head:
             self.conv = nn.Conv1d(in_channels, 1, 1) # only one filter
         else:
             self.conv = nn.Conv1d(in_channels, filters, 1) # multiple different output head filters

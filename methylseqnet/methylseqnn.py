@@ -8,9 +8,12 @@ from methylseqnet.layers import *
 class MethylSeqNN(nn.Module):
     def __init__(
         self, 
-        in_channels,
-        out_tracks,
+        in_channels=5,
+        out_tracks=None,
     ):
+        if out_tracks is None:
+            raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
+        
         super(MethylSeqNN, self).__init__()
 
         # Trunk

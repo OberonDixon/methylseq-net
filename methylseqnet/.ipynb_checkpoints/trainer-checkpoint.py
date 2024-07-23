@@ -18,6 +18,7 @@ from methylseqnet.methylseqnn import MethylSeqNN
 class Trainer:
     def __init__(
         self,  
+        in_channels,
         train_dataset_file, 
         validation_dataset_file, 
         batch_size=32, 
@@ -32,7 +33,6 @@ class Trainer:
         self.batch_size = batch_size
         self.num_epochs = num_epochs
         self.in_channels = in_channels
-        self.out_channels = out_channels
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.patience = patience
@@ -44,7 +44,13 @@ class Trainer:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pos_weight = torch.tensor([pos_weight]).to(self.device)
-        self.model = MethylSeqNN().to(self.device)
+        # if in_channels was provided in the command line, pass it down
+        # if not, then it is assumed that in_channels will be pulled from the gin config file
+        # if in_channels is not provided in either location, it will default to 5, i.e. seq+cpg
+        self.model = MethylSeqNN( 
+                                 **({'in_channels':self.in_channels} 
+                                  if self.in_channels is not None else {})
+                                ).to(self.device)
         
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=self.momentum)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
@@ -180,16 +186,17 @@ class Trainer:
             'last_epoch': epoch,
             'gin_file': gin.operative_config_str(),
         }
-        model_save_path = Path(self.train_dataset_file).parent / 'models' / f'{self.time_str}_state.pth'
+        model_save_path = Path(self.train_dataset_file).parent / 'models' / f'{self.time_str}_in{self.in_channels}_state.pth'
         torch.save(model_metadata, model_save_path)
 
-def main(config):
+def main(config,in_channels):
     gin.parse_config_file(config)
-    trainer = Trainer()
+    trainer = Trainer(in_channels=in_channels)
     trainer.train()
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
+    parser.add_argument('--in_channels', type=int, default=None, help='Number of input channels (5: seq+cpg, 4: seq only, 1: cpg only)')
     args = parser.parse_args()
-    main(args.config)
+    main(args.config, args.in_channels)
