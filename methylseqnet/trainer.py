@@ -13,6 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.dataset import CustomH5Dataset
 from methylseqnet.methylseqnn import MethylSeqNN
+from collections import defaultdict
 
 @gin.configurable
 class Trainer:
@@ -47,6 +48,7 @@ class Trainer:
         # if in_channels was provided in the command line, pass it down
         # if not, then it is assumed that in_channels will be pulled from the gin config file
         # if in_channels is not provided in either location, it will default to 5, i.e. seq+cpg
+        print(f"Initializing model:")
         self.model = MethylSeqNN( 
                                  **({'in_channels':self.in_channels} 
                                   if self.in_channels is not None else {})
@@ -58,11 +60,13 @@ class Trainer:
         
         self.best_val_loss = float('inf')
         self.epochs_since_improvement = 0
-        self.metadata_list = []
+        self.metadata_dict = defaultdict(list)
         self.batchwise_losses = []
+        print("Setting up dataloaders")
         self.train_dataloader = self.get_dataloader(self.train_dataset_file, shuffle=True)
         self.validation_dataloader = self.get_dataloader(self.validation_dataset_file, shuffle=False)
         self.time_str = dt.now().strftime('%Y-%m-%d_%H-%M-%S')
+        print(gin.operative_config_str())
 
     def get_dataloader(self, dataset_file, shuffle):
         dataset = CustomH5Dataset(dataset_file, batch_size=self.batch_size)
@@ -82,7 +86,7 @@ class Trainer:
                 running_loss = 0.0
                 targets_list, outputs_list = [], []
 
-                for inputs, targets, mask in tqdm(dataloader, unit='batch', desc=f'{phase} phase for epoch {epoch}'):
+                for index, (inputs, targets, mask) in enumerate(tqdm(dataloader, unit='batch', desc=f'{phase} phase for epoch {epoch}')):
                     inputs, targets, mask = inputs.to(self.device), targets.to(self.device), mask.to(self.device) if mask is not None else None
                     self.optimizer.zero_grad()
 
@@ -108,7 +112,7 @@ class Trainer:
                         running_loss += loss.item() * inputs.size(0)
                         self.batchwise_losses.append(loss.item() * inputs.size(0))
                         
-                        if len(targets_list) > self.training_epoch_stop:
+                        if index >= self.training_epoch_stop:
                             break
 
                 epoch_loss = running_loss / len(dataloader.dataset)
@@ -161,7 +165,7 @@ class Trainer:
             "prc_auc": pr_auc,
         }
 
-        self.metadata_list.append({phase: performance_dict})
+        self.metadata_dict[phase].append(performance_dict)
         self.save_metadata()
 
         if phase == 'val' and self.epochs_since_improvement == 0:
@@ -174,7 +178,7 @@ class Trainer:
         os.makedirs(os.path.dirname(performance_save_path), exist_ok=True)
         
         with open(performance_save_path, 'w') as f:
-            json.dump(self.metadata_list, f, indent=4)
+            json.dump(self.metadata_dict, f, indent=4)
     
     def save_model(self, epoch, validation_loss, training_loss):
         model_metadata = {
