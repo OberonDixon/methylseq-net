@@ -27,5 +27,5 @@ MethylSeqNN.out_tracks=35
 
 Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/train.h5"
 Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/valid.h5"
-Trainer.batch_size=16
+Trainer.batch_size=64
 Trainer.training_epoch_stop=1500
