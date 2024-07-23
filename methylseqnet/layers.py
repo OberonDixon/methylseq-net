@@ -72,12 +72,18 @@ class ConvDropout(nn.Module):
 
 @gin.configurable
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters):
+    def __init__(self, in_channels, filters, shared_head=False):
         super(ConvFinal, self).__init__()
-        self.conv = nn.Conv1d(in_channels, filters, 1)
+        self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
+        if shared_head:
+            self.conv = nn.Conv1d(in_channels, 1, 1) # only one filter
+        else:
+            self.conv = nn.Conv1d(in_channels, filters, 1) # multiple different output head filters
 
     def forward(self, x):
         x = self.conv(x)
+        if self.shared_head:
+            x = x.repeat(1, self.filters, 1) # duplicate output value across all tracks
         return x
 
 # class DenseBlock(nn.Module):
