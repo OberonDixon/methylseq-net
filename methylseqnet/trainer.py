@@ -17,9 +17,7 @@ from methylseqnet.methylseqnn import MethylSeqNN
 @gin.configurable
 class Trainer:
     def __init__(
-        self, 
-        in_channels, 
-        out_channels, 
+        self,  
         train_dataset_file, 
         validation_dataset_file, 
         batch_size=32, 
@@ -46,7 +44,7 @@ class Trainer:
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.pos_weight = torch.tensor([pos_weight]).to(self.device)
-        self.model = MethylSeqNN(in_channels=self.in_channels, out_tracks=self.out_channels).to(self.device)
+        self.model = MethylSeqNN().to(self.device)
         
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.learning_rate, momentum=self.momentum)
         self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
