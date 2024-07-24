@@ -7,12 +7,14 @@ from methylseqnet.dataset import CustomH5Dataset
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 import gin
+from collections import defaultdict
+import re
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_for_eval(model_path: str | Path):
     
-    saved_model = torch.load(str(model_path)+'_state.pth')
+    saved_model = torch.load(str(model_path)+'_state.pth',map_location=torch.device(device))
     operative_config_str = saved_model['gin_file']
     gin.parse_config(operative_config_str)
     # with open(str(model_path)+'_meta.json', 'r') as f:
@@ -23,6 +25,15 @@ def load_for_eval(model_path: str | Path):
     model.eval()
     return model
 
+def get_attribute_value(model_path: str | Path, attribute: str):
+    pattern = rf'{attribute} = (.+)'
+    saved_model = torch.load(str(model_path)+'_state.pth',map_location=torch.device(device))
+    operative_config_str = saved_model['gin_file']
+    match = re.search(pattern, operative_config_str)
+    if match:
+        return match.group(1).strip().strip('\'"')
+    return ''
+
 def run_whole_dataset(
     model_path: str | Path,
     dataset_path: str | Path,
@@ -32,8 +43,7 @@ def run_whole_dataset(
     """
     This function takes an h5 dataset (could be train, valid, test, etc) and runs through inference end-to-end for all
     samples, with a specified model (which must include it's own hyperparamter gin str). Batch size goes to a reasonable
-    default. If a track_index is specified AND the dataset has a mask, only the samples where the track index in question
-    is at least partly unmasked will be run through the model. Otherwise, all samples will be run.
+    default. 
     """
     
     model = load_for_eval(model_path).to(device)
@@ -48,17 +58,12 @@ def run_whole_dataset(
 
         targets = targets.permute(0, 2, 1)
 
-        # if mask is not None and track_index is not None, we want to subset the batch to 
-        # samples where the track_index is unmasked before we get to actually running a 
-        # forward pass of the model
+        inputs, targets = inputs.to(device), targets.to(device)
+
+        outputs = model(inputs)
+
         if mask is not None:
             mask = mask.permute(0, 2, 1)
-            if track_index is not None:
-                subset_mask = mask[:,track_index,:]
-                sample_indices = subset_mask.any(dim=-1)
-                inputs = inputs[sample_indices,:,:]
-                targets = targets[sample_indices,:,:]
-                mask = mask[sample_indices,:,:]
             mask.to(device)
         else:
             # for code clarity, we make a "fake" mask that is just True everywhere
@@ -67,11 +72,7 @@ def run_whole_dataset(
             # outputs even if it doesn't remove any elements
             mask = torch.ones_like(targets, dtype=torch.bool)
             mask.to(device)
-
-        inputs, targets = inputs.to(device), targets.to(device)
-
-        outputs = model(inputs)
-            
+        
         # this applies the appropriate masking and reshapes to 1d so we can directly extend the list
         targets = targets[mask]
         outputs = outputs[mask]
@@ -82,3 +83,50 @@ def run_whole_dataset(
     probabilities = torch.sigmoid(torch.tensor(outputs_list)).numpy()
     
     return targets,probabilities
+
+def run_whole_dataset_specified_indices(
+    model_path: str | Path,
+    dataset_path: str | Path,
+    batch_size: int=64,
+    track_indices: list=[],
+):
+    model = load_for_eval(model_path).to(device)
+    
+    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=1)
+    
+    targets_dict = defaultdict(list)
+    outputs_dict = defaultdict(list)
+    
+    for inputs, targets, mask in tqdm(dataloader,unit='batch',desc='model passes'):
+        
+        targets = targets.permute(0, 2, 1)
+        
+        inputs, targets = inputs.to(device), targets.to(device)
+    
+        outputs = model(inputs)
+
+        if mask is not None:
+            mask = mask.permute(0, 2, 1)
+            mask.to(device)
+        else:
+            # for code clarity, we make a "fake" mask that is just True everywhere
+            # this means we don't need any other if statements to handle None, and
+            # it means the later mask application will still squeeze the targets and 
+            # outputs even if it doesn't remove any elements
+            mask = torch.ones_like(targets, dtype=torch.bool)
+            mask.to(device)
+        
+        # We want to subset the batch to 
+        # samples where the track_index is unmasked before we get to actually running a 
+        # forward pass of the model
+        for track_index in track_indices:
+            subset_mask = mask[:,track_index,:]
+            sample_indices = subset_mask.any(dim=-1)
+            track_mask = mask[sample_indices,:,:]
+            track_targets = targets[sample_indices,:,:][track_mask]
+            track_outputs = outputs[sample_indices,:,:][track_mask]
+
+            targets_dict[track_index].extend(track_targets.cpu().detach().numpy().tolist())
+            outputs_dict[track_index].extend(track_outputs.cpu().detach().numpy().tolist())
+    return targets_dict,outputs_dict
