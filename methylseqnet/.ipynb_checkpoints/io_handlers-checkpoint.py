@@ -229,6 +229,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
         
         label_index = 0
 
+        self.io_mappings_dict = {}
+
         with open(match_file) as f:
             for index,line in enumerate(f):
                 if index>0: #first line is the headers
@@ -267,7 +269,11 @@ class BigWigCellAtlas(MultitaskIOHandler):
                                     threshold=threshold_labels,
                                 )
                             }
-                        )            
+                        )           
+                        self.io_mappings_dict[label_index] = (
+                            [str(file) for file in methylation_celltype_files],
+                            [str(file) for file in atac_celltype_files],
+                        )
                         label_index+=1
         self.num_tracks = label_index
 
