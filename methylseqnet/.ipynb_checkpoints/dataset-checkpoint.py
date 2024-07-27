@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from tqdm.auto import tqdm
 
-MEM_LOADER_CHUNKS = 32000
+# MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
     def __init__(self, file_path, batch_size=64, transform=None):

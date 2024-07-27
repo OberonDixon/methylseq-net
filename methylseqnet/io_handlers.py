@@ -271,8 +271,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
                             }
                         )           
                         self.io_mappings_dict[label_index] = (
-                            [str(file) for file in methylation_celltype_files],
-                            [str(file) for file in atac_celltype_files],
+                            methylation_names,
+                            atac_names,
                         )
                         label_index+=1
         self.num_tracks = label_index

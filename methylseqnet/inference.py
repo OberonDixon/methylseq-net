@@ -130,3 +130,75 @@ def run_whole_dataset_specified_indices(
             targets_dict[track_index].extend(track_targets.cpu().detach().numpy().tolist())
             outputs_dict[track_index].extend(track_outputs.cpu().detach().numpy().tolist())
     return targets_dict,outputs_dict
+
+def load_binned_cpg_specified_indices(
+    dataset_path: str | Path,
+    batch_size: int=64,
+    track_indices: list=[],
+    bin_size: int=128,
+    trim_off_ends: int=384,
+):
+    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=10)  
+
+    fractions_by_index = defaultdict(list)
+
+    pbar = tqdm(dataloader,unit='batch',desc='loading batches')
+
+    for inputs, _, mask in pbar:  
+        
+        if mask is not None:
+            mask = mask.permute(0, 2, 1)
+        else:
+            # for code clarity, we make a "fake" mask that is just True everywhere
+            # this means we don't need any other if statements to handle None, and
+            # it means the later mask application will still squeeze the targets and 
+            # outputs even if it doesn't remove any elements
+            mask = torch.ones_like(targets, dtype=torch.bool)
+
+        # We want to subset the batch to 
+        # samples where the track_index is unmasked before we get to actually running a 
+        # forward pass of the model
+        for track_index in track_indices:
+            subset_mask = mask[:,track_index,:]
+            sample_indices = subset_mask.any(dim=-1)
+            track_inputs = inputs[sample_indices,:,:]
+
+            # Define the subarrays for CpG on either strand
+            subarray = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]]).unsqueeze(0)
+            # print(subarray.shape)
+
+            sliced_inputs = track_inputs[:,:4, :]
+            # print(sliced_inputs.shape)
+
+            matches = (torch.all(sliced_inputs[:,:, :-1] == subarray[:,:, :1], dim=1) & \
+            torch.all(sliced_inputs[:,:, 1:] == subarray[:,:, 1:], dim=1)).unsqueeze(1)
+
+            extended_matches = torch.zeros((matches.shape[0], 1, matches.shape[2] + 1), dtype=torch.bool)
+            extended_matches[:,:,:-1] += matches
+            extended_matches[:,:,1:] += matches
+
+            cpg_inputs = track_inputs[:,4:5,:]
+
+            cpgs_trimmed = cpg_inputs[:,:,trim_off_ends:-trim_off_ends]
+            matches_trimmed = extended_matches[:,:,trim_off_ends:-trim_off_ends]
+
+            if cpgs_trimmed.shape[0]>0:
+                new_shape = cpgs_trimmed.shape[:-1] + (-1, bin_size)
+                cpgs_reshaped = cpgs_trimmed.view(new_shape)
+                cpgs_binned = cpgs_reshaped.sum(dim=-1)
+                matches_reshaped = matches_trimmed.view(new_shape)
+                matches_binned = matches_reshaped.sum(dim=-1)
+    
+                # Define the value to place for zero-denominator addresses
+                zero_denominator_value = torch.tensor(float(0.5))  # or any other value you prefer
+                
+                # Perform the division safely
+                fractions_binned = torch.where(matches_binned != 0, cpgs_binned / matches_binned, zero_denominator_value)
+    
+                fractions_by_index[track_index].extend(fractions_binned.view(-1).cpu().detach().numpy().tolist())
+
+        # pbar.set_description(str(len(list(fractions_by_index.values())[0])))
+
+    return fractions_by_index
+        
