@@ -131,17 +131,25 @@ def run_whole_dataset_specified_indices(
             outputs_dict[track_index].extend(track_outputs.cpu().detach().numpy().tolist())
     return targets_dict,outputs_dict
 
-def load_binned_cpg_specified_indices(
+def load_binned_input_specified_indices(
     dataset_path: str | Path,
+    summary_stat: str='cpg_methylation_fraction',
     batch_size: int=64,
     track_indices: list=[],
     bin_size: int=128,
     trim_off_ends: int=384,
 ):
+    """
+    summary_stat: the stat to return for each bin. 
+        Options:
+        -cpg_methylation_fraction (default): the average methylation level of Cs in CG motifs in the bin
+        -cpg_count: the number of CpG motifs in the bin (each counts as two, one per strand)
+        -gc_content: the fraction of bases that are Gs or Cs in the bin
+    """
     dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=10)  
 
-    fractions_by_index = defaultdict(list)
+    stats_by_index = defaultdict(list)
 
     pbar = tqdm(dataloader,unit='batch',desc='loading batches')
 
@@ -164,41 +172,66 @@ def load_binned_cpg_specified_indices(
             sample_indices = subset_mask.any(dim=-1)
             track_inputs = inputs[sample_indices,:,:]
 
-            # Define the subarrays for CpG on either strand
-            subarray = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]]).unsqueeze(0)
-            # print(subarray.shape)
-
-            sliced_inputs = track_inputs[:,:4, :]
-            # print(sliced_inputs.shape)
-
-            matches = (torch.all(sliced_inputs[:,:, :-1] == subarray[:,:, :1], dim=1) & \
-            torch.all(sliced_inputs[:,:, 1:] == subarray[:,:, 1:], dim=1)).unsqueeze(1)
-
-            extended_matches = torch.zeros((matches.shape[0], 1, matches.shape[2] + 1), dtype=torch.bool)
-            extended_matches[:,:,:-1] += matches
-            extended_matches[:,:,1:] += matches
-
-            cpg_inputs = track_inputs[:,4:5,:]
-
-            cpgs_trimmed = cpg_inputs[:,:,trim_off_ends:-trim_off_ends]
-            matches_trimmed = extended_matches[:,:,trim_off_ends:-trim_off_ends]
-
-            if cpgs_trimmed.shape[0]>0:
-                new_shape = cpgs_trimmed.shape[:-1] + (-1, bin_size)
-                cpgs_reshaped = cpgs_trimmed.view(new_shape)
-                cpgs_binned = cpgs_reshaped.sum(dim=-1)
-                matches_reshaped = matches_trimmed.view(new_shape)
-                matches_binned = matches_reshaped.sum(dim=-1)
+            if summary_stat=='cpg_methylation_fraction':           
+                # Define the subarrays for CpG on either strand
+                subarray = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]]).unsqueeze(0)
     
-                # Define the value to place for zero-denominator addresses
-                zero_denominator_value = torch.tensor(float(0.5))  # or any other value you prefer
+                sliced_inputs = track_inputs[:,:4, :]
+    
+                matches = (torch.all(sliced_inputs[:,:, :-1] == subarray[:,:, :1], dim=1) & \
+                torch.all(sliced_inputs[:,:, 1:] == subarray[:,:, 1:], dim=1)).unsqueeze(1)
+    
+                extended_matches = torch.zeros((matches.shape[0], 1, matches.shape[2] + 1), dtype=torch.bool)
+                extended_matches[:,:,:-1] += matches
+                extended_matches[:,:,1:] += matches
+    
+                cpg_inputs = track_inputs[:,4:5,:]
+    
+                cpgs_trimmed = cpg_inputs[:,:,trim_off_ends:-trim_off_ends]
+                matches_trimmed = extended_matches[:,:,trim_off_ends:-trim_off_ends]
+    
+                if cpgs_trimmed.shape[0]>0:
+                    new_shape = cpgs_trimmed.shape[:-1] + (-1, bin_size)
+                    cpgs_reshaped = cpgs_trimmed.view(new_shape)
+                    cpgs_binned = cpgs_reshaped.sum(dim=-1)
+                    matches_reshaped = matches_trimmed.view(new_shape)
+                    matches_binned = matches_reshaped.sum(dim=-1)
+        
+                    # Define the value to place for zero-denominator addresses
+                    zero_denominator_value = torch.tensor(float(0.5))  # or any other value you prefer
+                    
+                    # Perform the division safely
+                    fractions_binned = torch.where(matches_binned != 0, cpgs_binned / matches_binned, zero_denominator_value)
+        
+                    stats_by_index[track_index].extend(fractions_binned.view(-1).cpu().detach().numpy().tolist())
+            elif summary_stat=='cpg_count':
+                # Define the subarrays for CpG on either strand
+                subarray = torch.tensor([[0, 0], [0, 0], [1, 0], [0, 1]]).unsqueeze(0)
+    
+                sliced_inputs = track_inputs[:,:4, :]
+    
+                matches = (torch.all(sliced_inputs[:,:, :-1] == subarray[:,:, :1], dim=1) & \
+                torch.all(sliced_inputs[:,:, 1:] == subarray[:,:, 1:], dim=1)).unsqueeze(1)
+    
+                extended_matches = torch.zeros((matches.shape[0], 1, matches.shape[2] + 1), dtype=torch.bool)
+                extended_matches[:,:,:-1] += matches
+
+                matches_trimmed = extended_matches[:,:,trim_off_ends:-trim_off_ends]
+
+                if matches_trimmed.shape[0]>0:
+                    new_shape = matches_trimmed.shape[:-1] + (-1, bin_size)
+                    matches_reshaped = matches_trimmed.view(new_shape)
+                    matches_binned = matches_reshaped.sum(dim=-1)
+                    stats_by_index[track_index].extend(matches_binned.view(-1).cpu().detach().numpy().tolist())
+            elif summary_stat=='gc_content':
+                matches = track_inputs[:,2:3,:] + track_inputs[:,3:4,:]
+                matches_trimmed = matches[:,:,trim_off_ends:-trim_off_ends]
+                if matches_trimmed.shape[0]>0:
+                    new_shape = matches_trimmed.shape[:-1] + (-1, bin_size)
+                    matches_reshaped = matches_trimmed.view(new_shape)
+                    matches_binned = matches_reshaped.sum(dim=-1)
+                    stats_by_index[track_index].extend((matches_binned.view(-1).cpu().detach().numpy()/bin_size).tolist())
                 
-                # Perform the division safely
-                fractions_binned = torch.where(matches_binned != 0, cpgs_binned / matches_binned, zero_denominator_value)
-    
-                fractions_by_index[track_index].extend(fractions_binned.view(-1).cpu().detach().numpy().tolist())
 
-        # pbar.set_description(str(len(list(fractions_by_index.values())[0])))
-
-    return fractions_by_index
+    return stats_by_index
         
