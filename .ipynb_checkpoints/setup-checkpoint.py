@@ -11,5 +11,8 @@ setup(
         "captum",
         "modisco",
         "scipy",
+        "gin-config",
+        "pynvml",
+        "logomaker",
     ],
 )

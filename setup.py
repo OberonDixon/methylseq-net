@@ -12,5 +12,7 @@ setup(
         "modisco",
         "scipy",
         "gin-config",
+        "pynvml",
+        "logomaker",
     ],
 )
