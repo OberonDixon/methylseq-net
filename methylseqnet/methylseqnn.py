@@ -40,3 +40,9 @@ class MethylSeqNN(nn.Module):
         # x = self.final(x)
         # x = x.unsqueeze(1)
         return x
+
+    def get_layer(self, layer_name):
+        for name, layer in self.named_modules():
+            if name == layer_name:
+                return layer
+        raise ValueError(f"Layer {layer_name} not found in the model")

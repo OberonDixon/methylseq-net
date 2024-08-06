@@ -23,26 +23,6 @@ class CustomH5Dataset(Dataset):
                     raise ValueError(f"tracks and mask datasets do not line up: {len(f['tracks'])} vs {len(f['mask'])} entries respectively.")
             else:
                 self.mask = False
-            
-            # Initialize empty numpy arrays with the correct dtype and shape
-#             sequence_shape = f['sequence'].shape
-#             target_shape = f['tracks'].shape
-#             self.sequence_data = np.empty(sequence_shape, dtype=np.float16)
-#             self.target_data = np.empty(target_shape, dtype=bool)
-            
-#             # Load data in chunks and convert dtype
-#             for start_idx in tqdm(range(0, self.length, MEM_LOADER_CHUNKS),desc='Loading dataset to memory',unit='chunk'):
-#                 end_idx = min(start_idx + MEM_LOADER_CHUNKS, self.length)
-#                 self.sequence_data[start_idx:end_idx] = f['sequence'][start_idx:end_idx].astype(np.float16)
-#                 self.target_data[start_idx:end_idx] = f['tracks'][start_idx:end_idx].astype(bool)
-        # print('sequence footprint')
-        # print(self.sequence_data.dtype)
-        # print(self.sequence_data.shape)
-        # print('itemsize',self.sequence_data.itemsize)
-        # print('target footprint')
-        # print(self.target_data.dtype)
-        # print(self.target_data.shape)
-        # print('itemsize',self.target_data.itemsize)
 
         
     def __len__(self):
@@ -58,10 +38,6 @@ class CustomH5Dataset(Dataset):
                 mask = f['mask'][start_idx:end_idx]
             else:
                 mask = None
-        # input_data = self.sequence_data[idx]
-        # target = self.target_data[idx]
-        
-
         
         if self.transform:
             input_data = self.transform(input_data)

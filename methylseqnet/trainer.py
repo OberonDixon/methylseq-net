@@ -14,6 +14,29 @@ import argparse
 from methylseqnet.dataset import CustomH5Dataset
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
+import pynvml
+
+def get_available_gpus():
+    pynvml.nvmlInit()
+    device_count = pynvml.nvmlDeviceGetCount()
+    gpu_info = []
+
+    for i in range(device_count):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+        mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+        utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
+        gpu_info.append((i, mem_info.free, utilization.gpu))
+
+    pynvml.nvmlShutdown()
+    return sorted(gpu_info, key=lambda x: x[2])  # Sort by GPU utilization
+
+def set_device():
+    available_gpus = get_available_gpus()
+    for gpu_id, free_mem, util in available_gpus:
+        if util < 10:  # Assuming less than 10% utilization means the GPU is mostly free
+            torch.cuda.set_device(gpu_id)
+            return torch.device(f"cuda:{gpu_id}")
+    return torch.device("cpu")  # Default to CPU if no GPU is available
 
 @gin.configurable
 class Trainer:
@@ -43,7 +66,7 @@ class Trainer:
         
         self.training_epoch_stop = training_epoch_stop
         
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = set_device()
         self.pos_weight = torch.tensor([pos_weight]).to(self.device)
         # if in_channels was provided in the command line, pass it down
         # if not, then it is assumed that in_channels will be pulled from the gin config file

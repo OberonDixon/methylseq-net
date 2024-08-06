@@ -9,6 +9,8 @@ from torch.utils.data import DataLoader
 import gin
 from collections import defaultdict
 import re
+import psutil
+import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -39,14 +41,25 @@ def run_whole_dataset(
     dataset_path: str | Path,
     batch_size: int=64,
     track_index: int|None = None,
+    layer_name: str | None = None,
 ):
     """
     This function takes an h5 dataset (could be train, valid, test, etc) and runs through inference end-to-end for all
     samples, with a specified model (which must include it's own hyperparamter gin str). Batch size goes to a reasonable
     default. 
-    """
-    
+    """ 
     model = load_for_eval(model_path).to(device)
+
+    # If layer_name is specified, register a hook to capture its activations
+    if layer_name:
+        def hook(module, input, output):
+            act = output.cpu().detach().numpy()
+            # TODO: save activations to disk; can't store in memory it'll crash
+            print(f"Captured activations with shape: {act.shape}")  # Print the shape of activations
+        layer = dict(model.named_modules()).get(layer_name)
+        if layer is None:
+            raise ValueError(f"Layer {layer_name} not found in the model")
+        hook_handle = layer.register_forward_hook(hook)
     
     dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=1)
@@ -54,7 +67,7 @@ def run_whole_dataset(
     targets_list = []
     outputs_list = []
     
-    for inputs, targets, mask in tqdm(dataloader,unit='batch',desc='model passes'):
+    for batch_idx, (inputs, targets, mask) in enumerate(tqdm(dataloader,unit='batch',desc='model passes')):
 
         targets = targets.permute(0, 2, 1)
 
@@ -76,8 +89,16 @@ def run_whole_dataset(
         # this applies the appropriate masking and reshapes to 1d so we can directly extend the list
         targets = targets[mask]
         outputs = outputs[mask]
+
         targets_list.extend(targets.cpu().detach().numpy().tolist())
         outputs_list.extend(outputs.cpu().detach().numpy().tolist())
+
+    
+    # Remove hook to release memory
+    if layer_name:
+        hook_handle.remove()
+        # Flatten activations list
+        activations = np.concatenate(activations, axis=0)
     
     targets = torch.tensor(targets_list).numpy()
     probabilities = torch.sigmoid(torch.tensor(outputs_list)).numpy()
