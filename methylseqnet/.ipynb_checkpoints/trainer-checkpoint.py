@@ -18,24 +18,33 @@ import pynvml
 
 def get_available_gpus():
     pynvml.nvmlInit()
-    device_count = pynvml.nvmlDeviceGetCount()
+    visible_devices = os.environ.get('CUDA_VISIBLE_DEVICES', '')
+    visible_device_ids = list(map(int, visible_devices.split(','))) if visible_devices else []
+    
     gpu_info = []
-
-    for i in range(device_count):
-        handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+    for idx, gpu_id in enumerate(visible_device_ids):
+        handle = pynvml.nvmlDeviceGetHandleByIndex(gpu_id)
         mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
         utilization = pynvml.nvmlDeviceGetUtilizationRates(handle)
-        gpu_info.append((i, mem_info.free, utilization.gpu))
+        gpu_info.append((idx, gpu_id, mem_info.free, utilization.gpu))
 
     pynvml.nvmlShutdown()
-    return sorted(gpu_info, key=lambda x: x[2])  # Sort by GPU utilization
+    return sorted(gpu_info, key=lambda x: x[3])  # Sort by GPU utilization
 
 def set_device():
     available_gpus = get_available_gpus()
-    for gpu_id, free_mem, util in available_gpus:
-        if util < 10:  # Assuming less than 10% utilization means the GPU is mostly free
-            torch.cuda.set_device(gpu_id)
-            return torch.device(f"cuda:{gpu_id}")
+    print("Available GPUs:", available_gpus)
+
+    for idx, gpu_id, free_mem, util in available_gpus:
+        if util < 10:
+            try:
+                torch.cuda.set_device(idx)
+                print(f"Setting device to GPU {gpu_id} (visible index {idx})")
+                return torch.device(f"cuda:{idx}")
+            except RuntimeError as e:
+                print(f"Failed to set GPU {gpu_id}: {e}")
+                continue
+    print("No suitable GPU found. Falling back to CPU.")
     return torch.device("cpu")  # Default to CPU if no GPU is available
 
 @gin.configurable
