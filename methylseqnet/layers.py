@@ -31,7 +31,7 @@ class ConvTower(nn.Module):
     def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat):
         super(ConvTower, self).__init__()
         self.layers = nn.ModuleList()
-        filters_step = (filters_end - filters_init) // (repeat - 1)
+        filters_step = (filters_end - filters_init) // (repeat - 1) if repeat>1 else 0
         for i in range(repeat):
             filters = filters_init + i * filters_step
             self.layers.append(nn.Sequential(
@@ -72,14 +72,14 @@ class ConvDropout(nn.Module):
 
 @gin.configurable
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, shared_head=False):
+    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1):
         super(ConvFinal, self).__init__()
         self.filters = filters
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         if self.shared_head:
-            self.conv = nn.Conv1d(in_channels, 1, 1) # only one filter
+            self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride) # only one filter
         else:
-            self.conv = nn.Conv1d(in_channels, filters, 1) # multiple different output head filters
+            self.conv = nn.Conv1d(in_channels, filters, kernel_size, stride=stride) # multiple different output head filters
 
     def forward(self, x):
         x = self.conv(x)

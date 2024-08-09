@@ -14,17 +14,20 @@ class MethylSeqNN(nn.Module):
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
+        self.in_channels = in_channels
+        self.out_tracks = out_tracks
+        
         super(MethylSeqNN, self).__init__()
 
         # Trunk
-        self.conv_dna = ConvDNA(in_channels=in_channels)
+        self.conv_dna = ConvDNA(in_channels=self.in_channels)
         self.conv_tower = ConvTower()
         self.conv_block = ConvBlock()
         self.conv_dropout = ConvDropout()
         # self.dense_block = DenseBlock(**hyperparams["DenseBlock"])
 
         # Head
-        self.conv_final = ConvFinal(filters=out_tracks)
+        self.conv_final = ConvFinal(filters=self.out_tracks)
         # self.final = Final(**hyperparams["Final"])
 
     def forward(self, x):
