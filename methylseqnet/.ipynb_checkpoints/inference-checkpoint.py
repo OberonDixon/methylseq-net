@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.trainer import Trainer
 import json
 from pathlib import Path
 from methylseqnet.dataset import CustomH5Dataset
