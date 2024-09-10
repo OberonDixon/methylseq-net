@@ -9,7 +9,7 @@ setup(
         "biopython",
         "scikit-learn",
         "captum",
-        "modisco",
+        "modisco-lite",
         "scipy",
         "gin-config",
         "pynvml",
