@@ -22,7 +22,7 @@ def one_hot_encode_dna(dna_strand, cpg_methylation=None):
     encoded_strand = np.zeros((len(dna_strand), 5), dtype=float)
 
     # Define the mapping of nucleotides to indices
-    nucleotide_to_index = {'A': 0, 'T': 1, 'C': 2, 'G': 3}
+    nucleotide_to_index = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
 
     # Fill in the one-hot encoding based on the nucleotide mapping
     for nucleotide, index in nucleotide_to_index.items():
