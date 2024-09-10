@@ -4,6 +4,7 @@ from tqdm.auto import tqdm
 import concurrent.futures
 from collections import defaultdict
 import gin
+import os
 
 @gin.configurable
 class PreprocessingPipeline:
@@ -24,6 +25,8 @@ class PreprocessingPipeline:
         self.dataset_writer_class = dataset_writer_class
         self.regions_per_batch = regions_per_batch
         self.output_directory = output_directory
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
 
     def set_sample_regions(self,bed_file):
         self.regions_bed = bed_file
