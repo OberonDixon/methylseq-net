@@ -34,6 +34,16 @@ class DatasetWriter:
         self.initialize_h5()
     def initialize_h5(self):
         with h5py.File(self.output_path,'w') as f:
+            if 'region' in f:
+                del f['region']
+            f.create_dataset(
+                'region',
+                (0,),
+                maxshape=(None,),
+                dtype=h5py.string_dtype(encoding="utf-8"),
+                compression='gzip',
+                compression_opts=2,
+            )
             if 'sequence' in f:
                 del f['sequence']
             f.create_dataset(
@@ -67,6 +77,7 @@ class DatasetWriter:
                 )
     def write_chunk(
         self,
+        regions_list,
         onehot_seq_list,
         labels_list,
         mask_list=None,
@@ -86,18 +97,23 @@ class DatasetWriter:
                 
             
         with h5py.File(self.output_path, 'a') as f:
+            regions_dataset = f['region']
             seq_dataset = f['sequence']
             track_dataset = f['tracks']
 
+            current_regions_size = regions_dataset.shape[0]
             current_seq_size = seq_dataset.shape[0]
             current_track_size = track_dataset.shape[0]          
             
+            new_regions_size = current_regions_size + len(regions_list)
             new_seq_size = current_seq_size + len(onehot_seq_list)
             new_track_size = current_track_size + len(labels_list)            
 
+            regions_dataset.resize(new_regions_size, axis=0)
             seq_dataset.resize(new_seq_size, axis=0)
             track_dataset.resize(new_track_size, axis=0)            
 
+            regions_dataset[current_regions_size:new_regions_size] = [f"{region['chrom']}:{region['start']}-{region['end']}" for region in regions_list]
             seq_dataset[current_seq_size:new_seq_size, :, :] = onehot_seq_list
             track_dataset[current_track_size:new_track_size, :, :] = labels_list
             

@@ -308,6 +308,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
             
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
                 dataset_writer.write_chunk(
+                    regions_list,
                     onehot_dna_list,
                     label_list,
                     mask_list,
@@ -316,6 +317,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
                 label_list = []
                 mask_list = []
         dataset_writer.write_chunk(
+            regions_list,
             onehot_dna_list,
             label_list,
             mask_list,
