@@ -48,8 +48,8 @@ class DatasetWriter:
                 del f['sequence']
             f.create_dataset(
                 'sequence',
-                (0,self.seq_length,5),
-                maxshape=(None,self.seq_length,5),
+                (0,self.seq_length,6),
+                maxshape=(None,self.seq_length,6),
                 dtype=np.float16,
                 compression='gzip',
                 compression_opts=2

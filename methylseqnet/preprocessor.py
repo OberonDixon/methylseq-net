@@ -137,7 +137,7 @@ class PreprocessingPipeline:
                 for future in tqdm(as_completed(futures), total=len(futures), desc=f"processing batches for {split}"):
                     try:
                         future.result()
-                    except Exceptpion as e:
+                    except Exception as e:
                         print(f"Batch processing failed with exception: {e}")
 
 def main():

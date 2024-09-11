@@ -115,23 +115,29 @@ class MultiBigWigCpGHandler(CpGHandler):
         self.binarize = binarize
         self.threshold = threshold
     def load_cpg(self,chrom,start,end,bws):
-        values_list = []
+        cpg_fractions_list = []
+        num_bws = len(bws)
+        aggregated_valid_cpgs = np.zeros(end - start)
         for bw in bws:
             raw_values = np.array(bw.values(chrom,start,end))
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
+            valid_mask = ~np.isnan(raw_values)
+            normalized_mask = valid_mask.astype(int) / num_bws       
+            # Add the normalized mask to the aggregated_valid_cpgs
+            aggregated_valid_cpgs += normalized_mask
             # set nan (not a CpG) to zero
-            values_list.append(np.nan_to_num(raw_values,nan=0.0))
+            cpg_fractions_list.append(np.nan_to_num(raw_values,nan=0.0))
         if self.combine_operation=='mean':
             # Stack the arrays along a new axis (0) and compute the mean along this axis
-            stacked_values = np.stack(values_list, axis=0)
-            aggregated_values = np.mean(stacked_values, axis=0)
+            stacked_values = np.stack(cpg_fractions_list, axis=0)
+            aggregated_fractions = np.mean(stacked_values, axis=0)
         else:
             raise NotImplementedError(f"No implementation for {self.combine_operation}.")
         if self.binarize:
-            return aggregated_values>self.threshold
+            return aggregated_fractions>self.threshold,aggregated_valid_cpgs
         else:
-            return aggregated_values       
+            return aggregated_fractions,aggregated_valid_cpgs      
    
     def load_cpg_batch(self,regions_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
@@ -318,7 +324,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
         for label_specifier_dict in self.labels_specifier_list:#tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
             gc_content_list = [self.seq_to_gc_content(sequence) for sequence in sequence_list]
-            cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
+            methylation_fractions_list,valid_cpgs_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
             label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list,gc_content_list)
             label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=bool if self.binarize_labels else float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
@@ -332,7 +338,16 @@ class BigWigCellAtlas(MultitaskIOHandler):
 
             mask_list += mask_arrays
             
-            onehot_dna_list+=[one_hot_encode_dna(sequence,cpg) for sequence,cpg in zip(sequence_list,cpg_list)]
+            onehot_dna_list+=[one_hot_encode_dna(
+                dna_strand=sequence,
+                cpg_methylation=cpg,
+                valid_cpgs=valid_cpgs) for 
+                              sequence,cpg,valid_cpgs in zip(
+                                  sequence_list,
+                                  methylation_fractions_list,
+                                  valid_cpgs_list
+                              )
+                             ]
 
             
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
