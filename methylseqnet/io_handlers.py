@@ -149,6 +149,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             trim_off_ends: int,
             label_bin_size: int,
             combine_operation='mean',
+            normalize_gc=True,
             binarize=False,
             threshold=5,
             ):
@@ -165,11 +166,12 @@ class MultiBigWigLabelHandler(LabelHandler):
                 raise OSError(f"{bigwig_file} does not exist.")
         self.bigwig_files = bigwig_files
         self.combine_operation = combine_operation
+        self.normalize_gc = normalize_gc
         self.binarize = binarize
         self.threshold = threshold     
         self.trim_off_ends = trim_off_ends
         self.label_bin_size = label_bin_size  
-    def load_labels(self,chrom,start,end,bws):
+    def load_labels(self,chrom,start,end,bws,gc_content):
         values_list = []
         if (end - start - 2*self.trim_off_ends)%self.label_bin_size != 0:
             raise ValueError(f"Genomic region {chrom}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size} after trimming {self.trim_off_ends} from the ends of the input.")
@@ -183,14 +185,22 @@ class MultiBigWigLabelHandler(LabelHandler):
             aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
         else:
             raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.normalize_gc:
+            # This may in future be replaced with a more sophisticated calculation
+            aggregated_values = aggregated_values/(gc_content + 0.1)
         if self.binarize:
             return aggregated_values>self.threshold
         else:
             return aggregated_values       
             
-    def load_labels_batch(self,regions_list):
+    def load_labels_batch(self,regions_list,gc_content_list=None):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
-        labels = [self.load_labels(**region,bws=bws) for region in regions_list]    
+        if self.normalize_gc:
+            if gc_content_list is None:
+                raise ValueError("Must provide a gc_content_list if MultiBigWigLabelHandler.normalize_gc = True")
+            labels = [self.load_labels(**region,bws=bws,gc_content=gc_content) for region,gc_content in zip(regions_list,gc_content_list)]   
+        else:
+            labels = [self.load_labels(**region,bws=bws,gc_content=None) for region in regions_list]
         for bw in bws:
             bw.close()
         return labels
@@ -215,6 +225,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
     ):
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
+        self.label_bin_size = label_bin_size
         self.binarize_labels=binarize_labels
 
         self.labels_specifier_list = [
@@ -284,26 +295,13 @@ class BigWigCellAtlas(MultitaskIOHandler):
         """
         Returns an array of gc content fractions using the binning of the labels
         """
-        # Convert the sequence to lowercase for consistent counting and convert to a numpy array of characters
         sequence_array = np.array(list(sequence.lower()))
-        
-        # Create a boolean mask where True corresponds to 'g' or 'c'
         gc_mask = (sequence_array == 'g') | (sequence_array == 'c')
-        
-        # Convert the boolean mask to integers (1 for True, 0 for False)
         gc_counts = gc_mask.astype(int)
-        
-        # Calculate the number of full bins
-        num_bins = len(sequence) // label_bin_size
-        
-        # Trim the sequence to a length that is a multiple of the bin size
-        trimmed_gc_counts = gc_counts[:num_bins * label_bin_size]
-        
-        # Reshape into a 2D array with rows as bins and columns as bin contents
-        gc_matrix = trimmed_gc_counts.reshape((num_bins, label_bin_size))
-        
-        # Sum along the rows to count 'g' and 'c' in each bin, then divide by bin size to get fractions
-        gc_fractions = gc_matrix.sum(axis=1) / label_bin_size
+        num_bins = len(sequence) // self.label_bin_size
+        trimmed_gc_counts = gc_counts[:num_bins * self.label_bin_size]
+        gc_matrix = trimmed_gc_counts.reshape((num_bins, self.label_bin_size))
+        gc_fractions = gc_matrix.sum(axis=1) / self.label_bin_size
         
         return gc_fractions       
     
@@ -319,8 +317,9 @@ class BigWigCellAtlas(MultitaskIOHandler):
         mask_list = []
         for label_specifier_dict in self.labels_specifier_list:#tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
+            gc_content_list = [self.seq_to_gc_content(sequence) for sequence in sequence_list]
             cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
-            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list)
+            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list,gc_content_list)
             label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=bool if self.binarize_labels else float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
                 label_array[:,label_specifier_dict['index']]=label_column 
@@ -354,31 +353,6 @@ class BigWigCellAtlas(MultitaskIOHandler):
                 label_list,
                 mask_list,
             )
-        # plt.figure(figsize=(10,5))
-        # img=plt.imshow(np.sum(np.array(label_list),axis=0),aspect='auto',interpolation='none')
-        # plt.title('sum of all labels in batch')
-        # plt.colorbar(img)
-        # plt.show()
-        # plt.figure(figsize=(10,5))
-        # img=plt.imshow(label_list[-1],aspect='auto',interpolation='none')
-        # plt.title('last labels array in batch')
-        # plt.colorbar(img)
-        # plt.show()
-        # plt.figure(figsize=(10,5))
-        # img=plt.imshow(onehot_dna_list[-1][0:100,:],aspect='auto',interpolation='none')
-        # plt.title('first 100bp of sequence encoding, last in batch')
-        # plt.colorbar(img)
-        # plt.show()
-        # plt.figure(figsize=(10,5))
-        # img=plt.imshow(mask_list[-1],aspect='auto',interpolation='none')
-        # plt.title('mask for last labels in batch')
-        # plt.colorbar(img)
-        # plt.show()
-        # plt.figure(figsize=(10,5))
-        # img=plt.imshow(np.sum(np.array(mask_list),axis=0),aspect='auto',interpolation='none')
-        # plt.title('sum of all masks in batch')
-        # plt.colorbar(img)
-        # plt.show()
     
 
 

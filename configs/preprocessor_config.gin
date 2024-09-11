@@ -21,7 +21,7 @@ BigWigCellAtlas.max_chunks_in_mem = 1000
 BigWigCellAtlas.trim_off_ends = %trim_off_ends
 BigWigCellAtlas.label_bin_size = %label_bin_size
 BigWigCellAtlas.label_num_bins = %label_num_bins
-BigWigCellAtlas.binarize_labels = True
+BigWigCellAtlas.binarize_labels = False
 BigWigCellAtlas.threshold_labels = 5
 
 PreprocessingPipeline.genome_region_generator = None
