@@ -277,6 +277,36 @@ class BigWigCellAtlas(MultitaskIOHandler):
                         label_index+=1
         self.num_tracks = label_index
 
+    def seq_to_gc_content(
+        self,
+        sequence,
+    ):
+        """
+        Returns an array of gc content fractions using the binning of the labels
+        """
+        # Convert the sequence to lowercase for consistent counting and convert to a numpy array of characters
+        sequence_array = np.array(list(sequence.lower()))
+        
+        # Create a boolean mask where True corresponds to 'g' or 'c'
+        gc_mask = (sequence_array == 'g') | (sequence_array == 'c')
+        
+        # Convert the boolean mask to integers (1 for True, 0 for False)
+        gc_counts = gc_mask.astype(int)
+        
+        # Calculate the number of full bins
+        num_bins = len(sequence) // label_bin_size
+        
+        # Trim the sequence to a length that is a multiple of the bin size
+        trimmed_gc_counts = gc_counts[:num_bins * label_bin_size]
+        
+        # Reshape into a 2D array with rows as bins and columns as bin contents
+        gc_matrix = trimmed_gc_counts.reshape((num_bins, label_bin_size))
+        
+        # Sum along the rows to count 'g' and 'c' in each bin, then divide by bin size to get fractions
+        gc_fractions = gc_matrix.sum(axis=1) / label_bin_size
+        
+        return gc_fractions       
+    
     def process_batch(
         self,
         indices_list,

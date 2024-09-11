@@ -95,6 +95,9 @@ class PreprocessingPipeline:
             splits = list(self.region_batches_by_split.keys())
         else:
             splits = [subset]
+        
+        manager = Manager()  # Create a manager
+        lock = manager.Lock()  # Create a lock via the manager
         for split in splits:
             batches = self.region_batches_by_split[split]
             # Each key here is a data split that will want its own dataset
@@ -104,6 +107,7 @@ class PreprocessingPipeline:
                     indices_list,
                     regions_list,
                     dataset_writer,
+                    lock,
                 )
                 
     def parallel_region_process(
@@ -116,18 +120,12 @@ class PreprocessingPipeline:
             splits = list(self.region_batches_by_split.keys())
         else:
             splits = [subset]
+        manager = Manager()  # Create a manager
+        lock = manager.Lock()  # Create a lock via the manager
         for split in splits:  
             batches = self.region_batches_by_split[split]
             dataset_writer = self.initialize_dataset_writer(split)
-            # def process_batch(indices_list,regions_list):
-            #     (
-            #         indices_list,
-            #         regions_list,
-            #         # dataset_writer,
-            #     )
-        
-            manager = Manager()  # Create a manager
-            lock = manager.Lock()  # Create a lock via the manager
+
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(
                     self.multitask_io_handler.process_batch, 
