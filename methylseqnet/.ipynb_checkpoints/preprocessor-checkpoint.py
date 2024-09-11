@@ -1,7 +1,9 @@
 import argparse
 from methylseqnet.io_handlers import *
 from tqdm.auto import tqdm
-import concurrent.futures
+from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
+from multiprocessing import Manager
 from collections import defaultdict
 import gin
 import os
@@ -103,29 +105,50 @@ class PreprocessingPipeline:
                     regions_list,
                     dataset_writer,
                 )
-    # def parallel_region_process(self,max_workers=4):
-    #     self.create_region_batches()
+                
+    def parallel_region_process(
+        self,
+        subset = 'all',
+        max_workers=4,
+    ):
+        self.create_region_batches()
+        if subset=='all' and subset not in self.region_batches_by_split.keys():
+            splits = list(self.region_batches_by_split.keys())
+        else:
+            splits = [subset]
+        for split in splits:  
+            batches = self.region_batches_by_split[split]
+            dataset_writer = self.initialize_dataset_writer(split)
+            # def process_batch(indices_list,regions_list):
+            #     (
+            #         indices_list,
+            #         regions_list,
+            #         # dataset_writer,
+            #     )
         
-    #     def process_batch(indices_list,regions_list):
-    #         self.multitask_io_handler.process_batch(
-    #             indices_list,
-    #             regions_list,
-    #             self.dataset_writer,
-    #         )
-        
-    #     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-    #         futures = [executor.submit(process_batch, indices_list, regions_list) for indices_list,regions_list in zip(self.region_indices,self.region_batches)]
-    #         for future in tqdm(concurrent.futures.as_completed(futures), total=len(futures), desc="Processing Batches"):
-    #             try:
-    #                 future.result()
-    #             except Exception as e:
-    #                 print(f"Batch processing failed with exception: {e}")
+            manager = Manager()  # Create a manager
+            lock = manager.Lock()  # Create a lock via the manager
+            with ProcessPoolExecutor(max_workers=max_workers) as executor:
+                futures = [executor.submit(
+                    self.multitask_io_handler.process_batch, 
+                    indices_list, 
+                    regions_list, 
+                    dataset_writer, 
+                    lock,
+                ) for indices_list,regions_list in batches]
+                for future in tqdm(as_completed(futures), total=len(futures), desc=f"processing batches for {split}"):
+                    try:
+                        future.result()
+                    except Exceptpion as e:
+                        print(f"Batch processing failed with exception: {e}")
 
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file")
     parser.add_argument("--bed_file", required=True, help="Path to the BED file")
     parser.add_argument("--subset", required=True, help="Subset to process (e.g., train, test, validation, or all)")
+    parser.add_argument("--mode", required=False, default="sequential", help="Processing mode, sequential or parallel")
+    parser.add_argument("--workers", required=False, default="all", help="max_workers across which to parallelize")
 
     args = parser.parse_args()
 
@@ -137,9 +160,19 @@ def main():
 
     # Set the BED file for the pipeline
     pipeline.set_sample_regions(args.bed_file)
-
+    
     # Run the pipeline with the specified subset
-    pipeline.sequential_region_process(subset=args.subset)
+    if args.mode=='sequential':
+        pipeline.sequential_region_process(subset=args.subset)
+    elif args.mode=='parallel':
+        if args.workers=='all':
+            cores = multiprocessing.cpu_count()
+        else:
+            cores = int(args.workers)
+        print(f"using {cores} processes")
+        pipeline.parallel_region_process(subset=args.subset,max_workers=cores)
+    else:
+        raise ValueError(f"Unexpected --mode {args.mode}")
 
 if __name__ == "__main__":
     main()

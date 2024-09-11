@@ -282,11 +282,12 @@ class BigWigCellAtlas(MultitaskIOHandler):
         indices_list,
         regions_list,
         dataset_writer,
+        lock,
     ):
         onehot_dna_list = []
         label_list = []
         mask_list = []
-        for label_specifier_dict in tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
+        for label_specifier_dict in self.labels_specifier_list:#tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
             sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
             cpg_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
             label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list)
@@ -302,26 +303,27 @@ class BigWigCellAtlas(MultitaskIOHandler):
 
             mask_list += mask_arrays
             
-            # onehot_dna_list+=[np.random.rand(131072,5) for _ in sequence_list]
             onehot_dna_list+=[one_hot_encode_dna(sequence,cpg) for sequence,cpg in zip(sequence_list,cpg_list)]
-            # onehot_dna_list+=one_hot_encode_dna_batch(sequence_list,cpg_list)
+
             
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
-                dataset_writer.write_chunk(
-                    regions_list,
-                    onehot_dna_list,
-                    label_list,
-                    mask_list,
-                )
+                with lock: # we need the lock so allow parallel threads to all write to the same output file
+                    dataset_writer.write_chunk(
+                        regions_list,
+                        onehot_dna_list,
+                        label_list,
+                        mask_list,
+                    )
                 onehot_dna_list = []
                 label_list = []
                 mask_list = []
-        dataset_writer.write_chunk(
-            regions_list,
-            onehot_dna_list,
-            label_list,
-            mask_list,
-        )
+        with lock: # we need the lock so allow parallel threads to all write to the same output file
+            dataset_writer.write_chunk(
+                regions_list,
+                onehot_dna_list,
+                label_list,
+                mask_list,
+            )
         # plt.figure(figsize=(10,5))
         # img=plt.imshow(np.sum(np.array(label_list),axis=0),aspect='auto',interpolation='none')
         # plt.title('sum of all labels in batch')

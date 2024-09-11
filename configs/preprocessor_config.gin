@@ -27,7 +27,7 @@ BigWigCellAtlas.threshold_labels = 5
 PreprocessingPipeline.genome_region_generator = None
 PreprocessingPipeline.multitask_io_handler = @BigWigCellAtlas()
 PreprocessingPipeline.dataset_writer_class = @DatasetWriter
-PreprocessingPipeline.regions_per_batch = 1
+PreprocessingPipeline.regions_per_batch = 2
 PreprocessingPipeline.output_directory = %output_directory
 
 
