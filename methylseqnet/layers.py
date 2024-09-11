@@ -12,13 +12,16 @@ class ConvDNA(nn.Module):
         self.in_channels = in_channels
 
     def forward(self, x):
+        # the structure of the one-hot sequence is [sample,(A,C,G,T,meth_fraction,valid_cpg),position]
+        
         # If in_channels in only 4, and the input data has cpg methylation, we want to trim that off!
-        # On the other hand, if in_channels is 1, we *only* keep cpg methylation
+        # On the other hand, if in_channels is 1, we *only* keep cpg methylation, and if it is 2 we keep cpg methylation
+        # and valid cpgs
         if x.shape[1] > self.in_channels:
-            if self.in_channels>1:
+            if self.in_channels>2:
                 x = x[:, :self.in_channels, :]
-            elif self.in_channels==1:
-                x = x[:, -1:, :]
+            elif self.in_channels>0:
+                x = x[:, -2:(-2+self.in_channels), :]
             else:
                 raise ValueError(f"in_channels {self.in_channels} invalid value.")
         x = self.conv(x)

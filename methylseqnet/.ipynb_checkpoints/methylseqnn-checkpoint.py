@@ -8,7 +8,7 @@ from methylseqnet.layers import *
 class MethylSeqNN(nn.Module):
     def __init__(
         self, 
-        in_channels=5,
+        in_channels=6,
         out_tracks=None,
     ):
         if out_tracks is None:
