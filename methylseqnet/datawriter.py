@@ -75,6 +75,9 @@ class DatasetWriter:
                     compression='gzip',
                     compression_opts=2,
                 )
+            # Log the gin config string as an attribute in the HDF5 file
+            gin_config_str = gin.operative_config_str()
+            f.attrs['gin_config'] = gin_config_str
     def write_chunk(
         self,
         regions_list,
