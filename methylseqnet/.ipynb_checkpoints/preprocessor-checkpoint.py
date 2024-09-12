@@ -86,28 +86,37 @@ class PreprocessingPipeline:
         output_path = Path(self.output_directory) / (split_name.strip() + ".h5")
         dataset_writer = self.dataset_writer_class(output_path=output_path,num_tracks=num_tracks)
         return dataset_writer
+
+    def initialize_region_process(
+        self,
+        subset,
+    ):
+        self.create_region_batches()
+        if subset=='all' and subset not in self.region_batches_by_split.keys():
+            self.splits = sorted(self.region_batches_by_split.keys(), 
+                key=lambda k: len(self.region_batches_by_split[k]))
+        else:
+            self.splits = [subset]
+        print(f'splits to process:{self.splits}')
+        manager = Manager()  # Create a manager
+        self.lock = manager.Lock()  # Create a lock via the manager
+    
     def sequential_region_process(
         self,
         subset = 'all',
     ):
-        self.create_region_batches()
-        if subset=='all' and subset not in self.region_batches_by_split.keys():
-            splits = list(self.region_batches_by_split.keys())
-        else:
-            splits = [subset]
-        
-        manager = Manager()  # Create a manager
-        lock = manager.Lock()  # Create a lock via the manager
-        for split in splits:
+        self.initialize_region_process(subset)
+        for split in self.splits:
             batches = self.region_batches_by_split[split]
             # Each key here is a data split that will want its own dataset
             dataset_writer = self.initialize_dataset_writer(split)
-            for indices_list,regions_list in tqdm(batches,desc=f'processing all batches for {split}'):
+            for indices_list,regions_list in tqdm(batches,
+                                                  desc=f'processing and writing {split} to {dataset_writer.output_path}'):
                 self.multitask_io_handler.process_batch(
                     indices_list,
                     regions_list,
                     dataset_writer,
-                    lock,
+                    self.lock,
                 )
                 
     def parallel_region_process(
@@ -115,26 +124,21 @@ class PreprocessingPipeline:
         subset = 'all',
         max_workers=4,
     ):
-        self.create_region_batches()
-        if subset=='all' and subset not in self.region_batches_by_split.keys():
-            splits = list(self.region_batches_by_split.keys())
-        else:
-            splits = [subset]
-        manager = Manager()  # Create a manager
-        lock = manager.Lock()  # Create a lock via the manager
-        for split in splits:  
+        self.initialize_region_process(subset)
+        for split in self.splits:  
             batches = self.region_batches_by_split[split]
+            # Each key here is a data split that will want its own dataset
             dataset_writer = self.initialize_dataset_writer(split)
-
             with ProcessPoolExecutor(max_workers=max_workers) as executor:
                 futures = [executor.submit(
                     self.multitask_io_handler.process_batch, 
                     indices_list, 
                     regions_list, 
                     dataset_writer, 
-                    lock,
+                    self.lock,
                 ) for indices_list,regions_list in batches]
-                for future in tqdm(as_completed(futures), total=len(futures), desc=f"processing batches for {split}"):
+                for future in tqdm(as_completed(futures), total=len(futures), 
+                                   desc=f"processing and writing {split} to {dataset_writer.output_path}"):
                     try:
                         future.result()
                     except Exception as e:
@@ -163,11 +167,15 @@ def main():
     if args.mode=='sequential':
         pipeline.sequential_region_process(subset=args.subset)
     elif args.mode=='parallel':
+        cores_avail = multiprocessing.cpu_count()
         if args.workers=='all':
-            cores = multiprocessing.cpu_count()
+            cores = cores_avail
         else:
-            cores = int(args.workers)
-        print(f"using {cores} processes")
+            if int(args.workers)<cores_avail:
+                cores = int(args.workers)
+            else:
+                cores = cores_avail
+        print(f"parallelizing across {cores} processes")
         pipeline.parallel_region_process(subset=args.subset,max_workers=cores)
     else:
         raise ValueError(f"Unexpected --mode {args.mode}")
