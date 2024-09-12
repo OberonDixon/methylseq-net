@@ -1,7 +1,7 @@
 import numpy as np
 import pysam
 from pathlib import Path
-from dimelo import load_processed
+# from dimelo import load_processed
 
 def one_hot_encode_dna(dna_strand, cpg_methylation=None, valid_cpgs=None):
     """

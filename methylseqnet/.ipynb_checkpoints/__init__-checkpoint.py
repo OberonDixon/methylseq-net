@@ -7,7 +7,6 @@ from . import (
     datawriter,
     metrics,
     motifs,
-    peaks,
 )
 
 __all__ = [
@@ -19,5 +18,4 @@ __all__ = [
     "datawriter",
     "metrics",
     "motifs",
-    "peaks",
 ]
