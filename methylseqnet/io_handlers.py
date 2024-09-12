@@ -1,4 +1,5 @@
-import gin, dimelo, pyBigWig, pysam
+import gin, pyBigWig, pysam
+# import dimelo
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
