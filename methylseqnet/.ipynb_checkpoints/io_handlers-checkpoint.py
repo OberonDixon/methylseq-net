@@ -155,28 +155,39 @@ class MultiBigWigLabelHandler(LabelHandler):
             trim_off_ends: int,
             label_bin_size: int,
             combine_operation='mean',
+            normalize_counts=True,
             normalize_gc=True,
             binarize=False,
             threshold=5,
             ):
         if not isinstance(bigwig_files,list):
             raise ValueError("bigwig_files input is not a list.")
+        self.bigwig_files = bigwig_files
+        self.combine_operation = combine_operation
+        self.normalize_gc = normalize_gc
+        self.normalize_counts = normalize_counts
+        self.binarize = binarize
+        self.threshold = threshold     
+        self.trim_off_ends = trim_off_ends
+        self.label_bin_size = label_bin_size 
+        self.counts_normalization = 0
         for bigwig_file in bigwig_files:   
             if os.path.isfile(bigwig_file):
                 try:
                     bw = pyBigWig.open(str(bigwig_file))
+                    if self.normalize_counts:
+                        sample_values = bw.values('chr1',0,200000000)
+                        sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
+                        if combine_operation=='mean':
+                            self.counts_normalization+=sample_values_sum/(200000000+len(bigwig_files))
+                        else:
+                            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
                     bw.close()
                 except:
                     raise ValueError(f"{bigwig_file} cannot be opened by pyBigWig.")
             else:
                 raise OSError(f"{bigwig_file} does not exist.")
-        self.bigwig_files = bigwig_files
-        self.combine_operation = combine_operation
-        self.normalize_gc = normalize_gc
-        self.binarize = binarize
-        self.threshold = threshold     
-        self.trim_off_ends = trim_off_ends
-        self.label_bin_size = label_bin_size  
+ 
     def load_labels(self,chrom,start,end,bws,gc_content):
         values_list = []
         if (end - start - 2*self.trim_off_ends)%self.label_bin_size != 0:
@@ -194,10 +205,12 @@ class MultiBigWigLabelHandler(LabelHandler):
         if self.normalize_gc:
             # This may in future be replaced with a more sophisticated calculation
             aggregated_values = aggregated_values/(gc_content + 0.1)
+        if self.normalize_counts:
+            aggregated_values = 1000*aggregated_values/self.counts_normalization
         if self.binarize:
             return aggregated_values>self.threshold
         else:
-            return aggregated_values       
+            return np.log10(aggregated_values+1)       
             
     def load_labels_batch(self,regions_list,gc_content_list=None):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
@@ -209,6 +222,8 @@ class MultiBigWigLabelHandler(LabelHandler):
             labels = [self.load_labels(**region,bws=bws,gc_content=None) for region in regions_list]
         for bw in bws:
             bw.close()
+        # for region,label in zip(regions_list,labels):
+        #     print(f'summary for {region}: min=',np.min(label),'max=',np.max(label),'mean',np.mean(label))
         return labels
     
 @gin.register
@@ -224,6 +239,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
             trim_off_ends,
             label_bin_size,
             label_num_bins,
+            normalize_label_counts,
+            normalize_label_gc,
             binarize_cpg: bool=False,
             binarize_labels: bool=False,
             threshold_cpg: float | None=None,
@@ -232,7 +249,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
         self.label_bin_size = label_bin_size
-        self.binarize_labels=binarize_labels
+        self.binarize_labels = binarize_labels
 
         self.labels_specifier_list = [
             # List of dicts defined as follows:
@@ -249,7 +266,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
         self.io_mappings_dict = {}
 
         with open(match_file) as f:
-            for index,line in enumerate(f):
+            for index,line in tqdm(enumerate(f),desc='Identifying and setting scaling for input files'):
                 if index>0: #first line is the headers
                     fields = line.split('\t')
                     methylation_names = fields[0].split(',')
@@ -282,6 +299,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
                                     bigwig_files = atac_celltype_files,
                                     trim_off_ends=trim_off_ends,
                                     label_bin_size=label_bin_size,
+                                    normalize_counts=normalize_label_counts,
+                                    normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
                                 )
