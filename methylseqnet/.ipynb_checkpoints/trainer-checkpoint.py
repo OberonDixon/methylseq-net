@@ -220,6 +220,7 @@ class Trainer:
 
 def main(config):
     gin.parse_config_file(config)
+    from methylseqnet.trainer import Trainer
     trainer = Trainer()
     trainer.train()
 

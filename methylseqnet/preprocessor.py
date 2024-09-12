@@ -1,4 +1,5 @@
 import argparse
+import traceback
 from methylseqnet.io_handlers import *
 from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -142,7 +143,8 @@ class PreprocessingPipeline:
                     try:
                         future.result()
                     except Exception as e:
-                        print(f"Batch processing failed with exception: {e}")
+                        print(f"Parallel processing failed with exception: {e}")
+                        traceback.print_exc()
 
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
