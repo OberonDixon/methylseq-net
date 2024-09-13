@@ -1,4 +1,4 @@
-import pysam
+# import pysam
 from Bio import motifs
 from Bio.Seq import Seq
 from Bio.motifs.matrix import PositionWeightMatrix

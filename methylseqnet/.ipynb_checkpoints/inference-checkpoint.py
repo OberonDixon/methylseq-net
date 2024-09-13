@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 import gin
 from collections import defaultdict
 import re
-import psutil
+# import psutil
 import os
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

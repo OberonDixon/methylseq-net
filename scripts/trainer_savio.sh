@@ -1,0 +1,1 @@
+NCCL_P2P_DISABLE=1 python trainer.py --config ../configs/train_seq-cpg_lightning.gin --gpus 2

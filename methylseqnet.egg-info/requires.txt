@@ -1,6 +1,9 @@
-torch==2.0.0
+torch
 biopython
 scikit-learn
 captum
-modisco
+modisco-lite
 scipy
+gin-config
+pynvml
+logomaker
