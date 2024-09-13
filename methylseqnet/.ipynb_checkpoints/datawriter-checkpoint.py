@@ -48,8 +48,8 @@ class DatasetWriter:
                 del f['sequence']
             f.create_dataset(
                 'sequence',
-                (0,self.seq_length,6),
-                maxshape=(None,self.seq_length,6),
+                (0,7,self.seq_length),
+                maxshape=(None,7,self.seq_length),
                 dtype=np.float16,
                 compression='gzip',
                 compression_opts=2
@@ -58,8 +58,8 @@ class DatasetWriter:
                 del f['tracks']
             f.create_dataset(
                 'tracks',
-                (0,self.track_length,self.num_tracks),
-                maxshape=(None,self.track_length,self.num_tracks),
+                (0,self.num_tracks,self.track_length),
+                maxshape=(None,self.num_tracks,self.track_length),
                 dtype='float',
                 compression='gzip',
                 compression_opts=2,
@@ -69,8 +69,8 @@ class DatasetWriter:
                     del f['mask']
                 f.create_dataset(
                     'mask',
-                    (0,self.track_length,self.num_tracks),
-                    maxshape=(None,self.track_length,self.num_tracks),
+                    (0,self.num_tracks,self.track_length),
+                    maxshape=(None,self.num_tracks,self.track_length),
                     dtype='bool',
                     compression='gzip',
                     compression_opts=2,
@@ -117,12 +117,12 @@ class DatasetWriter:
             track_dataset.resize(new_track_size, axis=0)            
 
             regions_dataset[current_regions_size:new_regions_size] = [f"{region['chrom']}:{region['start']}-{region['end']}" for region in regions_list]
-            seq_dataset[current_seq_size:new_seq_size, :, :] = onehot_seq_list
-            track_dataset[current_track_size:new_track_size, :, :] = labels_list
+            seq_dataset[current_seq_size:new_seq_size, :, :] = [np.transpose(onehot_seq,(1,0)) for onehot_seq in onehot_seq_list]
+            track_dataset[current_track_size:new_track_size, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
             
             if self.mask:
                 mask_dataset = f['mask']
                 current_mask_size = mask_dataset.shape[0]
                 new_mask_size = current_mask_size + len(mask_list)
                 mask_dataset.resize(new_mask_size, axis=0)
-                mask_dataset[current_mask_size:new_mask_size, :, :] = mask_list
+                mask_dataset[current_mask_size:new_mask_size, :, :] = [np.transpose(mask,(1,0)) for mask in mask_list]

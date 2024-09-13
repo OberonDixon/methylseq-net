@@ -145,7 +145,7 @@ class MultiBigWigCpGHandler(CpGHandler):
         cpgs = [self.load_cpg(**region,bws=bws) for region in regions_list]
         for bw in bws:
             bw.close()
-        return cpgs
+        return tuple(map(list,zip(*cpgs)))
     
 @gin.register
 @gin.configurable

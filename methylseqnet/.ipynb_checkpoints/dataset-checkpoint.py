@@ -32,17 +32,17 @@ class CustomH5Dataset(Dataset):
         start_idx = idx * self.batch_size
         end_idx = min(start_idx + self.batch_size, self.length)
         with h5py.File(self.file_path, 'r') as f:
-            input_data = f['sequence'][start_idx:end_idx]
-            target = f['tracks'][start_idx:end_idx]
+            input_data = f['sequence'][start_idx:end_idx,:,:]
+            target = f['tracks'][start_idx:end_idx,:,:]
             if self.mask:
-                mask = f['mask'][start_idx:end_idx]
+                mask = f['mask'][start_idx:end_idx,:,:]
             else:
                 mask = None
         
         if self.transform:
             input_data = self.transform(input_data)
 
-        input_data = np.transpose(input_data, (0,2,1))
+        # input_data = np.transpose(input_data, (0,2,1))
         input_data = torch.tensor(input_data, dtype=torch.float32)
         target = torch.tensor(target, dtype=torch.float32)
         if self.mask:

@@ -117,15 +117,12 @@ class Trainer:
 
                     with torch.set_grad_enabled(phase == 'train'):
                         outputs = self.model(inputs)
-                        targets = targets.unsqueeze(-1) if len(targets.shape) == 2 else targets
-                        
-                        targets = targets.permute(0, 2, 1)
                         
                         trim_off_targets = targets.shape[2] - self.model.out_bins
                         targets = targets[:,:,trim_off_targets//2:-trim_off_targets//2]
 
                         if mask is not None:
-                            mask = mask.permute(0, 2, 1)[:,:,trim_off_targets//2:-trim_off_targets//2]
+                            mask = mask[:,:,trim_off_targets//2:-trim_off_targets//2]
                             outputs = outputs[mask]
                             targets = targets[mask]
                             
