@@ -10,12 +10,14 @@ class MethylSeqNN(nn.Module):
         self, 
         in_channels=6,
         out_tracks=None,
+        out_bins=None,
     ):
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
         self.in_channels = in_channels
         self.out_tracks = out_tracks
+        self.out_bins = out_bins
         
         super(MethylSeqNN, self).__init__()
 
