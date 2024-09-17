@@ -10,9 +10,10 @@ from methylseqnet.layers import *
 class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
-        in_channels=7,
         out_tracks=None,
         out_bins=None,
+        regression=False,
+        label_threshold_cts=5,
         learning_rate=0.005, 
         momentum=0.98, 
         pos_weight=100,
@@ -21,30 +22,39 @@ class MethylSeqNN(L.LightningModule):
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
-        self.in_channels = in_channels
         self.out_tracks = out_tracks
         self.out_bins = out_bins
+        self.regression = regression
+        self.label_threshold_cts = label_threshold_cts
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.pos_weight = torch.tensor([pos_weight])
 
         # Trunk
-        self.conv_dna = ConvDNA(in_channels=self.in_channels)
+        self.encoding_adjuster = EncodingAdjuster()
+        self.conv_dna = ConvDNA(in_channels = self.encoding_adjuster.channels)
         self.conv_tower = ConvTower()
         self.conv_block = ConvBlock()
         self.conv_dropout = ConvDropout()
+        self.softplus = nn.Softplus()
 
         # Head
         self.conv_final = ConvFinal(filters=self.out_tracks)
 
-        self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
+        if self.regression:
+            self.criterion = nn.PoissonNLLLoss(log_input=False)
+        else:
+            self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
     def forward(self, x):
+        x = self.encoding_adjuster(x)
         x = self.conv_dna(x)
         x = self.conv_tower(x)
         x = self.conv_block(x)
         x = self.conv_dropout(x)
         x = self.conv_final(x)
+        if self.regression:
+            x = self.softplus(x)
         return x
 
     def training_step(self,batch,batch_idx):
@@ -52,6 +62,8 @@ class MethylSeqNN(L.LightningModule):
         outputs = self(inputs)  
         trim_off_targets = targets.shape[2] - self.out_bins
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        if not self.regression:
+            targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
         if mask is not None:
             mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
             outputs = outputs[mask]
@@ -65,6 +77,8 @@ class MethylSeqNN(L.LightningModule):
         outputs = self(inputs)
         trim_off_targets = targets.shape[2] - self.out_bins
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        if not self.regression:
+            targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
         if mask is not None:
             mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
             outputs = outputs[mask]

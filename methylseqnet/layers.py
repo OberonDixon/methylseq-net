@@ -4,26 +4,54 @@ import torch.nn.functional as F
 import gin
 
 @gin.configurable
+class EncodingAdjuster(nn.Module):
+    def __init__(self, encoding_str):
+        super(EncodingAdjuster,self).__init__()
+        self.encoding_str = encoding_str
+        if self.encoding_str in ['seq+methyl_binary-seq','seq+methyl_ACGTm-sum-to-1','seq+methyl_binarize-methyl']:
+            self.channels = 7
+        elif self.encoding_str in ['seq+methyl_no-mask']:
+            self.channels = 6
+        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask']:
+            self.channels = 5
+        elif self.encoding_str in ['seq-only']:
+            self.channels = 4
+        elif self.encoding_str in ['methyl-only']:
+            self.channels = 1
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+    def forward(self, x):
+        # the structure of the one-hot sequence is [sample,(A,C,G,T,meth_fraction_fwd,meth_fraction_rev,valid_cpg),position]
+
+        if self.encoding_str == 'seq+methyl_binary-seq':
+            x = x
+        elif self.encoding_str == 'seq+methyl_no-mask':
+            x =  x[:,0:6,:]
+        elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
+        elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x[:,4:6,:] = (x[:,4:6,:]>0.5)
+        elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x[:,4,:] = x[:,4,:] + x[:,5,:]
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq-only':
+            x = x[:,0:4,:]
+        elif self.encoding_str == 'methyl-only':
+            x = x[:,4:6,:]
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+        return x
+
+@gin.configurable
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size):
         super(ConvDNA, self).__init__()
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.pool = nn.MaxPool1d(pool_size)
-        self.in_channels = in_channels
 
     def forward(self, x):
-        # the structure of the one-hot sequence is [sample,(A,C,G,T,meth_fraction,valid_cpg),position]
-        
-        # If in_channels in only 4, and the input data has cpg methylation, we want to trim that off!
-        # On the other hand, if in_channels is 1, we *only* keep cpg methylation, and if it is 2 we keep cpg methylation
-        # and valid cpgs
-        if x.shape[1] > self.in_channels:
-            if self.in_channels>2:
-                x = x[:, :self.in_channels, :]
-            elif self.in_channels>0:
-                x = x[:, -2:(-2+self.in_channels), :]
-            else:
-                raise ValueError(f"in_channels {self.in_channels} invalid value.")
         x = self.conv(x)
         x = F.gelu(x)
         x = self.pool(x)

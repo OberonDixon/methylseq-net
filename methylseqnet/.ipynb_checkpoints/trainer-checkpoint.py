@@ -34,10 +34,10 @@ class MethylSeqDataModule(LightningDataModule):
         self.val_dataset = CustomH5Dataset(self.validation_dataset_file,batch_size=self.batch_size)
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=None, shuffle=True)
+        return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=3)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=None, shuffle=False)
+        return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=3)
 
 # def get_available_gpus():
 #     pynvml.nvmlInit()
@@ -248,7 +248,7 @@ def main(config,gpus):
         monitor='val_loss',  # Metric to monitor
         mode='min',          # Save when the monitored metric is minimized
         save_top_k=1,        # Save only the best checkpoint
-        every_n_train_steps=50  # Save every 500 steps
+        every_n_train_steps=1000  # Save every 1000 steps
     )
     model = MethylSeqNN()
     from methylseqnet.trainer import MethylSeqDataModule
@@ -259,6 +259,6 @@ def main(config,gpus):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
-    parser.add_argument('--gpus', type=str, required=True, help='GPU count for parallelization.')
+    parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     args = parser.parse_args()
     main(args.config,args.gpus)
