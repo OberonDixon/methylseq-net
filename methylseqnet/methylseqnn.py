@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.optim as optim
 import gin
 import lightning as L
+from memory_profiler import profile
+import gc
 
 from methylseqnet.layers import *
 
@@ -96,3 +98,21 @@ class MethylSeqNN(L.LightningModule):
             if name == layer_name:
                 return layer
         raise ValueError(f"Layer {layer_name} not found in the model")
+
+    def on_save_checkpoint(self, checkpoint):
+        checkpoint["operative_config_str"] = gin.operative_config_str()
+        
+    @classmethod
+    @profile
+    def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
+        # Load the checkpoint to extract the gin config
+        checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
+        
+        # Parse the gin configuration from the checkpoint
+        operative_config_str = checkpoint["operative_config_str"]
+        gin.parse_config(operative_config_str)
+        del checkpoint
+        gc.collect() 
+        
+        # Continue with the regular loading process
+        return super().load_from_checkpoint(checkpoint_path, *args, **kwargs)

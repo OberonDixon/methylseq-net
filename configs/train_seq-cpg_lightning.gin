@@ -26,7 +26,8 @@ methylseqnet.layers.ConvFinal.shared_head=False
 
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=35 
 methylseqnet.methylseqnn.MethylSeqNN.out_bins=1018
-methylseqnet.methylseqnn.MethylSeqNN.regression=True
+methylseqnet.methylseqnn.MethylSeqNN.regression=False
+methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=10
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/valid.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5"

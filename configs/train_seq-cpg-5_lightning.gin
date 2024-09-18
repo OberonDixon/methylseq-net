@@ -1,4 +1,4 @@
-methylseqnet.layers.EncodingAdjuster.encoding_str='seq-only'
+methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_combine-strands-no-mask'
 
 methylseqnet.layers.ConvDNA.filters=288
 methylseqnet.layers.ConvDNA.kernel_size=17
