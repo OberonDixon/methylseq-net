@@ -80,6 +80,7 @@ class DatasetWriter:
             f.attrs['gin_config'] = gin_config_str
     def write_chunk(
         self,
+        indices_list,
         regions_list,
         onehot_seq_list,
         labels_list,
@@ -103,26 +104,41 @@ class DatasetWriter:
             regions_dataset = f['region']
             seq_dataset = f['sequence']
             track_dataset = f['tracks']
+            if self.mask:
+                mask_dataset = f['mask']
 
             current_regions_size = regions_dataset.shape[0]
             current_seq_size = seq_dataset.shape[0]
-            current_track_size = track_dataset.shape[0]          
-            
-            new_regions_size = current_regions_size + len(regions_list)
-            new_seq_size = current_seq_size + len(onehot_seq_list)
-            new_track_size = current_track_size + len(labels_list)            
-
-            regions_dataset.resize(new_regions_size, axis=0)
-            seq_dataset.resize(new_seq_size, axis=0)
-            track_dataset.resize(new_track_size, axis=0)            
-
-            regions_dataset[current_regions_size:new_regions_size] = [f"{region['chrom']}:{region['start']}-{region['end']}" for region in regions_list]
-            seq_dataset[current_seq_size:new_seq_size, :, :] = [np.transpose(onehot_seq,(1,0)) for onehot_seq in onehot_seq_list]
-            track_dataset[current_track_size:new_track_size, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
-            
+            current_track_size = track_dataset.shape[0]
             if self.mask:
-                mask_dataset = f['mask']
                 current_mask_size = mask_dataset.shape[0]
-                new_mask_size = current_mask_size + len(mask_list)
-                mask_dataset.resize(new_mask_size, axis=0)
-                mask_dataset[current_mask_size:new_mask_size, :, :] = [np.transpose(mask,(1,0)) for mask in mask_list]
+            else:
+                current_mask_size = 0
+
+            samples_per_region = int(len(onehot_seq_list)/len(indices_list))
+            start_index = np.min(np.array(indices_list))*samples_per_region
+            end_index = (np.max(np.array(indices_list)) + 1)*samples_per_region
+            sample_matched_regions_list = [region for _ in range(samples_per_region) for region in regions_list]
+
+            if current_regions_size==current_seq_size and current_seq_size==current_track_size and (not self.mask or current_mask_size==current_track_size):  
+                if current_regions_size<end_index:
+                    regions_dataset.resize(end_index, axis=0)
+                    seq_dataset.resize(end_index, axis=0)
+                    track_dataset.resize(end_index, axis=0) 
+                    if self.mask:
+                        mask_dataset.resize(end_index, axis=0)
+            else:
+                raise ValueError(f"Dataset sizes in {self.output_path} do not match: region={current_regions_size},sequence={current_seq_size},tracks={current_track_size}")
+
+            try:
+                regions_dataset[start_index:end_index] = [f"{region['chrom']}:{region['start']}-{region['end']}" for region in sample_matched_regions_list]
+                seq_dataset[start_index:end_index, :, :] = [np.transpose(onehot_seq,(1,0)) for onehot_seq in onehot_seq_list]
+                track_dataset[start_index:end_index, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
+                if self.mask:
+                    mask_dataset[start_index:end_index, :, :] = [np.transpose(mask,(1,0)) for mask in mask_list]
+            except IndexError as e:
+                raise IndexError(f"Indexing error with indices_list: {indices_list}. Ensure all indices are within bounds.") from e
+            except ValueError as e:
+                raise ValueError(f"Value assignment error: check dimensions of assigned data. {e}") from e
+                        
+                        

@@ -373,6 +373,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
             if len(onehot_dna_list)>=self.max_chunks_in_mem:
                 with lock: # we need the lock so allow parallel threads to all write to the same output file
                     dataset_writer.write_chunk(
+                        indices_list,
                         regions_list,
                         onehot_dna_list,
                         label_list,
@@ -383,6 +384,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
                 mask_list = []
         with lock: # we need the lock so allow parallel threads to all write to the same output file
             dataset_writer.write_chunk(
+                indices_list,
                 regions_list,
                 onehot_dna_list,
                 label_list,
