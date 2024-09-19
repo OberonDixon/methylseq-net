@@ -114,7 +114,6 @@ class MethylSeqNN(L.LightningModule):
         checkpoint["operative_config_str"] = gin.operative_config_str()
         
     @classmethod
-    @profile
     def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
         # Load the checkpoint to extract the gin config
         checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
