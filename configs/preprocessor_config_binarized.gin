@@ -2,7 +2,7 @@ ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
 methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/GSE186458_RAW'
 atac_directory = '/global/scratch/users/dixonluinenburg/atac_atlas/bigwigs'
 match_file = '/clusterfs/nilah/oberon/genomic-data-exploration/cell_atlases/cell_type_matching.txt'
-output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed/'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/'
 label_bin_size = 128
 label_num_bins = 1024
 trim_off_ends = 0
@@ -29,7 +29,7 @@ BigWigCellAtlas.threshold_labels = 5
 PreprocessingPipeline.genome_region_generator = None
 PreprocessingPipeline.multitask_io_handler = @BigWigCellAtlas()
 PreprocessingPipeline.dataset_writer_class = @DatasetWriter
-PreprocessingPipeline.regions_per_batch = 2
+PreprocessingPipeline.regions_per_batch = 1
 PreprocessingPipeline.output_directory = %output_directory
 
 

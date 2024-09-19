@@ -10,8 +10,9 @@ from torch.utils.data import DataLoader
 import gin
 from collections import defaultdict
 import re
-# import psutil
+import methylseqnet
 import os
+from lightning import Trainer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -49,7 +50,8 @@ def run_whole_dataset(
     samples, with a specified model (which must include it's own hyperparamter gin str). Batch size goes to a reasonable
     default. 
     """ 
-    model = load_for_eval(model_path).to(device)
+    # model = load_for_eval(model_path).to(device)
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
 
     # If layer_name is specified, register a hook to capture its activations
     if layer_name:
@@ -70,14 +72,18 @@ def run_whole_dataset(
     
     for batch_idx, (inputs, targets, mask) in enumerate(tqdm(dataloader,unit='batch',desc='model passes')):
 
-        targets = targets.permute(0, 2, 1)
+        # targets = targets.permute(0, 2, 1)
 
         inputs, targets = inputs.to(device), targets.to(device)
 
         outputs = model(inputs)
 
+        trim_off_targets = targets.shape[2] - model.out_bins
+        targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+
         if mask is not None:
-            mask = mask.permute(0, 2, 1)
+            # mask = mask.permute(0, 2, 1)
+            mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
             mask.to(device)
         else:
             # for code clarity, we make a "fake" mask that is just True everywhere

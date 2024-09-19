@@ -245,19 +245,14 @@ class MethylSeqDataModule(LightningDataModule):
 
 def main(config,gpus):
     gin.parse_config_file(config)
-    # checkpoint_callback = ModelCheckpoint(
-    #     monitor='val_loss',  # Metric to monitor
-    #     mode='min',          # Save when the monitored metric is minimized
-    #     save_top_k=1,        # Save only the best checkpoint
-    #     every_n_train_steps=1000  # Save every 1000 steps
-    # )
     model = MethylSeqNN()
     from methylseqnet.trainer import MethylSeqDataModule
     data_module = MethylSeqDataModule()
+    timestamp = dt.now().strftime('%Y-%m-%d_%H-%M-%S')
     logger = WandbLogger(
         save_dir='/global/scratch/users/dixonluinenburg/atlas_datasets/lightning_logs/',
-        name=Path(config).stem,  # Set your descriptive experiment name
-        version=dt.now().strftime('%Y-%m-%d_%H-%M-%S'),
+        name=f"{Path(config).stem}_{timestamp}",  # Set your descriptive experiment name
+        version=timestamp,
     )
     trainer = Trainer(logger=logger,accelerator='gpu', devices=gpus, max_epochs=100)
     trainer.fit(model,datamodule=data_module)

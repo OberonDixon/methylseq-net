@@ -5,6 +5,7 @@ import gin
 import lightning as L
 from memory_profiler import profile
 import gc
+import torchmetrics
 
 from methylseqnet.layers import *
 
@@ -47,6 +48,8 @@ class MethylSeqNN(L.LightningModule):
             self.criterion = nn.PoissonNLLLoss(log_input=False)
         else:
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
+            self.train_f1 = torchmetrics.classification.BinaryF1Score()
+            self.valid_f1 = torchmetrics.classification.BinaryF1Score()
 
     def forward(self, x):
         x = self.encoding_adjuster(x)
@@ -72,6 +75,10 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
         self.log("train_loss", loss)
+        if self.regression:
+            pass
+        else:
+            self.log("train_f1",self.train_f1, on_step=True, on_epoch=False)
         return loss  
 
     def validation_step(self, batch, batch_idx):
@@ -87,6 +94,10 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
         self.log("val_loss", loss)
+        if self.regression:
+            pass
+        else:
+            self.log("train_f1",self.valid_f1, on_step=True, on_epoch=True)
         return loss
 
     def configure_optimizers(self):
