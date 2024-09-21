@@ -30,8 +30,11 @@ class MethylSeqNN(L.LightningModule):
         self.layers = nn.ModuleList()
         for layer in layers:
             self.layers.append(layer())
-        # self.out_tracks = out_tracks
-        self.out_bins = out_bins
+        self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
+        print(f"receptive field calculated to be {self.receptive_field}")
+        # self.out_bins = out_bins
+
+        
         self.regression = regression
         self.label_threshold_cts = label_threshold_cts
         self.learning_rate = learning_rate
@@ -70,7 +73,8 @@ class MethylSeqNN(L.LightningModule):
     def training_step(self,batch,batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)  
-        trim_off_targets = targets.shape[2] - self.out_bins
+        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
+        # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
@@ -85,7 +89,8 @@ class MethylSeqNN(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)
-        trim_off_targets = targets.shape[2] - self.out_bins
+        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
+        # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
@@ -106,7 +111,7 @@ class MethylSeqNN(L.LightningModule):
         inputs, targets, mask = batch
 
         outputs = self(inputs)
-        trim_off_targets = targets.shape[2] - self.out_bins
+        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
@@ -144,3 +149,39 @@ class MethylSeqNN(L.LightningModule):
         gc.collect() 
         # Continue with the regular loading process
         return super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
+
+    def calculate_receptive_field_and_stride(self):
+        """
+        Calculate the receptive field based on the layers in the model.
+        Each layer that modulates receptive field or stride is assumed to have one or more attributes:
+            - kernel_size: the size of the convolution filter
+            - stride: the stride of the layer
+            - dilation: the dilation of the layer
+            - pool_size: the size of a pooling layer after the convolution
+            - repeat: how many times the layer inside gets repeated
+    
+        NOTE: this should be possible to adapt to more sophisticated dilation schemes or to transformer
+        layers but that will require additional testing
+        """
+        # Initial receptive field size
+        receptive_field = 1
+        # Initial stride (the first input)
+        total_stride = 1
+        # Total pooling
+        total_pooling = 1
+    
+        for layer in self.layers:
+            kernel_size = getattr(layer, 'kernel_size', 1)
+            pool_size = getattr(layer, 'pool_size', 1)
+            stride = getattr(layer, 'stride', 1)
+            dilation = getattr(layer, 'dilation', 1)
+            repeat = getattr(layer, 'repeat', 1)
+            
+            # Update receptive field using the formula
+            for _ in range(repeat):
+                receptive_field += (kernel_size - 1) * total_stride * dilation
+                total_stride *= stride  # Update the total stride
+                receptive_field += (pool_size - 1) * total_stride
+                total_stride *= pool_size
+    
+        return receptive_field,total_stride

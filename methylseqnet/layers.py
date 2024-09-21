@@ -89,10 +89,11 @@ class ConvTower(nn.Module):
 @gin.configurable
 @gin.register
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size):
+    def __init__(self, in_channels, filters, kernel_size, dilation=1):
         super(ConvBlock, self).__init__()
         self.kernel_size=kernel_size
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size)
+        self.dilation=dilation
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation)
 
     def forward(self, x):
         x = self.conv(x)
@@ -118,8 +119,9 @@ class ConvDropout(nn.Module):
 class ConvFinal(nn.Module):
     def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1):
         super(ConvFinal, self).__init__()
-        self.kernel_size=kernel_size
+        self.kernel_size = kernel_size
         self.filters = filters
+        self.stride = stride
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         if self.shared_head:
             self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride) # only one filter
