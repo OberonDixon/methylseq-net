@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import gin
 
 @gin.configurable
+@gin.register
 class EncodingAdjuster(nn.Module):
     def __init__(self, encoding_str):
         super(EncodingAdjuster,self).__init__()
@@ -45,9 +46,12 @@ class EncodingAdjuster(nn.Module):
         return x
 
 @gin.configurable
+@gin.register
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size):
         super(ConvDNA, self).__init__()
+        self.kernel_size=kernel_size
+        self.pool_size=pool_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.pool = nn.MaxPool1d(pool_size)
 
@@ -58,15 +62,19 @@ class ConvDNA(nn.Module):
         return x
 
 @gin.configurable
+@gin.register
 class ConvTower(nn.Module):
     def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat):
         super(ConvTower, self).__init__()
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.repeat = repeat
         self.layers = nn.ModuleList()
         filters_step = (filters_end - filters_init) // (repeat - 1) if repeat>1 else 0
         for i in range(repeat):
             filters = filters_init + i * filters_step
             self.layers.append(nn.Sequential(
-                nn.Conv1d(in_channels, filters, kernel_size, padding=(kernel_size - 1) // 2),
+                nn.Conv1d(in_channels, filters, kernel_size),#, padding=(kernel_size - 1) // 2),
                 nn.BatchNorm1d(filters),
                 nn.GELU(),
                 nn.MaxPool1d(pool_size)
@@ -79,9 +87,11 @@ class ConvTower(nn.Module):
         return x
 
 @gin.configurable
+@gin.register
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, filters, kernel_size):
         super(ConvBlock, self).__init__()
+        self.kernel_size=kernel_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
 
     def forward(self, x):
@@ -90,9 +100,11 @@ class ConvBlock(nn.Module):
         return x
 
 @gin.configurable
+@gin.register
 class ConvDropout(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dropout):
         super(ConvDropout, self).__init__()
+        self.kernel_size = kernel_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.dropout = nn.Dropout(dropout)
 
@@ -102,9 +114,11 @@ class ConvDropout(nn.Module):
         return x
 
 @gin.configurable
+@gin.register
 class ConvFinal(nn.Module):
     def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1):
         super(ConvFinal, self).__init__()
+        self.kernel_size=kernel_size
         self.filters = filters
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         if self.shared_head:
