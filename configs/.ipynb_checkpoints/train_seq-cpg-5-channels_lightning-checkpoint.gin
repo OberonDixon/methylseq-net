@@ -1,12 +1,12 @@
 initial_filters = 50
 tower_end_filters = 100
 
-methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_ACGTm-sum-to-1'
+methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_combine-strands-no-mask'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
-methylseqnet.layers.ConvDNA.in_channels=7
+methylseqnet.layers.ConvDNA.in_channels=5
 methylseqnet.layers.ConvDNA.weight_decay=0
 
 methylseqnet.layers.ConvTower.in_channels=%initial_filters

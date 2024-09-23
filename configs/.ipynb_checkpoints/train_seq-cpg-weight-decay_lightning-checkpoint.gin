@@ -1,20 +1,23 @@
-methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_combine-strands-no-mask'
+initial_filters = 50
+tower_end_filters = 100
 
-methylseqnet.layers.ConvDNA.filters=288
+methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_ACGTm-sum-to-1'
+
+methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
-methylseqnet.layers.ConvDNA.in_channels=5
+methylseqnet.layers.ConvDNA.in_channels=7
 methylseqnet.layers.ConvDNA.weight_decay=0.001
 
-methylseqnet.layers.ConvTower.in_channels=288
-methylseqnet.layers.ConvTower.filters_init=288
-methylseqnet.layers.ConvTower.filters_end=512
+methylseqnet.layers.ConvTower.in_channels=%initial_filters
+methylseqnet.layers.ConvTower.filters_init=%initial_filters
+methylseqnet.layers.ConvTower.filters_end=%tower_end_filters
 methylseqnet.layers.ConvTower.divisible_by=16
 methylseqnet.layers.ConvTower.kernel_size=5
 methylseqnet.layers.ConvTower.pool_size=2
 methylseqnet.layers.ConvTower.repeat=6
 
-methylseqnet.layers.ConvBlock.in_channels=508
+methylseqnet.layers.ConvBlock.in_channels=%tower_end_filters
 methylseqnet.layers.ConvBlock.filters=256
 methylseqnet.layers.ConvBlock.kernel_size=6
 methylseqnet.layers.ConvBlock.dilation=1

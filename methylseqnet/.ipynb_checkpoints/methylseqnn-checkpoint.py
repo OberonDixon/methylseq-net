@@ -128,7 +128,7 @@ class MethylSeqNN(L.LightningModule):
         # Define parameter groups based on the layer's weight decay
         param_groups = []
         for layer in self.layers:
-            param_groups.append({'params': layer.parameters(), 'weight_decay': layer.weight_decay})
+            param_groups.append({'params': layer.parameters(), 'weight_decay': getattr(layer, 'weight_decay', 0)})
         optimizer = optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)
         return optimizer
     
