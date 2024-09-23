@@ -16,7 +16,6 @@ class MethylSeqNN(L.LightningModule):
         self, 
         layers,
         out_tracks=None,
-        out_bins=None,
         regression=False,
         label_threshold_cts=5,
         learning_rate=0.005, 
@@ -126,7 +125,11 @@ class MethylSeqNN(L.LightningModule):
         return loss
     
     def configure_optimizers(self):
-        optimizer = optim.SGD(self.parameters(), lr=self.learning_rate, momentum=self.momentum)
+        # Define parameter groups based on the layer's weight decay
+        param_groups = []
+        for layer in self.layers:
+            param_groups.append({'params': layer.parameters(), 'weight_decay': layer.weight_decay})
+        optimizer = optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)
         return optimizer
     
     def get_layer(self, layer_name):

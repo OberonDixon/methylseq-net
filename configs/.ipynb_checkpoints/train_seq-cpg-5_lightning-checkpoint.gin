@@ -1,31 +1,35 @@
 methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_combine-strands-no-mask'
 
-methylseqnet.layers.ConvDNA.filters=50 #288
+methylseqnet.layers.ConvDNA.filters=288
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
+methylseqnet.layers.ConvDNA.in_channels=5
+methylseqnet.layers.ConvDNA.weight_decay=0.001
 
-methylseqnet.layers.ConvTower.in_channels=50 #288
-methylseqnet.layers.ConvTower.filters_init=50 #288
-methylseqnet.layers.ConvTower.filters_end=100 #512
+methylseqnet.layers.ConvTower.in_channels=288
+methylseqnet.layers.ConvTower.filters_init=288
+methylseqnet.layers.ConvTower.filters_end=512
 methylseqnet.layers.ConvTower.divisible_by=16
 methylseqnet.layers.ConvTower.kernel_size=5
 methylseqnet.layers.ConvTower.pool_size=2
 methylseqnet.layers.ConvTower.repeat=6
 
-methylseqnet.layers.ConvBlock.in_channels=100 #508
+methylseqnet.layers.ConvBlock.in_channels=508
 methylseqnet.layers.ConvBlock.filters=256
-methylseqnet.layers.ConvBlock.kernel_size=1
+methylseqnet.layers.ConvBlock.kernel_size=6
+methylseqnet.layers.ConvBlock.dilation=1
 
 methylseqnet.layers.ConvDropout.in_channels=256
 methylseqnet.layers.ConvDropout.filters=768
-methylseqnet.layers.ConvDropout.kernel_size=6
+methylseqnet.layers.ConvDropout.kernel_size=1
 methylseqnet.layers.ConvDropout.dropout=0.2
 
 methylseqnet.layers.ConvFinal.in_channels=768
 methylseqnet.layers.ConvFinal.shared_head=False
+methylseqnet.layers.ConvFinal.filters=35
 
+methylseqnet.methylseqnn.MethylSeqNN.layers = [@EncodingAdjuster,@ConvDNA,@ConvTower,@ConvBlock,@ConvDropout,@ConvFinal]
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=35 
-methylseqnet.methylseqnn.MethylSeqNN.out_bins=1018
 methylseqnet.methylseqnn.MethylSeqNN.regression=False
 methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
 

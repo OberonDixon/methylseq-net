@@ -48,12 +48,13 @@ class EncodingAdjuster(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, pool_size):
+    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0):
         super(ConvDNA, self).__init__()
         self.kernel_size=kernel_size
         self.pool_size=pool_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.pool = nn.MaxPool1d(pool_size)
+        self.weight_decay = weight_decay
 
     def forward(self, x):
         x = self.conv(x)
@@ -64,11 +65,12 @@ class ConvDNA(nn.Module):
 @gin.configurable
 @gin.register
 class ConvTower(nn.Module):
-    def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat):
+    def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay=0):
         super(ConvTower, self).__init__()
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.repeat = repeat
+        self.weight_decay = weight_decay
         self.layers = nn.ModuleList()
         filters_step = (filters_end - filters_init) // (repeat - 1) if repeat>1 else 0
         for i in range(repeat):
@@ -89,11 +91,12 @@ class ConvTower(nn.Module):
 @gin.configurable
 @gin.register
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, dilation=1):
+    def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0):
         super(ConvBlock, self).__init__()
         self.kernel_size=kernel_size
         self.dilation=dilation
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation)
+        self.weight_decay = weight_decay
 
     def forward(self, x):
         x = self.conv(x)
@@ -103,11 +106,12 @@ class ConvBlock(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDropout(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, dropout):
+    def __init__(self, in_channels, filters, kernel_size, dropout, weight_decay=0):
         super(ConvDropout, self).__init__()
         self.kernel_size = kernel_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
         self.dropout = nn.Dropout(dropout)
+        self.weight_decay = weight_decay
 
     def forward(self, x):
         x = self.conv(x)
@@ -117,12 +121,13 @@ class ConvDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1):
+    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1, weight_decay=0):
         super(ConvFinal, self).__init__()
         self.kernel_size = kernel_size
         self.filters = filters
         self.stride = stride
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
+        self.weight_decay = weight_decay
         if self.shared_head:
             self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride) # only one filter
         else:
