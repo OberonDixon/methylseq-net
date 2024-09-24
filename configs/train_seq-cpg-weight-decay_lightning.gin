@@ -7,7 +7,7 @@ methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
 methylseqnet.layers.ConvDNA.in_channels=7
-methylseqnet.layers.ConvDNA.weight_decay=0.001
+methylseqnet.layers.ConvDNA.weight_decay=0.0002
 
 methylseqnet.layers.ConvTower.in_channels=%initial_filters
 methylseqnet.layers.ConvTower.filters_init=%initial_filters

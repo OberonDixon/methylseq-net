@@ -42,11 +42,17 @@ class MethylSeqDataModule(LightningDataModule):
         return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=3)
 
 def main(config,output_dir,unique_identifier,gpus):
+    
     gin.parse_config_file(config)
+    
     model = MethylSeqNN()
+    
     from methylseqnet.trainer import MethylSeqDataModule
     data_module = MethylSeqDataModule()
+    
     model_dir = Path(output_dir)/unique_identifier
+    temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
+
     logger = WandbLogger(
         save_dir=model_dir,
         name=f"{Path(config).stem}_{unique_identifier}",  # Set your descriptive experiment name
@@ -70,30 +76,23 @@ def main(config,output_dir,unique_identifier,gpus):
         filename='best-checkpoint',           # Name for the best checkpoint
         save_last=False                       # Don't save a 'last' checkpoint
     )
-
-    temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
     
-    if os.path.isfile(temp_checkpoint_path):
-        trainer=Trainer(
-            resume_from_checkpoint=autorestart_path,
-            callbacks = [temp_checkpoint,best_val_checkpoint],
-            default_root_dir=model_dir,
-            logger=logger,
-            accelerator='auto', 
-            devices=gpus, 
-            max_epochs=100
-        )
-    else:
-        trainer = Trainer(
-            callbacks = [temp_checkpoint,best_val_checkpoint],
-            default_root_dir=model_dir,
-            logger=logger,
-            accelerator='auto', 
-            devices=gpus, 
-            max_epochs=100
-        )
+    trainer = Trainer(
+        callbacks = [temp_checkpoint,best_val_checkpoint],
+        default_root_dir=model_dir,
+        logger=logger,
+        accelerator='auto', 
+        devices=gpus, 
+        max_epochs=100
+    )    
     
-    trainer.fit(model,datamodule=data_module)
+    trainer.fit(
+        model,
+        datamodule=data_module,
+        ckpt_path=temp_checkpoint_path 
+            if os.path.isfile(temp_checkpoint_path) 
+            else None
+    )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
