@@ -41,14 +41,18 @@ class MethylSeqDataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=3)
 
-def main(config,output_dir,unique_identifier,gpus):
+def main(config,output_dir,unique_identifier,gpus,batch_size):
     
     gin.parse_config_file(config)
     
     model = MethylSeqNN()
     
     from methylseqnet.trainer import MethylSeqDataModule
-    data_module = MethylSeqDataModule()
+    if batch_size>0:
+        # if the script was provided with a batch_size
+        data_module = MethylSeqDataModule(batch_size=batch_size)
+    else:
+        data_module = MethylSeqDataModule()
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
@@ -58,12 +62,11 @@ def main(config,output_dir,unique_identifier,gpus):
         name=f"{Path(config).stem}_{unique_identifier}",  # Set your descriptive experiment name
         version=unique_identifier,
     )
-    # Temporary checkpoint that overwrites every 1000 steps
+    # Temporary checkpoint written every epoch
     temp_checkpoint = ModelCheckpoint(
         dirpath=model_dir/'checkpoints',
         filename='temp-checkpoint',           # Fixed name for overwriting
         save_top_k=1,                         # Keep only the latest checkpoint
-        every_n_train_steps=1000,             # Save every 1000 steps
         save_on_train_epoch_end=True, 
     )
     
@@ -100,5 +103,6 @@ if __name__ == '__main__':
     parser.add_argument('--output_dir', type=str, required=False, default='/clusterfs/nilah/oberon/lightning/', help='Directory to store outputs.')
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
+    parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
     args = parser.parse_args()
-    main(args.config,args.output_dir,args.unique_identifier,args.gpus)
+    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size)

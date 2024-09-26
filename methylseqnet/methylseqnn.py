@@ -30,7 +30,7 @@ class MethylSeqNN(L.LightningModule):
         for layer in layers:
             self.layers.append(layer())
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
-        print(f"receptive field calculated to be {self.receptive_field}")
+        # print(f"receptive field calculated to be {self.receptive_field}")
         # self.out_bins = out_bins
 
         

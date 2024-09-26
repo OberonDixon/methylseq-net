@@ -47,9 +47,25 @@ class EncodingAdjuster(nn.Module):
 
 @gin.configurable
 @gin.register
+class MethylationDropout(nn.Module):
+    def __init__(self, in_channels, dropout=0.2):
+        super(MethylationDropout, self).__init__()
+        self.in_channels=in_channels
+        self.dropout=dropout
+    def forward(self,x):
+        if self.in_channels>4 and self.training:
+            num_samples, num_channels, length = x.shape
+            mask = torch.rand(num_samples, length, device=x.device) > self.dropout 
+            mask = mask.unsqueeze(1).expand(num_samples, self.in_channels-4, length)
+            x[:,4:,:]*=mask # Zero out the methylation channels using the mask
+        return x
+
+@gin.configurable
+@gin.register
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0):
         super(ConvDNA, self).__init__()
+        self.in_channels=in_channels
         self.kernel_size=kernel_size
         self.pool_size=pool_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size)
