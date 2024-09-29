@@ -34,10 +34,10 @@ class DatasetWriter:
         self.initialize_h5()
     def initialize_h5(self):
         with h5py.File(self.output_path,'w') as f:
-            if 'region' in f:
-                del f['region']
+            if 'specifier' in f:
+                del f['specifier']
             f.create_dataset(
-                'region',
+                'specifier',
                 (0,),
                 maxshape=(None,),
                 dtype=h5py.string_dtype(encoding="utf-8"),
@@ -81,16 +81,16 @@ class DatasetWriter:
     def write_chunk(
         self,
         indices_list,
-        regions_list,
+        sample_specifier_list,
         onehot_seq_list,
-        labels_list,
+        labels_list=None,
         mask_list=None,
     ):
-        if len(onehot_seq_list)!=len(labels_list):
+        if labels_list is not None and len(onehot_seq_list)!=len(labels_list):
             raise ValueError(f'Cannot write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
         if len(onehot_seq_list[0])!=self.seq_length:
             raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {self.seq_length}.')
-        if labels_list[0].shape[0]!=self.track_length:
+        if labels_list is not None and labels_list[0].shape[0]!=self.track_length:
             raise ValueError(f'Cannot write chunk, track length is {labels_list[0].shape[0]} and should be {self.track_length}.')
 
         if self.mask:
@@ -101,13 +101,13 @@ class DatasetWriter:
                 
             
         with h5py.File(self.output_path, 'a') as f:
-            regions_dataset = f['region']
+            specifier_dataset = f['specifier']
             seq_dataset = f['sequence']
             track_dataset = f['tracks']
             if self.mask:
                 mask_dataset = f['mask']
 
-            current_regions_size = regions_dataset.shape[0]
+            current_specifier_size = specifier_dataset.shape[0]
             current_seq_size = seq_dataset.shape[0]
             current_track_size = track_dataset.shape[0]
             if self.mask:
@@ -118,11 +118,10 @@ class DatasetWriter:
             samples_per_region = int(len(onehot_seq_list)/len(indices_list))
             start_index = np.min(np.array(indices_list))*samples_per_region
             end_index = (np.max(np.array(indices_list)) + 1)*samples_per_region
-            sample_matched_regions_list = [region for _ in range(samples_per_region) for region in regions_list]
 
-            if current_regions_size==current_seq_size and current_seq_size==current_track_size and (not self.mask or current_mask_size==current_track_size):  
-                if current_regions_size<end_index:
-                    regions_dataset.resize(end_index, axis=0)
+            if current_specifier_size==current_seq_size and current_seq_size==current_track_size and (not self.mask or current_mask_size==current_track_size):  
+                if current_specifier_size<end_index:
+                    specifier_dataset.resize(end_index, axis=0)
                     seq_dataset.resize(end_index, axis=0)
                     track_dataset.resize(end_index, axis=0) 
                     if self.mask:
@@ -131,9 +130,12 @@ class DatasetWriter:
                 raise ValueError(f"Dataset sizes in {self.output_path} do not match: region={current_regions_size},sequence={current_seq_size},tracks={current_track_size}")
 
             try:
-                regions_dataset[start_index:end_index] = [f"{region['chrom']}:{region['start']}-{region['end']}" for region in sample_matched_regions_list]
+                specifier_dataset[start_index:end_index] = sample_specifier_list
                 seq_dataset[start_index:end_index, :, :] = [np.transpose(onehot_seq,(1,0)) for onehot_seq in onehot_seq_list]
-                track_dataset[start_index:end_index, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
+                if labels_list is None:
+                    track_dataset[start_index:end_index, :, :] = np.nan
+                else:
+                    track_dataset[start_index:end_index, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
                 if self.mask:
                     mask_dataset[start_index:end_index, :, :] = [np.transpose(mask,(1,0)) for mask in mask_list]
             except IndexError as e:

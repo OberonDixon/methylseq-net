@@ -48,14 +48,21 @@ class EncodingAdjuster(nn.Module):
 @gin.configurable
 @gin.register
 class MethylationDropout(nn.Module):
-    def __init__(self, in_channels, dropout=0.2):
+    def __init__(self, in_channels, dropout=0.2, chunk_size=1, inverted=False):
         super(MethylationDropout, self).__init__()
         self.in_channels=in_channels
         self.dropout=dropout
+        self.chunk_size=chunk_size
+        self.inverted=inverted
     def forward(self,x):
         if self.in_channels>4 and self.training:
             num_samples, num_channels, length = x.shape
-            mask = torch.rand(num_samples, length, device=x.device) > self.dropout 
+            effective_length = (length + self.chunk_size - 1) // self.chunk_size
+            chunk_mask = torch.rand(num_samples, effective_length, device=x.device) > self.dropout
+            if self.inverted:
+                chunk_mask = ~chunk_mask
+            mask = chunk_mask.repeat_interleave(self.chunk_size, dim=1)
+            mask = mask[:,:length]
             mask = mask.unsqueeze(1).expand(num_samples, self.in_channels-4, length)
             x[:,4:,:]*=mask # Zero out the methylation channels using the mask
         return x

@@ -19,6 +19,7 @@ from lightning.pytorch import LightningDataModule
 from lightning import Trainer
 from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
+from lightning.pytorch import Trainer, seed_everything
 import signal
 
 os.environ["SLURM_JOB_NAME"] = "interactive"
@@ -40,6 +41,29 @@ class MethylSeqDataModule(LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=3)
+
+# def print_random_seed_and_trainer_info(trainer, model):
+#     # Print the random seed being used (if set)
+#     seed = torch.initial_seed()
+#     print(f"PyTorch random seed: {seed}")
+
+#     # # Get Lightning's random seed (after Trainer.seed_everything() call)
+#     # print(f"Lightning random seed: {trainer.global_seed}")
+
+#     # # Print whether the Trainer is set to deterministic mode
+#     # print(f"Deterministic mode: {trainer.deterministic}")
+
+#     # # Check model's trainer for random seed initialization
+#     # print(f"Trainer's `deterministic`: {trainer._deterministic}")
+    
+#     # Other randomness factors (like CUDA deterministic)
+#     if torch.backends.cudnn.deterministic:
+#         print("CUDNN is set to deterministic.")
+#     else:
+#         print("CUDNN is not set to deterministic.")
+    
+#     if torch.backends.cudnn.benchmark:
+#         print("CUDNN benchmark is enabled.")
 
 def main(config,output_dir,unique_identifier,gpus,batch_size):
     
@@ -88,6 +112,8 @@ def main(config,output_dir,unique_identifier,gpus,batch_size):
         devices=gpus, 
         max_epochs=100
     )    
+
+    # print_random_seed_and_trainer_info(trainer, model)
     
     trainer.fit(
         model,

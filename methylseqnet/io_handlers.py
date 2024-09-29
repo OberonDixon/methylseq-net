@@ -6,11 +6,27 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
+from collections import defaultdict
 
-class GenomeRegionGenerator:
+################################################################################################################
+####                                         ABSTRACT BASE CLASSES                                          ####
+################################################################################################################
+
+
+class SampleGenerator:
+    """
+    A SampleGenerator class provides an interface to build a dict of lists of samples by data split (e.g.train).
+    These samples must be possible to independently grab using a MultitaskIOHandler, i.e. the sample lists must 
+    be possible to process in a fully parallelized fashion when building a dataset. 
+
+    The format for a sample is {'source':str,'start':int,'end':int}, where source delineates where to grab
+    information from (e.g. a contig in some reference genome or the path to a file from which every entry is
+    to be loaded) and the start and end delineating subsequences to load from e.g. the reference contig. The format
+    for the returned dict is {'train':[sample1,...,sampleN],...,'test':[sample1,...,sampleM]}.
+    """
     def __init__(self, **kwargs):
         pass
-    def create_regions(self):
+    def create_samples(self):
         raise NotImplementedError("Subclass must implement this method.")
 
 class MultitaskIOHandler:
@@ -20,10 +36,26 @@ class MultitaskIOHandler:
     appropriate shapes and write them using a DatasetWriter instance. process_batch handles loading
     through to writing to the dataset file, and must be compatible with parallelization.
     """
-    def __init__(self, **kwargs):
-        self.num_tracks = 1
-    def process_batch(self,region_list):
+    def __init__(self, label_bin_size=128, **kwargs):
+        self.label_bin_size = label_bin_size
+    def process_batch(self,sample_list):
         raise NotImplementedError("Subclass must implement this method.")
+    def seq_to_gc_content(
+        self,
+        sequence,
+    ):
+        """
+        Returns an array of gc content fractions using the binning of the labels
+        """
+        sequence_array = np.array(list(sequence.lower()))
+        gc_mask = (sequence_array == 'g') | (sequence_array == 'c')
+        gc_counts = gc_mask.astype(int)
+        num_bins = len(sequence) // self.label_bin_size
+        trimmed_gc_counts = gc_counts[:num_bins * self.label_bin_size]
+        gc_matrix = trimmed_gc_counts.reshape((num_bins, self.label_bin_size))
+        gc_fractions = gc_matrix.sum(axis=1) / self.label_bin_size
+        
+        return gc_fractions  
 
 class SequenceHandler:
     """
@@ -35,9 +67,9 @@ class SequenceHandler:
     """
     def __init__(self,**kwargs):
         raise NotImplementedError("Subclass must implement this method.")
-    def load_sequence(self,chrom,start,end,**kwargs):
+    def load_sequence(self,source,start,end,**kwargs):
         raise NotImplementedError("Subclass must implement this method")
-    def load_sequence_batch(self,region_list):
+    def load_sequence_batch(self,sample_list,**kwargs):
         raise NotImplementedError("Subclass must implement this method")
     
 class CpGHandler:
@@ -49,9 +81,9 @@ class CpGHandler:
     """
     def __init__(self,**kwargs):
         raise NotImplementedError("Subclass must implement this method.")
-    def load_cpg(self,chrom,start,end):
+    def load_cpg(self,source,start,end,**kwargs):
         raise NotImplementedError("Subclass must implement this method")
-    def load_cpg_batch(self,region_list):
+    def load_cpg_batch(self,sample_list,**kwargs):
         raise NotImplementedError("Subclass must implement this method")
     
 class LabelHandler:
@@ -64,16 +96,90 @@ class LabelHandler:
     """
     def __init__(self,**kwargs):
         raise NotImplementedError("Subclass must implement this method.")
-    def load_labels(self,chrom,start,end):
+    def load_labels(self,source,start,end,**kwargs):
         raise NotImplementedError("Subclass must implement this method")
-    def load_labels_batch(self,region_list):
-        raise NotImplementedError("Subclass must implement this method")       
+    def load_labels_batch(self,sample_list,**kwargs):
+        raise NotImplementedError("Subclass must implement this method") 
+
+################################################################################################################
+####                                         CLASS IMPLEMENTATIONS                                          ####
+################################################################################################################
 
 @gin.register
 @gin.configurable
-class FastaHandler(SequenceHandler):
+class RegionBedParser(SampleGenerator):
     """
-    This subclass handles simple fasta sequence loading
+    This subclass handles creating the task dict from a bed file defining regions by split.
+    """
+    def __init__(self,regions_bed: str | Path):
+        self.regions_bed = regions_bed
+    def create_samples(self):
+        """
+        This function exists to parse out the regions_bed file into lists for region
+        batch creation.
+        
+        The region_list_by_split dict will contain a list of region_dict for each
+        data split, e.g. test / train / validation, as each of these categories will ultimately be
+        written to a separate dataset file.
+        """
+        region_list_by_split = defaultdict(list)
+        with open(self.regions_bed) as f:
+            for line in f:
+                fields = line.split('\t')
+                chrom = fields[0]
+                start = int(fields[1])
+                end = int(fields[2])
+                split = fields[3].strip()
+                region_list_by_split[split].append({'source':chrom,'start':start,'end':end,}) 
+        return region_list_by_split
+
+@gin.register
+@gin.configurable
+class DirectoryIndexer(SampleGenerator):
+    """
+    This subclass handles creating the task dict for all files within a directory that match
+    a given suffix. All will be put into the same split, which can be provided on initialization.
+
+    The intended use case as of this writing is to list fasta files in a directory or a nested
+    set of directories, so one can create a dataset that contains all the sequences therein, annotated
+    with the paths to the files. If recursive=True, all folders within the directory will also
+    be searched.
+    """
+    def __init__(self,directory,suffix='fasta',start=None,end=None,split='pred',recursive=False):
+        self.directory=directory
+        self.suffix=suffix
+        self.start=start
+        self.end=end
+        self.split=split
+        self.recursive=recursive
+    def create_samples(self):
+        """
+        This function will generate the samples dict, with all samples listed under the split key provided
+        at initialization
+        """
+        samples_by_split = defaultdict(list)
+        
+        if self.recursive:
+            files = list(self.directory.rglob(f'*.{self.suffix}'))
+        else:
+            files = list(self.directory.glob(f'*.{self.suffix}'))
+        
+        for file_path in files:
+            file_dict = {
+                'source': str(file_path),
+                'start': self.start,
+                'end': self.end,
+            }
+            samples_by_split[self.split].append(file_dict)
+        
+        return samples_by_split
+
+@gin.register
+@gin.configurable
+class SingleFastaHandler(SequenceHandler):
+    """
+    This subclass handles simple fasta sequence loading from a single fasta file where the samples
+    are loaded from specified, named sequences, e.g. chromosomes or named entries where the name has meaning.
     """
     def __init__(self,ref_genome: str):
         if os.path.isfile(ref_genome):
@@ -82,11 +188,43 @@ class FastaHandler(SequenceHandler):
             self.ref_genome = ref_genome
         else:
             raise OSError(f"{ref_genome} does not exist.")
-    def load_sequence(self,chrom,start,end,fastafile):
-        return fastafile.fetch(chrom,start,end)
-    def load_sequence_batch(self,regions_list):
+    def load_sequences(self,source,start,end,fastafile):
+        return fastafile.fetch(source,start,end)
+    def load_sequence_batch(self,sample_list):
         fastafile = pysam.FastaFile(self.ref_genome)
-        return [self.load_sequence(**region,fastafile=fastafile) for region in regions_list]
+        return [self.load_sequences(**sample,fastafile=fastafile) for sample in sample_list]
+
+@gin.register
+@gin.configurable
+class MultiFastaHandler(SequenceHandler):
+    """
+    This subclass handles loading sequences from a set of fasta files where the samples specifier
+    tell which file to load from and all sequences are loaded up as part of the one entry, with
+    no unique identifiers passed back. This makes sense if e.g. each fasta file refers to a specific
+    motif insertion or other type of perturbation, and the sequences within are different versions of
+    the same thing, randomly generated or otherwise not delineated from one another.
+    """
+    def __init__(self):
+        pass
+    
+    def load_sequences(self,source,start,end):
+        """
+        Load all sequences from the specified FASTA file in the order they appear. 
+        This method supports non-indexed FASTA files as well as indexed ones.
+        """
+        if os.path.isfile(source):        
+            sequences = [str(record.seq)[start:end] for record in SeqIO.parse(source, "fasta")]
+        else:
+            raise OSError(f"{source} does not exist.")
+        return sequences
+        
+    
+    def load_sample_batch(self, sample_list):
+        """
+        Load a batch of samples, where each sample refers to a FASTA file.
+        Each file's sequences are loaded in full and returned as a list.
+        """
+        return [self.load_sequences(**sample) for sample in sample_list]
 
 @gin.register
 @gin.configurable
@@ -115,12 +253,12 @@ class MultiBigWigCpGHandler(CpGHandler):
         self.combine_operation = combine_operation
         self.binarize = binarize
         self.threshold = threshold
-    def load_cpg(self,chrom,start,end,bws):
+    def load_cpg(self,source,start,end,bws):
         cpg_fractions_list = []
         num_bws = len(bws)
         aggregated_valid_cpgs = np.zeros(end - start)
         for bw in bws:
-            raw_values = np.array(bw.values(chrom,start,end))
+            raw_values = np.array(bw.values(source,start,end))
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
             valid_mask = ~np.isnan(raw_values)
@@ -138,14 +276,30 @@ class MultiBigWigCpGHandler(CpGHandler):
         if self.binarize:
             return aggregated_fractions>self.threshold,aggregated_valid_cpgs
         else:
-            return aggregated_fractions,aggregated_valid_cpgs      
+            return (aggregated_fractions,aggregated_valid_cpgs)      
    
-    def load_cpg_batch(self,regions_list):
+    def load_cpg_batch(self,sample_list):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
-        cpgs = [self.load_cpg(**region,bws=bws) for region in regions_list]
+        cpgs = [self.load_cpg(**sample,bws=bws) for sample in sample_list]
         for bw in bws:
             bw.close()
-        return tuple(map(list,zip(*cpgs)))
+        return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
+
+@gin.register
+@gin.configurable
+class SyntheticGpGHandler(CpGHandler):
+    """
+    This subclass generates synthetic CpG methylation patterns based on provided DNA sequence information.
+    """
+    def __init__(self,landscape_specification_params):
+        self.landscape_specification_params = landscape_specification_params
+    def load_cpg(self,source,start,end,sequence):
+        # find CGs
+        # identify which to methylate
+        return np.zeros(len(sequence)),np.zeros(len(sequence))
+    def load_cpg_batch(self,sample_list,sequence_list):
+        cpgs = [self.load_cpg(**sample,sequence=sequence) for sample,sequence in zip(sample_list,sequence_list)]
+        return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
     
 @gin.register
 @gin.configurable
@@ -153,7 +307,7 @@ class MultiBigWigLabelHandler(LabelHandler):
     def __init__(
             self,
             bigwig_files: list,
-            trim_off_ends: int,
+            # trim_off_ends: int,
             label_bin_size: int,
             combine_operation='mean',
             normalize_counts=True,
@@ -169,7 +323,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.binarize = binarize
         self.threshold = threshold     
-        self.trim_off_ends = trim_off_ends
+        # self.trim_off_ends = trim_off_ends
         self.label_bin_size = label_bin_size 
         self.counts_normalization = 0
         for bigwig_file in bigwig_files:   
@@ -189,12 +343,13 @@ class MultiBigWigLabelHandler(LabelHandler):
             else:
                 raise OSError(f"{bigwig_file} does not exist.")
  
-    def load_labels(self,chrom,start,end,bws,gc_content):
+    def load_labels(self,source,start,end,bws,gc_content):
         values_list = []
-        if (end - start - 2*self.trim_off_ends)%self.label_bin_size != 0:
-            raise ValueError(f"Genomic region {chrom}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size} after trimming {self.trim_off_ends} from the ends of the input.")
+        if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
+            raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") # after trimming {self.trim_off_ends} from the ends of the input
         for bw in bws:
-            raw_values = bw.values(chrom,start+self.trim_off_ends,end-self.trim_off_ends)
+            raw_values = bw.values(source,start,end)
+            # raw_values = bw.values(source,start+self.trim_off_ends,end-self.trim_off_ends)
             # set nan to zero
             values_list.append(np.nan_to_num(raw_values,nan=0.0))
         if self.combine_operation=='mean':
@@ -213,14 +368,14 @@ class MultiBigWigLabelHandler(LabelHandler):
         else:
             return np.log10(aggregated_values+1)       
             
-    def load_labels_batch(self,regions_list,gc_content_list=None):
+    def load_labels_batch(self,sample_list,gc_content_list=None):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
         if self.normalize_gc:
             if gc_content_list is None:
                 raise ValueError("Must provide a gc_content_list if MultiBigWigLabelHandler.normalize_gc = True")
-            labels = [self.load_labels(**region,bws=bws,gc_content=gc_content) for region,gc_content in zip(regions_list,gc_content_list)]   
+            labels = [self.load_labels(**sample,bws=bws,gc_content=gc_content) for sample,gc_content in zip(sample_list,gc_content_list)]  
         else:
-            labels = [self.load_labels(**region,bws=bws,gc_content=None) for region in regions_list]
+            labels = [self.load_labels(**sample,bws=bws,gc_content=None) for sample in sample_list]
         for bw in bws:
             bw.close()
         # for region,label in zip(regions_list,labels):
@@ -237,7 +392,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
             targets_directory,
             match_file,       
             max_chunks_in_mem,
-            trim_off_ends,
+            # trim_off_ends,
             label_bin_size,
             label_num_bins,
             normalize_label_counts,
@@ -288,7 +443,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
                         self.labels_specifier_list.append(
                             {
                                 'index':label_index,
-                                'sequence_handler':FastaHandler(
+                                'sequence_handler':SingleFastaHandler(
                                     ref_genome=ref_genome,
                                 ),
                                 'cpg_handler':MultiBigWigCpGHandler(
@@ -298,7 +453,7 @@ class BigWigCellAtlas(MultitaskIOHandler):
                                 ),
                                 'label_handler':MultiBigWigLabelHandler(
                                     bigwig_files = atac_celltype_files,
-                                    trim_off_ends=trim_off_ends,
+                                    # trim_off_ends=trim_off_ends,
                                     label_bin_size=label_bin_size,
                                     normalize_counts=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
@@ -312,50 +467,45 @@ class BigWigCellAtlas(MultitaskIOHandler):
                             atac_names,
                         )
                         label_index+=1
-        self.num_tracks = label_index
-
-    def seq_to_gc_content(
-        self,
-        sequence,
-    ):
-        """
-        Returns an array of gc content fractions using the binning of the labels
-        """
-        sequence_array = np.array(list(sequence.lower()))
-        gc_mask = (sequence_array == 'g') | (sequence_array == 'c')
-        gc_counts = gc_mask.astype(int)
-        num_bins = len(sequence) // self.label_bin_size
-        trimmed_gc_counts = gc_counts[:num_bins * self.label_bin_size]
-        gc_matrix = trimmed_gc_counts.reshape((num_bins, self.label_bin_size))
-        gc_fractions = gc_matrix.sum(axis=1) / self.label_bin_size
-        
-        return gc_fractions       
+        self.num_tracks = label_index     
     
     def process_batch(
         self,
         indices_list,
-        regions_list,
+        sample_list,
         dataset_writer,
         lock,
     ):
+        sample_specifier_list = []
         onehot_dna_list = []
         label_list = []
         mask_list = []
-        for label_specifier_dict in self.labels_specifier_list:#tqdm(self.labels_specifier_list,desc=f'processing batch',leave=False):
-            sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(regions_list)
+        for label_specifier_dict in self.labels_specifier_list:
+            # Load and parse out sequences (returned as dict with sequences per sample)
+            sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(sample_list)
             gc_content_list = [self.seq_to_gc_content(sequence) for sequence in sequence_list]
-            methylation_fractions_list,valid_cpgs_list = label_specifier_dict['cpg_handler'].load_cpg_batch(regions_list)
-            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(regions_list,gc_content_list)
+            
+            # Load and parse out cpgs (returned as dict with meth fraction,valid CG sites per sample)
+            methylation_fractions_list,valid_cpgs_list = label_specifier_dict['cpg_handler'].load_cpg_batch(sample_list)
+
+            # Load and parse out labels (returned as dict with labels per sample)
+            label_columns_list = label_specifier_dict['label_handler'].load_labels_batch(sample_list,gc_content_list)
+
+            # Process label arrays to account for the masked multitask structure
             label_arrays = [np.zeros((self.label_num_bins,self.num_tracks),dtype=bool if self.binarize_labels else float) for _ in label_columns_list]
             for label_array,label_column in zip(label_arrays,label_columns_list):
                 label_array[:,label_specifier_dict['index']]=label_column 
-
-            label_list+=label_arrays
-
+                
+            # Generate corresponding masks
             mask_arrays = [np.full((self.label_num_bins,self.num_tracks),False) for _ in label_columns_list]
             for mask_array in mask_arrays:
                 mask_array[:,label_specifier_dict['index']] = True
-
+                
+            # Add to the relevant building-up lists
+            sample_specifier_list+=[f"{sample['source']}:{sample['start']}-{sample['end']}|task{label_specifier_dict['index']}" 
+                                         for sample in sample_list 
+                                         for _ in range(len(sequence_list)//len(sample_list))]
+            label_list+=label_arrays
             mask_list += mask_arrays
             
             onehot_dna_list+=[one_hot_encode_dna(
@@ -374,22 +524,59 @@ class BigWigCellAtlas(MultitaskIOHandler):
                 with lock: # we need the lock so allow parallel threads to all write to the same output file
                     dataset_writer.write_chunk(
                         indices_list,
-                        regions_list,
+                        sample_specifier_list,
                         onehot_dna_list,
                         label_list,
                         mask_list,
                     )
+                sample_specifier_list = []
                 onehot_dna_list = []
                 label_list = []
                 mask_list = []
         with lock: # we need the lock so allow parallel threads to all write to the same output file
             dataset_writer.write_chunk(
                 indices_list,
-                regions_list,
+                sample_specifier_list,
                 onehot_dna_list,
                 label_list,
                 mask_list,
             )
     
+@gin.register
+@gin.configurable
+class MultiFastaSequenceOnly(MultitaskIOHandler):
+    def __init__(self):
+        self.multi_fasta_handler = MultiFastaHandler()
+        self.synthetic_cpg_handler = SyntheticCpGHandler()
+    def process_batch(
+        self,
+        indices_list,
+        sample_list,
+        dataset_writer,
+        lock,
+    ):    
+        sequence_list = self.multi_fasta_handler.load_sequence_batch(sample_list)
+        # the synthetic methylation class currently just returns zeros; we need to implement some pattern generation
+        methylation_fractions_list,valid_cpgs_list = synthetic_cpg_handler.load_cpg_batch(sample_list,sequence_list)
 
-
+        onehot_dna_list = [one_hot_encode_dna(
+                dna_strand=sequence,
+                cpg_methylation=cpg,
+                valid_cpgs=valid_cpgs) for 
+                              sequence,cpg,valid_cpgs in zip(
+                                  sequence_list,
+                                  methylation_fractions_list,
+                                  valid_cpgs_list,
+                              )
+                             ]
+        
+        sample_specifier_list = [f"{sample['source']}:{sample['start']}-{sample['end']}|{sequence_idx}" 
+                                 for sample in sample_list 
+                                 for sequence_idx in range(len(sequence_list)//len(sample_list))
+                                ]
+        with lock:
+            dataset_writer.write_chunk(
+                indices_list,
+                sample_specifier_list,
+                onehot_dna_list,
+            )

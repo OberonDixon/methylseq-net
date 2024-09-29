@@ -6,18 +6,21 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:8
+#SBATCH --gres=gpu:4
 #SBATCH --requeue
 #SBATCH --time=24:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-0 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=0-1 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 
 # Command(s) to run:
 
 # Define an array of config files
 CONFIG_FILES=(
-    "../configs/train_seq-binary-cpg_lightning.gin"
+    "../configs/train_seq-binary-drop8-cpg-decay_lightning.gin"
+    "../configs/train_seq-binary-drop64-cpg-decay_lightning.gin"
+    # "../configs/train_seq-binary-drop-cpg-decay_lightning.gin"
+    # "../configs/train_seq-binary-cpg_lightning.gin"
     # "../configs/train_seq-binary-drop-cpg_lightning.gin"
     # "../configs/train_seq-cpg_lightning.gin"
     # "../configs/train_seq-cpg-weight-decay_lightning.gin"
