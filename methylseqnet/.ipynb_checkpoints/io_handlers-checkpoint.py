@@ -1,4 +1,5 @@
 import gin, pyBigWig, pysam
+from Bio import SeqIO
 # import dimelo
 import os
 import numpy as np
@@ -36,7 +37,8 @@ class MultitaskIOHandler:
     appropriate shapes and write them using a DatasetWriter instance. process_batch handles loading
     through to writing to the dataset file, and must be compatible with parallelization.
     """
-    def __init__(self, label_bin_size=128, **kwargs):
+    def __init__(self, num_tracks=1, label_bin_size=128, **kwargs):
+        self.num_tracks = num_tracks
         self.label_bin_size = label_bin_size
     def process_batch(self,sample_list):
         raise NotImplementedError("Subclass must implement this method.")
@@ -145,11 +147,11 @@ class DirectoryIndexer(SampleGenerator):
     with the paths to the files. If recursive=True, all folders within the directory will also
     be searched.
     """
-    def __init__(self,directory,suffix='fasta',start=None,end=None,split='pred',recursive=False):
-        self.directory=directory
+    def __init__(self,directory,suffix='fasta',subsequence_start=None,subsequence_end=None,split='pred',recursive=False):
+        self.directory=Path(directory)
         self.suffix=suffix
-        self.start=start
-        self.end=end
+        self.start=subsequence_start
+        self.end=subsequence_end
         self.split=split
         self.recursive=recursive
     def create_samples(self):
@@ -212,19 +214,22 @@ class MultiFastaHandler(SequenceHandler):
         Load all sequences from the specified FASTA file in the order they appear. 
         This method supports non-indexed FASTA files as well as indexed ones.
         """
-        if os.path.isfile(source):        
-            sequences = [str(record.seq)[start:end] for record in SeqIO.parse(source, "fasta")]
+        if os.path.isfile(source):  
+            if start and end:
+                sequences = [str(record.seq)[start:end] for record in SeqIO.parse(source, "fasta")]
+            else:
+                sequences = [str(record.seq) for record in SeqIO.parse(source, "fasta")]
         else:
             raise OSError(f"{source} does not exist.")
         return sequences
         
     
-    def load_sample_batch(self, sample_list):
+    def load_sequence_batch(self, sample_list):
         """
         Load a batch of samples, where each sample refers to a FASTA file.
         Each file's sequences are loaded in full and returned as a list.
         """
-        return [self.load_sequences(**sample) for sample in sample_list]
+        return [sequence for sample in sample_list for sequence in self.load_sequences(**sample)]
 
 @gin.register
 @gin.configurable
@@ -287,18 +292,22 @@ class MultiBigWigCpGHandler(CpGHandler):
 
 @gin.register
 @gin.configurable
-class SyntheticGpGHandler(CpGHandler):
+class SyntheticCpGHandler(CpGHandler):
     """
     This subclass generates synthetic CpG methylation patterns based on provided DNA sequence information.
     """
-    def __init__(self,landscape_specification_params):
+    def __init__(self,landscape_specification_params=None):
         self.landscape_specification_params = landscape_specification_params
     def load_cpg(self,source,start,end,sequence):
         # find CGs
         # identify which to methylate
         return np.zeros(len(sequence)),np.zeros(len(sequence))
     def load_cpg_batch(self,sample_list,sequence_list):
-        cpgs = [self.load_cpg(**sample,sequence=sequence) for sample,sequence in zip(sample_list,sequence_list)]
+        cpgs = [self.load_cpg(**sample,sequence=sequence) for sample,sequence in zip(
+                    sample_list*(len(sequence_list)//len(sample_list)),
+                    sequence_list
+                    )
+               ]
         return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
     
 @gin.register
@@ -608,7 +617,8 @@ class BigWigCellAtlas(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MultiFastaSequenceOnly(MultitaskIOHandler):
-    def __init__(self):
+    def __init__(self,num_tracks=1):
+        self.num_tracks = num_tracks
         self.multi_fasta_handler = MultiFastaHandler()
         self.synthetic_cpg_handler = SyntheticCpGHandler()
     def process_batch(
@@ -620,7 +630,7 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
     ):    
         sequence_list = self.multi_fasta_handler.load_sequence_batch(sample_list)
         # the synthetic methylation class currently just returns zeros; we need to implement some pattern generation
-        methylation_fractions_list,valid_cpgs_list = synthetic_cpg_handler.load_cpg_batch(sample_list,sequence_list)
+        methylation_fractions_list,valid_cpgs_list = self.synthetic_cpg_handler.load_cpg_batch(sample_list,sequence_list)
 
         onehot_dna_list = [one_hot_encode_dna(
                 dna_strand=sequence,
@@ -632,11 +642,12 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
                                   valid_cpgs_list,
                               )
                              ]
-        
+
         sample_specifier_list = [f"{sample['source']}:{sample['start']}-{sample['end']}|{sequence_idx}" 
                                  for sample in sample_list 
                                  for sequence_idx in range(len(sequence_list)//len(sample_list))
                                 ]
+        
         with lock:
             dataset_writer.write_chunk(
                 indices_list,
