@@ -310,7 +310,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             # trim_off_ends: int,
             label_bin_size: int,
             combine_operation='mean',
-            normalize_counts=True,
+            normalize_counts=False,
             normalize_gc=True,
             binarize=False,
             threshold=5,
@@ -381,7 +381,70 @@ class MultiBigWigLabelHandler(LabelHandler):
         # for region,label in zip(regions_list,labels):
         #     print(f'summary for {region}: min=',np.min(label),'max=',np.max(label),'mean',np.mean(label))
         return labels
-    
+
+@gin.register
+@gin.configurable
+class MultiBedGzLabelHandler(LabelHandler):
+    def __init__(
+            self,
+            bedgz_files: list,
+            # trim_off_ends: int,
+            label_bin_size: int,
+            combine_operation='mean',
+            normalize_counts=False,
+            normalize_gc=True,
+            binarize=False,
+            threshold=5,
+            ):    
+        self.bedgz_file = bedgz_files
+        for bedgz_file in self.bedgz_files:   
+            if os.path.isfile(bedgz_file):
+                try:
+                    if self.normalize_counts:
+                        sample_values = self.counts_vector_from_bedgz(bedgz_file,'chr1',0,200000000)
+                        sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
+                        if combine_operation=='mean':
+                            self.counts_normalization+=sample_values_sum/(200000000+len(bigwig_files))
+                        else:
+                            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+                    else:
+                        pysam.TabixFile(str(bedgz_file)) # just check that we can open the file
+                except:
+                    raise ValueError(f"{bedgz_file} cannot be opened by pysam tabix - is it bgzipped and indexed?")
+            else:
+                raise OSError(f"{bedgz_file} does not exist.") 
+                
+    def counts_vector_from_bedgz(self,bedgz_file,chrom,start,end):
+        counts_vector = np.zeros(end-start)
+        for row in pysam.TabixFile(str(bedgz_file)).fetch(chrom,start,end):
+            tabix_fields = row.split("\t")
+            genomic_coord = int(tabix_fields[1])
+            counts = int(tabix_fields[4])
+            counts_vector[genomic_coord-start]+=counts
+        return counts_vector
+        
+    def load_labels(self,source,start,end,bws,gc_content):
+        values_list = []
+        if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
+            raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") # after trimming {self.trim_off_ends} from the ends of the input
+        for bedgz_file in self.bedgz_files:
+            raw_values = self.counts_vector_from_bedgz(bedgz_file,source,start,end)
+        if self.combine_operation=='mean':
+            # Stack the arrays along a new axis (0) and compute the mean along this axis
+            stacked_values = np.stack(values_list, axis=0)
+            aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
+        else:
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.normalize_gc:
+            # This may in future be replaced with a more sophisticated calculation
+            aggregated_values = aggregated_values/(gc_content + 0.1)
+        if self.normalize_counts:
+            aggregated_values = 1000*aggregated_values/self.counts_normalization
+        if self.binarize:
+            return aggregated_values>self.threshold
+        else:
+            return np.log10(aggregated_values+1)    
+        
 @gin.register
 @gin.configurable
 class BigWigCellAtlas(MultitaskIOHandler):
