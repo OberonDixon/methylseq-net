@@ -41,6 +41,7 @@ from lightning import Trainer
 def run_whole_dataset(
     model_path: str | Path,
     dataset_path: str | Path,
+    layers_to_prepend: list=[],
     batch_size: int=64,
     track_index: int|None = None,
     layer_name: str | None = None,
@@ -72,43 +73,15 @@ def run_whole_dataset(
     trainer = Trainer(accelerator='gpu',**kwargs)
     
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+
+    layers = list(model.layers)
+    for preprend_layer in layers_to_prepend[::-1]:
+        layers.insert(0, preprend_layer)
+    model.layers = nn.ModuleList(layers)
     
     result = trainer.test(model=model,dataloaders=dataloader)
     targets_list = model.test_targets_list
     outputs_list = model.test_outputs_list
-    
-    # targets_list = []
-    # outputs_list = []
-    
-    # for batch_idx, (inputs, targets, mask) in enumerate(tqdm(dataloader,unit='batch',desc='model passes')):
-
-    #     # targets = targets.permute(0, 2, 1)
-
-    #     inputs, targets = inputs.to(device), targets.to(device)
-
-    #     outputs = model(inputs)
-
-    #     trim_off_targets = targets.shape[2] - model.out_bins
-    #     targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
-
-    #     if mask is not None:
-    #         # mask = mask.permute(0, 2, 1)
-    #         mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
-    #         mask.to(device)
-    #     else:
-    #         # for code clarity, we make a "fake" mask that is just True everywhere
-    #         # this means we don't need any other if statements to handle None, and
-    #         # it means the later mask application will still squeeze the targets and 
-    #         # outputs even if it doesn't remove any elements
-    #         mask = torch.ones_like(targets, dtype=torch.bool)
-    #         mask.to(device)
-        
-    #     # this applies the appropriate masking and reshapes to 1d so we can directly extend the list
-    #     targets = targets[mask]
-    #     outputs = outputs[mask]
-
-    #     targets_list.extend(targets.cpu().detach().numpy().tolist())
-    #     outputs_list.extend(outputs.cpu().detach().numpy().tolist())
 
     
     # Remove hook to release memory
@@ -120,7 +93,7 @@ def run_whole_dataset(
     # targets = torch.tensor(targets_list).numpy()
     # probabilities = torch.sigmoid(torch.tensor(outputs_list)).numpy()
     
-    return targets_list,outputs_list
+    return targets_list,outputs_list,trainer.global_rank
 
 # def run_whole_dataset_specified_indices(
 #     model_path: str | Path,

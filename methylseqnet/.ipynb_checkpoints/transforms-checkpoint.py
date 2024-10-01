@@ -1,61 +1,16 @@
-import h5py
-from torch.utils.data import Dataset
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-import numpy as np
-from tqdm.auto import tqdm
+import gin
 
-# MEM_LOADER_CHUNKS = 32000
-
-class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[]):
-        self.file_path = file_path
-        self.batch_size = batch_size
-        self.transforms = transforms
-        # Check dataset details
-        with h5py.File(self.file_path, 'r') as f:
-            # Determine the length of the dataset
-            self.length = len(f['sequence'])
-            if len(f['sequence']) != len(f['tracks']):
-                raise ValueError(f"sequence and tracks datasets do not line up: {len(f['sequence'])} vs {len(f['tracks'])} entries respectively.")
-            if 'mask' in f:
-                self.mask = True
-                if len(f['tracks']) != len(f['mask']):
-                    raise ValueError(f"tracks and mask datasets do not line up: {len(f['tracks'])} vs {len(f['mask'])} entries respectively.")
-            else:
-                self.mask = False
-
-        
-    def __len__(self):
-        return (self.length + self.batch_size -1) // self.batch_size
-
-    def __getitem__(self, idx):
-        start_idx = idx * self.batch_size
-        end_idx = min(start_idx + self.batch_size, self.length)
-        with h5py.File(self.file_path, 'r') as f:
-            input_data = f['sequence'][start_idx:end_idx,:,:]
-            target = f['tracks'][start_idx:end_idx,:,:]
-            input_data = torch.tensor(input_data, dtype=torch.float32)
-            target = torch.tensor(target, dtype=torch.float32)
-            if self.mask:
-                mask = f['mask'][start_idx:end_idx,:,:]
-                mask = torch.tensor(mask, dtype=torch.bool)
-            else:
-                mask = None
-        
-        for transform in self.transforms:
-            input_data, target, mask = transform(input_data, target, mask)
-            
-
-        return input_data, target, mask
-
-class SmoothMethylationTransform:
+class SmoothMethylationTransform(nn.Module):
     def __init__(self, window_size=3):
         """
         Initializes the smoothing transform.
         Args:
             window_size (int): Size of the smoothing window. Should be odd to ensure a symmetric window.
         """
+        super(SmoothMethylationTransform,self).__init__()
         self.window_size = window_size
 
     def smooth(self, methylation, mask):
@@ -85,7 +40,7 @@ class SmoothMethylationTransform:
 
         return smoothed
 
-    def __call__(self, input_data, target, mask):
+    def forward(self, x):
         """
         Args:
             input_data (torch.Tensor): Tensor with shape (batch_size, channels, position).
@@ -97,13 +52,13 @@ class SmoothMethylationTransform:
             torch.Tensor: Transformed input_data with smoothed methylation values.
         """
         # Get channels 5, 6 (methylation), 7 (mask), and 0-3 (sequence)
-        methylation_forward = input_data[:, 4, :]
-        methylation_reverse = input_data[:, 5, :]
-        sequence_A = input_data[:, 0, :]
-        sequence_C = input_data[:, 1, :]
-        sequence_G = input_data[:, 2, :]
-        sequence_T = input_data[:, 3, :]
-        cg_mask = input_data[:, 6, :]  # CG positions mask
+        methylation_forward = x[:, 4, :]
+        methylation_reverse = x[:, 5, :]
+        sequence_A = x[:, 0, :]
+        sequence_C = x[:, 1, :]
+        sequence_G = x[:, 2, :]
+        sequence_T = x[:, 3, :]
+        cg_mask = x[:, 6, :]  # CG positions mask
 
         # Create forward and reverse strand masks
         forward_strand_mask = (sequence_C > 0) & (cg_mask > 0)  # C must be present in the sequence
@@ -116,7 +71,7 @@ class SmoothMethylationTransform:
         smoothed_reverse = self.smooth(methylation_reverse, reverse_strand_mask)
 
         # Update the input data tensor with smoothed methylation
-        input_data[:, 4, :] = smoothed_forward
-        input_data[:, 5, :] = smoothed_reverse
+        x[:, 4, :] = smoothed_forward
+        x[:, 5, :] = smoothed_reverse
 
-        return input_data, target, mask
+        return x

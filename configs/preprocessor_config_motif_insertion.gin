@@ -1,36 +1,21 @@
-ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
-regions_bed = '/clusterfs/nilah/oberon/datasets/basenji2_human_training/sequences.bed'
-methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/GSE186458_RAW'
-atac_directory = '/global/scratch/users/dixonluinenburg/atac_atlas/bigwigs'
-match_file = '/clusterfs/nilah/oberon/genomic-data-exploration/cell_atlases/cell_type_matching.txt'
-output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/regression_new_pipeline/'
+directory = '/global/scratch/users/poojakathail/kidney_data/archive/scBasset/Homo_sapiens_motif_fasta/endogenous_sequences_basenji_motifs_insertion_position_-10/'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/motif_insertion_test/'
 label_bin_size = 128
-label_num_bins = 1024
-# trim_off_ends = 0
-seq_length = 131072
+label_num_bins = 1
+seq_length = 1288
 
 DatasetWriter.track_length = %label_num_bins
 DatasetWriter.seq_length = %seq_length
 DatasetWriter.cpg_input = True
-DatasetWriter.mask = True
+DatasetWriter.mask = False
 
-RegionBedParser.regions_bed = %regions_bed
+DirectoryIndexer.directory = %directory
+DirectoryIndexer.subsequence_start = 64892
+DirectoryIndexer.subsequence_end = 66180
+DirectoryIndexer.recursive = False # recursive will look into sub folders as well
 
-BigWigCellAtlas.ref_genome = %ref_genome
-BigWigCellAtlas.methylation_directory = %methylation_directory
-BigWigCellAtlas.targets_directory = %atac_directory
-BigWigCellAtlas.match_file = %match_file
-BigWigCellAtlas.max_chunks_in_mem = 1000
-# BigWigCellAtlas.trim_off_ends = %trim_off_ends
-BigWigCellAtlas.label_bin_size = %label_bin_size
-BigWigCellAtlas.label_num_bins = %label_num_bins
-BigWigCellAtlas.normalize_label_counts = False
-BigWigCellAtlas.normalize_label_gc = True
-BigWigCellAtlas.binarize_labels = False
-# BigWigCellAtlas.threshold_labels = 5
-
-PreprocessingPipeline.sample_generator = @RegionBedParser()
-PreprocessingPipeline.multitask_io_handler = @BigWigCellAtlas()
+PreprocessingPipeline.sample_generator = @DirectoryIndexer()
+PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
 PreprocessingPipeline.dataset_writer_class = @DatasetWriter
 PreprocessingPipeline.samples_per_batch = 1
 PreprocessingPipeline.output_directory = %output_directory
