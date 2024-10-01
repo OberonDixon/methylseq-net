@@ -60,3 +60,8 @@ class CustomH5Dataset(Dataset):
             return input_data, target, mask, specifiers
         else:
             return input_data, target, mask
+
+    def get_config(self):
+        with h5py.File(self.file_path, 'r') as f:
+            gin_config_str = f.attrs['gin_config']
+            return gin_config_str
