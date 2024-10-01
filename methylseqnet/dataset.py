@@ -8,10 +8,11 @@ from tqdm.auto import tqdm
 # MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[]):
+    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False):
         self.file_path = file_path
         self.batch_size = batch_size
         self.transforms = transforms
+        self.return_specifiers = return_specifiers
         # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
             # Determine the length of the dataset
@@ -42,9 +43,20 @@ class CustomH5Dataset(Dataset):
                 mask = torch.tensor(mask, dtype=torch.bool)
             else:
                 mask = None
+            if self.return_specifiers:
+                try:
+                    specifiers = f['specifier'][start_idx:end_idx]
+                except:
+                    try: 
+                        specifiers = f['region'][start_idx:end_idx]
+                    except:
+                        raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False')
+                    
         
         for transform in self.transforms:
             input_data, target, mask = transform(input_data, target, mask)
-            
 
-        return input_data, target, mask
+        if self.return_specifiers:
+            return input_data, target, mask, specifiers
+        else:
+            return input_data, target, mask
