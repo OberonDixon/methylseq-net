@@ -16,6 +16,7 @@ setup(
         "pynvml",
         "logomaker",
         "pysam",
-        "lightning",       
+        "lightning", 
+        "h5py",
     ],
 )
