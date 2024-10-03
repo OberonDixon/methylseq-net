@@ -60,6 +60,9 @@ class MethylSeqNN(L.LightningModule):
     def training_step(self,batch,batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)  
+        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
+        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
+        # and thus for bigger receptive field there are fewer prediction bins along the sequence
         trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
         # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
@@ -76,6 +79,9 @@ class MethylSeqNN(L.LightningModule):
     def validation_step(self, batch, batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)
+        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
+        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
+        # and thus for bigger receptive field there are fewer prediction bins along the sequence
         trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
         # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
@@ -98,6 +104,9 @@ class MethylSeqNN(L.LightningModule):
         inputs, targets, mask = batch
 
         outputs = self(inputs)
+        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
+        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
+        # and thus for bigger receptive field there are fewer prediction bins along the sequence
         trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:

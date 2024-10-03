@@ -6,6 +6,10 @@ import gin
 @gin.configurable
 @gin.register
 class EncodingAdjuster(nn.Module):
+    """
+    EncodingAdjuster / EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
+    different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
+    """
     def __init__(self, encoding_str):
         super(EncodingAdjuster,self).__init__()
         self.encoding_str = encoding_str
