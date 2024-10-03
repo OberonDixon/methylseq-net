@@ -1,16 +1,18 @@
 import h5py
 from torch.utils.data import Dataset
 import torch
+import torch.nn.functional as F
 import numpy as np
 from tqdm.auto import tqdm
 
 # MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transform=None):
+    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False):
         self.file_path = file_path
         self.batch_size = batch_size
-        self.transform = transform
+        self.transforms = transforms
+        self.return_specifiers = return_specifiers
         # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
             # Determine the length of the dataset
@@ -32,20 +34,36 @@ class CustomH5Dataset(Dataset):
         start_idx = idx * self.batch_size
         end_idx = min(start_idx + self.batch_size, self.length)
         with h5py.File(self.file_path, 'r') as f:
-            input_data = f['sequence'][start_idx:end_idx]
-            target = f['tracks'][start_idx:end_idx]
+            input_data = f['sequence'][start_idx:end_idx,:,:]
+            target = f['tracks'][start_idx:end_idx,:,:]
+            input_data = torch.tensor(input_data, dtype=torch.float32)
+            target = torch.tensor(target, dtype=torch.float32)
             if self.mask:
-                mask = f['mask'][start_idx:end_idx]
+                mask = f['mask'][start_idx:end_idx,:,:]
+                mask = torch.tensor(mask, dtype=torch.bool)
             else:
                 mask = None
+            if self.return_specifiers:
+                try:
+                    specifiers = f['specifier'][start_idx:end_idx]
+                except:
+                    try: 
+                        # this exists to support legacy datasets and will be obsoleted and removed at some point
+                        specifiers = f['region'][start_idx:end_idx]
+                    except:
+                        # adjust this line when the region option is removed
+                        raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False')
+                    
         
-        if self.transform:
-            input_data = self.transform(input_data)
+        for transform in self.transforms:
+            input_data, target, mask = transform(input_data, target, mask)
 
-        input_data = np.transpose(input_data, (0,2,1))
-        input_data = torch.tensor(input_data, dtype=torch.float32)
-        target = torch.tensor(target, dtype=torch.float32)
-        if self.mask:
-            mask = torch.tensor(mask, dtype=torch.bool)
+        if self.return_specifiers:
+            return input_data, target, mask, specifiers
+        else:
+            return input_data, target, mask
 
-        return input_data, target, mask
+    def get_config(self):
+        with h5py.File(self.file_path, 'r') as f:
+            gin_config_str = f.attrs['gin_config']
+            return gin_config_str

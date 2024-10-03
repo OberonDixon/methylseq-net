@@ -1,0 +1,23 @@
+directory = '/global/scratch/users/poojakathail/kidney_data/archive/scBasset/Homo_sapiens_motif_fasta/endogenous_sequences_basenji_motifs_insertion_position_-10/'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/motif_insertion_test/'
+label_bin_size = 128
+label_num_bins = 1
+seq_length = 1288
+
+DatasetWriter.track_length = %label_num_bins
+DatasetWriter.seq_length = %seq_length
+DatasetWriter.cpg_input = True
+DatasetWriter.mask = False
+
+DirectoryIndexer.directory = %directory
+DirectoryIndexer.subsequence_start = 64892
+DirectoryIndexer.subsequence_end = 66180
+DirectoryIndexer.recursive = False # recursive will look into sub folders as well
+
+PreprocessingPipeline.sample_generator = @DirectoryIndexer()
+PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
+PreprocessingPipeline.dataset_writer_class = @DatasetWriter
+PreprocessingPipeline.samples_per_batch = 1
+PreprocessingPipeline.output_directory = %output_directory
+
+

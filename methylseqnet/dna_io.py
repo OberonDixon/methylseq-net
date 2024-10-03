@@ -1,5 +1,5 @@
 import numpy as np
-import pysam
+# import pysam
 from pathlib import Path
 # from dimelo import load_processed
 
@@ -19,7 +19,7 @@ def one_hot_encode_dna(dna_strand, cpg_methylation=None, valid_cpgs=None):
     dna_strand = np.char.upper(np.array(list(dna_strand)))
 
     # Initialize the output array
-    encoded_strand = np.zeros((len(dna_strand), 6), dtype=float)
+    encoded_strand = np.zeros((len(dna_strand), 7), dtype=float)
 
     # Define the mapping of nucleotides to indices
     nucleotide_to_index = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
@@ -35,7 +35,9 @@ def one_hot_encode_dna(dna_strand, cpg_methylation=None, valid_cpgs=None):
         if not isinstance(cpg_methylation, np.ndarray):
             raise TypeError("The cpg_methylation input must be a numpy array.")
         
-        encoded_strand[:, 4] = cpg_methylation
+        # Apply methylation to track 4 and 5 based on C and G encodings
+        encoded_strand[:, 4] = cpg_methylation * encoded_strand[:, 1]  # Track 4 for C methylation
+        encoded_strand[:, 5] = cpg_methylation * encoded_strand[:, 2]  # Track 5 for G methylation
 
     if valid_cpgs is not None:
         if len(dna_strand) != len(valid_cpgs):
@@ -43,7 +45,7 @@ def one_hot_encode_dna(dna_strand, cpg_methylation=None, valid_cpgs=None):
         if not isinstance(valid_cpgs, np.ndarray):
             raise TypeError("The valid_cpgs input must be a numpy array.")
 
-        encoded_strand[:, 5] = valid_cpgs
+        encoded_strand[:, 6] = valid_cpgs
 
     return encoded_strand
 

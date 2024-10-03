@@ -5,7 +5,8 @@ setup(
     version="0.0.1",
     packages=find_packages(),
     install_requires=[
-        "torch==2.0.0",
+        "torch>=2.0.0",#
+        # "nvidia-cudnn-cu12",#==9.1.0.70
         "biopython",
         "scikit-learn",
         "captum",
@@ -14,5 +15,8 @@ setup(
         "gin-config",
         "pynvml",
         "logomaker",
+        "pysam",
+        "lightning", 
+        "h5py",
     ],
 )

@@ -24,8 +24,9 @@ ConvFinal.shared_head=False
 
 MethylSeqNN.in_channels=5
 MethylSeqNN.out_tracks=35 
+MethylSeqNN.out_bins=1018
 
-methylseqnet.trainer.Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/valid.h5"
-methylseqnet.trainer.Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5"
+methylseqnet.trainer.Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5"
+methylseqnet.trainer.Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/valid.h5"
 methylseqnet.trainer.Trainer.batch_size=16
 methylseqnet.trainer.Trainer.training_epoch_stop=5000
