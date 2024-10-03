@@ -8,7 +8,9 @@ import gc
 import torchmetrics
 import zipfile
 
+from methylseqnet.transforms import *
 from methylseqnet.layers import *
+from methylseqnet.losses import *
 
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
@@ -21,6 +23,7 @@ class MethylSeqNN(L.LightningModule):
         learning_rate=0.005, 
         momentum=0.98, 
         pos_weight=100,
+        betas=(0.97,0.98),
     ):
         super().__init__()
         if out_tracks is None:
@@ -39,32 +42,17 @@ class MethylSeqNN(L.LightningModule):
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.pos_weight = torch.tensor([pos_weight])
-
-        # Trunk
-        # self.encoding_adjuster = EncodingAdjuster()
-        # self.conv_dna = ConvDNA(in_channels = self.encoding_adjuster.channels)
-        # self.conv_tower = ConvTower()
-        # self.conv_block = ConvBlock()
-        # self.conv_dropout = ConvDropout()
-
-        # # Head
-        # self.conv_final = ConvFinal(filters=self.out_tracks)
+        self.betas = betas
 
         if self.regression:
             self.softplus = nn.Softplus()
-            self.criterion = nn.PoissonNLLLoss(log_input=False)
+            self.criterion = CustomPoissonNLLLossLogTransformed()
         else:
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
     def forward(self, x):
         for layer in self.layers:
             x = layer(x)
-        # x = self.encoding_adjuster(x)
-        # x = self.conv_dna(x)
-        # x = self.conv_tower(x)
-        # x = self.conv_block(x)
-        # x = self.conv_dropout(x)
-        # x = self.conv_final(x)
         if self.regression:
             x = self.softplus(x)
         return x
@@ -129,7 +117,10 @@ class MethylSeqNN(L.LightningModule):
         param_groups = []
         for layer in self.layers:
             param_groups.append({'params': layer.parameters(), 'weight_decay': getattr(layer, 'weight_decay', 0)})
-        optimizer = optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)
+        if self.regression:
+            optimizer = optim.Adam(param_groups, lr=self.learning_rate, betas=self.betas)
+        else:
+            optimizer = optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)
         return optimizer
     
     def get_layer(self, layer_name):
