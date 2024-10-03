@@ -3,6 +3,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import gin
 
+# TODO: move over CpGSparsifier, EncodingSelector. Rename SmoothMethylation too. Keep old versions for now; obsolete at a later point
+
+"""
+This module is going to end up containing LoaderTransforms and LayerTransforms, the former occuring *within the dataset loading operation* and applying to *inputs and outputs* while the latter occur within *model forward pass* and operate *only on input data*
+"""
+
 class SmoothMethylationTransform(nn.Module):
     def __init__(self, window_size=3):
         """

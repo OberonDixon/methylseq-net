@@ -48,8 +48,10 @@ class CustomH5Dataset(Dataset):
                     specifiers = f['specifier'][start_idx:end_idx]
                 except:
                     try: 
+                        # this exists to support legacy datasets and will be obsoleted and removed at some point
                         specifiers = f['region'][start_idx:end_idx]
                     except:
+                        # adjust this line when the region option is removed
                         raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False')
                     
         
