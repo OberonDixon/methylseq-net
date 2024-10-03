@@ -48,8 +48,10 @@ class CustomH5Dataset(Dataset):
                     specifiers = f['specifier'][start_idx:end_idx]
                 except:
                     try: 
+                        # this exists to support legacy datasets and will be obsoleted and removed at some point
                         specifiers = f['region'][start_idx:end_idx]
                     except:
+                        # adjust this line when the region option is removed
                         raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False')
                     
         
@@ -60,3 +62,8 @@ class CustomH5Dataset(Dataset):
             return input_data, target, mask, specifiers
         else:
             return input_data, target, mask
+
+    def get_config(self):
+        with h5py.File(self.file_path, 'r') as f:
+            gin_config_str = f.attrs['gin_config']
+            return gin_config_str
