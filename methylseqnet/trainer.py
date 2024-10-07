@@ -26,15 +26,16 @@ os.environ["SLURM_JOB_NAME"] = "interactive"
 
 @gin.configurable
 class MethylSeqDataModule(LightningDataModule):
-    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32):
+    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32, pow=False):
         super().__init__()
         self.train_dataset_file = train_dataset_file
         self.validation_dataset_file = validation_dataset_file
         self.batch_size = batch_size
+        self.pow = pow
 
     def setup(self, stage=None):
-        self.train_dataset = CustomH5Dataset(self.train_dataset_file,batch_size=self.batch_size)
-        self.val_dataset = CustomH5Dataset(self.validation_dataset_file,batch_size=self.batch_size)
+        self.train_dataset = CustomH5Dataset(self.train_dataset_file,batch_size=self.batch_size,pow=self.pow)
+        self.val_dataset = CustomH5Dataset(self.validation_dataset_file,batch_size=self.batch_size,pow=self.pow)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=3)

@@ -1,18 +1,13 @@
-initial_filters = 50
-tower_end_filters = 100
-in_channels = 7
+initial_filters = 288
+tower_end_filters = 508
 
-methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_binary-seq'
-
-methylseqnet.layers.MethylationDropout.in_channels=%in_channels
-methylseqnet.layers.MethylationDropout.dropout=0.2
-methylseqnet.layers.MethylationDropout.chunk_size=8
+methylseqnet.layers.EncodingAdjuster.encoding_str='seq-only'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
-methylseqnet.layers.ConvDNA.in_channels=%in_channels
-methylseqnet.layers.ConvDNA.weight_decay=0.0004
+methylseqnet.layers.ConvDNA.in_channels=4
+methylseqnet.layers.ConvDNA.weight_decay=0
 
 methylseqnet.layers.ConvTower.in_channels=%initial_filters
 methylseqnet.layers.ConvTower.filters_init=%initial_filters
@@ -36,11 +31,11 @@ methylseqnet.layers.ConvFinal.in_channels=768
 methylseqnet.layers.ConvFinal.shared_head=False
 methylseqnet.layers.ConvFinal.filters=35
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [@EncodingAdjuster,@MethylationDropout,@ConvDNA,@ConvTower,@ConvBlock,@ConvDropout,@ConvFinal]
+methylseqnet.methylseqnn.MethylSeqNN.layers = [@EncodingAdjuster,@ConvDNA,@ConvTower,@ConvBlock,@ConvDropout,@ConvFinal]
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=35 
 methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
-methylseqnet.methylseqnn.MethylSeqNN.learning_rate = 0.002
+methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/train.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/valid.h5"

@@ -67,12 +67,12 @@ def run_whole_dataset(
     #         raise ValueError(f"Layer {layer_name} not found in the model")
     #     hook_handle = layer.register_forward_hook(hook)
     
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+
     dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
     
     trainer = Trainer(accelerator='gpu',**kwargs)
-    
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
 
     layers = list(model.layers)
     for preprend_layer in layers_to_prepend[::-1]:

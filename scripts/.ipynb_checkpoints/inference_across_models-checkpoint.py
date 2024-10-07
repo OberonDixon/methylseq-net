@@ -1,4 +1,4 @@
-from methylseqnet import dna_io, inference, metrics, peaks, trainer, methylseqnn, io_handlers, preprocessor
+from methylseqnet import dna_io, inference, metrics, trainer, methylseqnn, io_handlers, preprocessor
 import methylseqnet
 # from dimelo import load_processed, plot_enrichment_profile, utils
 from matplotlib import pyplot as plt
@@ -24,6 +24,10 @@ model_paths = [
     '/clusterfs/nilah/oberon/lightning/slurm21396548task0/checkpoints/best-checkpoint.ckpt', # regression scaled mse - seq methyl binary, weight decay, dropout8
     '/clusterfs/nilah/oberon/lightning/slurm21396548task1/checkpoints/best-checkpoint.ckpt', # regression scaled mse - seq methyl 5 channel
     '/clusterfs/nilah/oberon/lightning/slurm21396548task2/checkpoints/best-checkpoint.ckpt', # regression scaled mse - seq only
+    '/clusterfs/nilah/oberon/lightning/slurm21440087task3/checkpoints/best-checkpoint.ckpt', # regression poisson - seq only
+    '/clusterfs/nilah/oberon/lightning/slurm21440087task2/checkpoints/best-checkpoint.ckpt', # regression poisson - seq methyl 5 channel
+    '/clusterfs/nilah/oberon/lightning/slurm21440087task1/checkpoints/best-checkpoint.ckpt', # regression poisson - seq methyl binary, weight decay, dropout8
+    '/clusterfs/nilah/oberon/lightning/slurm21440087task0/checkpoints/best-checkpoint.ckpt', # regression poisson - seq methyl 7 channel
     # '/clusterfs/nilah/oberon/lightning/slurm21191096task1/checkpoints/best-checkpoint.ckpt', # classification - seq methyl sum-to-one
     # '/clusterfs/nilah/oberon/lightning/slurm21191096task2/checkpoints/best-checkpoint.ckpt', # classification - seq only 7 epochs
     # '/clusterfs/nilah/oberon/lightning/slurm21197035task0/checkpoints/best-checkpoint.ckpt', # classification - seq methyl binary
@@ -55,5 +59,5 @@ for model_path in model_paths:
     # print('rank is',rank)
     # Saving to file
     if rank == 0:
-        with open(f'/global/scratch/users/dixonluinenburg/atlas_datasets/regression/models/inference_across_models_smooth.pkl', 'wb') as file:
+        with open(f'/global/scratch/users/dixonluinenburg/atlas_datasets/regression/models/inference_across_models_2.pkl', 'wb') as file:
             pickle.dump(model_results_dict, file)
