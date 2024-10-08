@@ -1,9 +1,0 @@
-torch
-biopython
-scikit-learn
-captum
-modisco-lite
-scipy
-gin-config
-pynvml
-logomaker

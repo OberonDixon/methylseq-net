@@ -3,6 +3,7 @@ import h5py
 from pathlib import Path
 import numpy as np
 import gin
+import pandas as pd
 
 @gin.register
 @gin.configurable
@@ -15,6 +16,7 @@ class DatasetWriter:
         num_tracks: int,
         output_path: str | Path,
         mask: bool = True,
+        io_mappings_list: list=[],
     ):
         # The length of the input sequence
         self.seq_length = seq_length
@@ -31,6 +33,8 @@ class DatasetWriter:
             raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')
         # True means we are using a mask for the loss function
         self.mask = mask
+        self.io_mappings_list = io_mappings_list
+        
         self.initialize_h5()
     def initialize_h5(self):
         with h5py.File(self.output_path,'w') as f:
@@ -75,9 +79,11 @@ class DatasetWriter:
                     compression='gzip',
                     compression_opts=2,
                 )
-            # Log the gin config string as an attribute in the HDF5 file
+            # Log the gin config string and io mappings as attributes in the HDF5 file
             gin_config_str = gin.operative_config_str()
             f.attrs['gin_config'] = gin_config_str
+            f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
+                
     def write_chunk(
         self,
         indices_list,

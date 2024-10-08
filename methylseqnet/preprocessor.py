@@ -62,7 +62,11 @@ class PreprocessingPipeline:
     def initialize_dataset_writer(self,split_name):
         num_tracks = self.multitask_io_handler.num_tracks
         output_path = Path(self.output_directory) / (split_name.strip() + ".h5")
-        dataset_writer = self.dataset_writer_class(output_path=output_path,num_tracks=num_tracks)
+        dataset_writer = self.dataset_writer_class(
+            output_path=output_path,
+            num_tracks=num_tracks,
+            io_mappings_list=self.multitask_io_handler.io_mappings_list,
+        )
         return dataset_writer
 
     def process_samples(

@@ -40,6 +40,7 @@ class MultitaskIOHandler:
     def __init__(self, num_tracks=1, label_bin_size=128, **kwargs):
         self.num_tracks = num_tracks
         self.label_bin_size = label_bin_size
+        self.io_mappings_list = []
     def process_batch(self,sample_list):
         raise NotImplementedError("Subclass must implement this method.")
     def seq_to_gc_content(
@@ -344,6 +345,8 @@ class MultiBigWigLabelHandler(LabelHandler):
             normalize_gc=True,
             binarize=False,
             threshold=5,
+            scale=1,
+            clip=1024,
             ):
         if not isinstance(bigwig_files,list):
             raise ValueError("bigwig_files input is not a list.")
@@ -356,6 +359,8 @@ class MultiBigWigLabelHandler(LabelHandler):
         # self.trim_off_ends = trim_off_ends
         self.label_bin_size = label_bin_size 
         self.counts_normalization = 0
+        self.scale=scale
+        self.clip=clip
         for bigwig_file in bigwig_files:   
             if os.path.isfile(bigwig_file):
                 try:
@@ -396,7 +401,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         if self.binarize:
             return aggregated_values>self.threshold
         else:
-            return aggregated_values       
+            return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)    
             
     def load_labels_batch(self,sample_list,gc_content_list=None):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
@@ -424,6 +429,8 @@ class MultiBedGzLabelHandler(LabelHandler):
             normalize_gc=True,
             binarize=False,
             threshold=5,
+            scale=1,
+            clip=1024,
             ):    
         self.bedgz_files = [str(bedgz_file) for bedgz_file in bedgz_files]
         self.label_bin_size = label_bin_size
@@ -432,6 +439,8 @@ class MultiBedGzLabelHandler(LabelHandler):
         self.normalize_gc = normalize_gc
         self.binarize = binarize
         self.threshold = threshold
+        self.scale=scale
+        self.clip=clip
         for bedgz_file in self.bedgz_files:   
             if os.path.isfile(bedgz_file):
                 try:
@@ -478,7 +487,7 @@ class MultiBedGzLabelHandler(LabelHandler):
         if self.binarize:
             return aggregated_values>self.threshold
         else:
-            return aggregated_values   
+            return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)       
     def load_labels_batch(self,sample_list,gc_content_list=None):
         if self.normalize_gc:
             if gc_content_list is None:
@@ -535,15 +544,20 @@ class MethylAtacAtlases(MultitaskIOHandler):
         
         label_index = 0
 
-        self.io_mappings_dict = {}
+        self.io_mappings_list = []
 
         with open(match_file) as f:
             for index,line in tqdm(enumerate(f),desc='Identifying and setting scaling for input files'):
                 if index>0: #first line is the headers
                     fields = line.split('\t')
                     methylation_names = fields[0].split(',')
-                    atac_names = fields[1].split(',')
-                    # split = fields[2] if len(fields)>2 else "train"
+                    atac_names = fields[1].strip('"\'').split(',')
+                    try:
+                        atac_scale = float(fields[3])
+                        atac_clip = float(fields[4])
+                    except:
+                        atac_scale = 1
+                        atac_clip = 1024
                     methylation_celltype_files = []
                     atac_celltype_files = []
                     for methylation_name in methylation_names:
@@ -575,13 +589,19 @@ class MethylAtacAtlases(MultitaskIOHandler):
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
+                                    scale=atac_scale,
+                                    clip=atac_clip,
                                 )
                             }
-                        )           
-                        self.io_mappings_dict[label_index] = (
-                            methylation_names,
-                            atac_names,
-                        )
+                        )     
+                        self.io_mappings_list.append({
+                            'channel':label_index,
+                            'cell_type':label_index,
+                            'data_type':'ATAC-seq',
+                            'genome':ref_genome,
+                            'methylation_files':methylation_names,
+                            'label_files':atac_names,
+                        })
                         label_index+=1
         self.num_tracks = label_index     
     
@@ -665,6 +685,7 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
         self.num_tracks = num_tracks
         self.multi_fasta_handler = MultiFastaHandler()
         self.synthetic_cpg_handler = SyntheticCpGHandler()
+        self.io_mappings_list = []
     def process_batch(
         self,
         indices_list,
@@ -711,6 +732,10 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
             match_file,       
             label_bin_size,
             label_num_bins,
+            atac_scaling: float=2,
+            cage_scaling: float=128,
+            atac_clip: float=32,
+            cage_clip: float=384,
             merge_labels: bool=True,
             max_chunks_in_mem: int=100,
             normalize_label_counts: bool=False,
@@ -740,15 +765,27 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
         celltype_index = 0
         label_channel_index = 0
 
-        self.io_mappings_dict = {}
+        self.io_mappings_list = []
 
         with open(match_file) as f:
             for index,line in tqdm(enumerate(f),desc='Identifying and setting scaling for input files'):
                 if index>0: #first line is the headers
                     fields = line.split('\t')
-                    methylation_names = fields[0].split(',')
-                    atac_names = fields[1].split(',')
-                    cage_names = fields[4].split(',')
+                    methylation_names = fields[0].strip('"\'').split(',')
+                    atac_names = fields[1].strip('"\'').split(',')
+                    try:
+                        atac_scale = float(fields[3])
+                        atac_clip = float(fields[4])
+                    except:
+                        atac_scale = 1
+                        atac_clip = 1024
+                    cage_names = fields[6].strip('"\'').split(',')
+                    try:
+                        cage_scale = float(fields[8])
+                        cage_clip = float(fields[9])
+                    except:
+                        cage_scale = 1
+                        cage_clip = 1024
                     
                     methylation_celltype_files = []
                     atac_celltype_files = []
@@ -788,10 +825,19 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
+                                    scale=atac_scale,
+                                    clip=atac_clip,
                                     )
                                 )
                                 label_channel_indices.append(label_channel_index)
-                                self.io_mappings_dict[label_channel_index] = (methylation_names,atac_names)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':atac_names,
+                                })
                                 label_channel_index+=1
                             if len(cage_celltype_files)>0:
                                 label_handlers.append(MultiBedGzLabelHandler(
@@ -801,10 +847,19 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
+                                    scale=cage_scale,
+                                    clip=cage_clip,
                                     )
                                 )
                                 label_channel_indices.append(label_channel_index)
-                                self.io_mappings_dict[label_channel_index] = (methylation_names,cage_names)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'CAGE-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':cage_names,
+                                })
                                 label_channel_index+=1
                         else:
                             for atac_celltype_file in atac_celltype_files:
@@ -815,10 +870,19 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
+                                    scale=atac_scale,
+                                    clip=atac_clip,
                                     )
                                 )
                                 label_channel_indices.append(label_channel_index)
-                                self.io_mappings_dict[label_channel_index] = (methylation_names,Path(atac_celltype_file).stem)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':Path(atac_celltype_file).stem,
+                                })
                                 label_channel_index+=1       
                             for cage_celltype_file in cage_celltype_files:
                                 label_handlers.append(MultiBedGzLabelHandler(
@@ -828,10 +892,19 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
+                                    scale=cage_scale,
+                                    clip=cage_clip,
                                     )
                                 )
                                 label_channel_indices.append(label_channel_index)
-                                self.io_mappings_dict[label_channel_index] = (methylation_names,Path(cage_celltype_file).stem)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':Path(cage_celltype_file).stem,
+                                })                                
                                 label_channel_index+=1
                                 
                         self.labels_specifier_list.append(
@@ -844,7 +917,7 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                             }
                         ) 
                         celltype_index += 1 
-        self.num_tracks = label_channel_index      
+        self.num_tracks = label_channel_index     
 
     def process_batch(
         self,

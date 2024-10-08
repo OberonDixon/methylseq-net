@@ -70,3 +70,8 @@ class CustomH5Dataset(Dataset):
         with h5py.File(self.file_path, 'r') as f:
             gin_config_str = f.attrs['gin_config']
             return gin_config_str
+
+    def get_io_mappings(self):
+        with h5py.File(self.file_path,'r') as f:
+            io_mappings_str = f.attrs['io_mappings']
+            return io_mappings_str
