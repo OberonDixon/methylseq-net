@@ -19,7 +19,6 @@ MethylAtacAtlases.ref_genome = %ref_genome
 MethylAtacAtlases.methylation_directory = %methylation_directory
 MethylAtacAtlases.targets_directory = %atac_directory
 MethylAtacAtlases.match_file = %match_file
-MethylAtacAtlases.max_chunks_in_mem = 1000
 MethylAtacAtlases.label_bin_size = %label_bin_size
 MethylAtacAtlases.label_num_bins = %label_num_bins
 MethylAtacAtlases.normalize_label_counts = False

@@ -3,10 +3,9 @@ regions_bed = '/clusterfs/nilah/oberon/datasets/basenji2_human_training/sequence
 methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/GSE186458_RAW'
 atac_directory = '/global/scratch/users/dixonluinenburg/atac_atlas/bigwigs'
 match_file = '/clusterfs/nilah/oberon/genomic-data-exploration/cell_atlases/cell_type_matching.txt'
-output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_new_pipeline/'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-binarized-5/'
 label_bin_size = 128
 label_num_bins = 1024
-# trim_off_ends = 0
 seq_length = 131072
 
 DatasetWriter.track_length = %label_num_bins
@@ -16,23 +15,20 @@ DatasetWriter.mask = True
 
 RegionBedParser.regions_bed = %regions_bed
 
-BigWigCellAtlas.ref_genome = %ref_genome
-BigWigCellAtlas.methylation_directory = %methylation_directory
-BigWigCellAtlas.targets_directory = %atac_directory
-BigWigCellAtlas.match_file = %match_file
-BigWigCellAtlas.max_chunks_in_mem = 1000
-# BigWigCellAtlas.trim_off_ends = %trim_off_ends
-BigWigCellAtlas.label_bin_size = %label_bin_size
-BigWigCellAtlas.label_num_bins = %label_num_bins
-BigWigCellAtlas.normalize_label_counts = False
-BigWigCellAtlas.normalize_label_gc = False
-BigWigCellAtlas.binarize_labels = True
-BigWigCellAtlas.threshold_labels = 5
+MethylAtacAtlases.ref_genome = %ref_genome
+MethylAtacAtlases.methylation_directory = %methylation_directory
+MethylAtacAtlases.targets_directory = %atac_directory
+MethylAtacAtlases.match_file = %match_file
+MethylAtacAtlases.label_bin_size = %label_bin_size
+MethylAtacAtlases.label_num_bins = %label_num_bins
+MethylAtacAtlases.normalize_label_counts = False
+MethylAtacAtlases.normalize_label_gc = False
+MethylAtacAtlases.binarize_labels = True
+MethylAtacAtlases.threshold_labels = 5
 
 PreprocessingPipeline.sample_generator = @RegionBedParser()
-PreprocessingPipeline.multitask_io_handler = @BigWigCellAtlas()
+PreprocessingPipeline.multitask_io_handler = @MethylAtacAtlases()
 PreprocessingPipeline.dataset_writer_class = @DatasetWriter
-PreprocessingPipeline.samples_per_batch = 1
 PreprocessingPipeline.output_directory = %output_directory
 
 
