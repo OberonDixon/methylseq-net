@@ -2,6 +2,7 @@ import torch
 from torch import nn
 from methylseqnet.methylseqnn import MethylSeqNN
 from methylseqnet.trainer import Trainer
+from methylseqnet.io_handlers import *
 import json
 from pathlib import Path
 from methylseqnet.dataset import CustomH5Dataset
@@ -95,6 +96,59 @@ def run_whole_dataset(
     
     return targets_list,outputs_list,trainer.global_rank
 
+def run_one_locus(
+    model_path,
+    chromosome,
+    start,
+    end,
+    sequence_path,
+    methylation_paths,
+    label_paths,
+    label_index,
+):
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    if Path(sequence_path).suffix in ['.fa','.fasta']:
+        sequence_handler = SingleFastaHandler(ref_genome=sequence_path)
+    else:
+        raise NotImplementedError(f'No method to handle {Path(sequence_path).name} for sequence_paths.')
+    if Path(methylation_paths[0]).suffix in ['.bw','.bigwig']:
+        cpg_handler = MultiBigWigCpGHandler(bigwig_files=methylation_paths)
+    else:
+        raise NotImplementedError(f'No method to handle {Path(methylation_paths[0]).name} for methylation_paths.')
+    if Path(label_paths[0]).suffix in ['.bw','.bigwig']:
+        label_handler = MultiBigWigLabelHandler(bigwig_files=label_paths,label_bin_size=128)
+    elif '.bed.gz' in Path(label_paths[0]).name:
+        label_handler = MultiBedGzLabelHandler(bedgz_files=label_paths,label_bin_size=128)
+    else:
+        raise NotImplementedError(f'No method to handle {Path(label_paths[0]).name} for label_paths.')
+
+    sample = {'source':chromosome,'start':start,'end':end}
+    sequence = sequence_handler.load_sequence_batch([sample])[0]
+    cpg,valid_cpgs = cpg_handler.load_cpg_batch([sample])
+    labels = label_handler.load_labels_batch([sample])[0]
+    
+    inputs = torch.Tensor(np.transpose(one_hot_encode_dna(
+        dna_strand=sequence,
+        cpg_methylation=cpg[0],
+        valid_cpgs=valid_cpgs[0],
+        ),
+        (1,0))
+    ).unsqueeze(0)
+
+    # and thus for bigger receptive field there are fewer prediction bins along the sequence
+    trim_off_targets = labels.shape[0]-(
+        (inputs.shape[2]-model.receptive_field+model.total_stride)//model.total_stride
+    )
+    # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
+    labels = labels[trim_off_targets // 2:-trim_off_targets // 2]
+
+    output = model(inputs)
+
+    mask = torch.full(output.shape,False)
+    mask[:,label_index,:] = True
+
+    return labels,output[mask].detach().numpy()
+    
 # def run_whole_dataset_specified_indices(
 #     model_path: str | Path,
 #     dataset_path: str | Path,
