@@ -1,12 +1,12 @@
 initial_filters = 50
 tower_end_filters = 100
 
-methylseqnet.layers.EncodingAdjuster.encoding_str='seq-only'
+methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_binary-seq'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=17
 methylseqnet.layers.ConvDNA.pool_size=2
-methylseqnet.layers.ConvDNA.in_channels=4
+methylseqnet.layers.ConvDNA.in_channels=7
 methylseqnet.layers.ConvDNA.weight_decay=0
 
 methylseqnet.layers.ConvTower.in_channels=%initial_filters
@@ -37,6 +37,6 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
 methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/test.h5"
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=16

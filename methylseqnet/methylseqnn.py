@@ -7,6 +7,8 @@ from memory_profiler import profile
 import gc
 import torchmetrics
 import zipfile
+import pandas as pd
+from io import StringIO
 
 from methylseqnet.transforms import *
 from methylseqnet.layers import *
@@ -43,6 +45,8 @@ class MethylSeqNN(L.LightningModule):
         self.momentum = momentum
         self.pos_weight = torch.tensor([pos_weight])
         self.betas = betas
+
+        self.io_mappings_str = ''
 
         if self.regression:
             self.softplus = nn.Softplus()
@@ -140,6 +144,10 @@ class MethylSeqNN(L.LightningModule):
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["operative_config_str"] = gin.operative_config_str()
+        checkpoint["io_mappings_str"] = self.io_mappings_str
+
+    def on_load_checkpoint(self, checkpoint):
+        self.io_mappings_str = checkpoint.get("io_mappings_str","")
         
     @classmethod
     def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
@@ -188,3 +196,7 @@ class MethylSeqNN(L.LightningModule):
                 total_stride *= pool_size
     
         return receptive_field,total_stride
+
+    def get_io_mappings_df(self):
+        io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
+        return io_mappings_df

@@ -4,6 +4,8 @@ import torch
 import torch.nn.functional as F
 import numpy as np
 from tqdm.auto import tqdm
+import pandas as pd
+from io import StringIO
 
 # MEM_LOADER_CHUNKS = 32000
 
@@ -71,7 +73,15 @@ class CustomH5Dataset(Dataset):
             gin_config_str = f.attrs['gin_config']
             return gin_config_str
 
-    def get_io_mappings(self):
+    def get_io_mappings_str(self):
         with h5py.File(self.file_path,'r') as f:
             io_mappings_str = f.attrs['io_mappings']
             return io_mappings_str
+
+    def get_io_mappings_df(self):
+        try:
+            io_mappings_str = self.get_io_mappings_str()
+            pd.read_csv(StringIO(io_mappings_str),sep='\t')
+        except:
+            return pd.DataFrame()
+        return 

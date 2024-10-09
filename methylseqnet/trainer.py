@@ -78,6 +78,16 @@ def main(config,output_dir,unique_identifier,gpus,batch_size):
         data_module = MethylSeqDataModule(batch_size=batch_size)
     else:
         data_module = MethylSeqDataModule()
+
+    # Try to retrieve the io_mappings string from the train dataset, silently skipping if missing
+    # The value here lies in the fact that the task structure is dynamically created from the
+    # preprocessor matches file, so having a record of what the mappings is for a given model
+    # may be useful when trying different datasets, etc
+    try:
+        dataset = CustomH5Dataset(data_module.train_dataset_file)
+        model.io_mappings_str = dataset.get_io_mappings_str()
+    except AttributeError:
+        print(f"No 'io_mappings' attribute found in {data_module.train_dataset_file}.")
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
