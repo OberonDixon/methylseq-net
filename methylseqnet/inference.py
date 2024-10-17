@@ -96,6 +96,67 @@ def run_whole_dataset(
     
     return targets_list,outputs_list,trainer.global_rank
 
+def run_whole_dataset_specify_dtype(
+    model_path: str | Path,
+    dataset_path: str | Path,
+    data_types: list,
+    layers_to_prepend: list=[],
+    batch_size: int=64,
+):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path).to(device)
+
+    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
+
+    layers = list(model.layers)
+    for preprend_layer in layers_to_prepend[::-1]:
+        layers.insert(0, preprend_layer)
+    model.layers = nn.ModuleList(layers)
+
+    io_mappings_df = model.get_io_mappings_df()
+
+    dtype_indices_dict = {}
+    for data_type in data_types:
+        dtype_indices_dict[data_type] = list(io_mappings_df['channel'][io_mappings_df['data_type']==data_type])
+
+    dtype_targets_dict = defaultdict(list)
+    dtype_predictions_dict = defaultdict(list)
+    
+    for inputs,targets,mask in tqdm(dataloader):
+
+        inputs,targets = inputs.to(device),targets.to(device)
+        
+        outputs = model(inputs)
+
+        trim_off_targets = targets.shape[2]-((inputs.shape[2]-model.receptive_field+model.total_stride)//model.total_stride)
+        
+        if mask is None:
+            # for code clarity, we make a "fake" mask that is just True everywhere
+            # this means we don't need any other if statements to handle None, and
+            # it means the later mask application will still squeeze the targets and 
+            # outputs even if it doesn't remove any elements
+            mask = torch.ones_like(targets, dtype=torch.bool)
+
+        mask.to(device)
+
+        mask = mask[:,:,trim_off_targets // 2:-trim_off_targets // 2]
+        targets = targets[:,:,trim_off_targets // 2:-trim_off_targets // 2]
+        
+        for data_type in data_types:
+            dtype_mask = mask.clone()
+            mask_mask = torch.ones_like(dtype_mask,dtype=torch.bool)
+            mask_mask[:,dtype_indices_dict[data_type],:] = False
+            dtype_mask[mask_mask] = False
+            dtype_targets_dict[data_type].extend(targets[dtype_mask].cpu().detach().tolist())
+            dtype_predictions_dict[data_type].extend(outputs[dtype_mask].cpu().detach().tolist())
+
+    return dtype_targets_dict,dtype_predictions_dict
+
+        
+
+
 def run_one_locus(
     model_path,
     chromosome,
