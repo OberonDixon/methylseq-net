@@ -74,12 +74,12 @@ class MethylationDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0):
+    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False):
         super(ConvDNA, self).__init__()
         self.in_channels=in_channels
         self.kernel_size=kernel_size
         self.pool_size=pool_size
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size)
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size, padding = (kernel_size-1)//2 if pad else 0)
         self.pool = nn.MaxPool1d(pool_size)
         self.weight_decay = weight_decay
 
@@ -92,7 +92,7 @@ class ConvDNA(nn.Module):
 @gin.configurable
 @gin.register
 class ConvTower(nn.Module):
-    def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay=0):
+    def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay=0, pad=False):
         super(ConvTower, self).__init__()
         self.kernel_size = kernel_size
         self.pool_size = pool_size
@@ -103,7 +103,7 @@ class ConvTower(nn.Module):
         for i in range(repeat):
             filters = filters_init + i * filters_step
             self.layers.append(nn.Sequential(
-                nn.Conv1d(in_channels, filters, kernel_size),#, padding=(kernel_size - 1) // 2),
+                nn.Conv1d(in_channels, filters, kernel_size, padding=(kernel_size - 1) // 2 if pad else 0),
                 nn.BatchNorm1d(filters),
                 nn.GELU(),
                 nn.MaxPool1d(pool_size)
@@ -118,11 +118,11 @@ class ConvTower(nn.Module):
 @gin.configurable
 @gin.register
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0):
+    def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0, pad=False):
         super(ConvBlock, self).__init__()
         self.kernel_size=kernel_size
         self.dilation=dilation
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation)
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=(kernel_size -1) // 2 if pad else 0)
         self.weight_decay = weight_decay
 
     def forward(self, x):
@@ -132,11 +132,77 @@ class ConvBlock(nn.Module):
 
 @gin.configurable
 @gin.register
+class DilatedResidual(nn.Module):
+    def __init__(
+            self, 
+            in_channels, 
+            filters=384, 
+            kernel_size=5, 
+            rate_mult=1.5, 
+            repeat=11, 
+            dropout=0.3, 
+            pad=False,
+            ):
+        super(DilatedResidual, self).__init__()
+        self.layers = nn.ModuleList()
+        self.filters = filters
+        self.kernel_size = kernel_size
+        self.rate_mult = rate_mult
+        self.repeat = repeat
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else None
+        self.pad = pad
+
+        dilation_rate = 1.0
+        for _ in range(repeat):
+            # First conv block with increasing dilation
+            self.layers.append(nn.Sequential(
+                nn.Conv1d(
+                    in_channels, 
+                    filters, 
+                    kernel_size, 
+                    dilation=int(round(dilation_rate)),
+                    padding=int(((kernel_size-1)// 2)*dilation_rate) 
+                    if pad else 0
+                ),
+                nn.BatchNorm1d(filters),
+                nn.ReLU(),
+            ))
+
+            # Second conv block with residual connection (output filters match input channels)
+            self.layers.append(nn.Sequential(
+                nn.Conv1d(filters, in_channels, kernel_size=1),
+                nn.BatchNorm1d(in_channels),
+                nn.ReLU(),
+            ))
+
+            # Update dilation rate
+            dilation_rate *= rate_mult
+            dilation_rate = round(dilation_rate)
+
+    def forward(self, x):
+        for i in range(0, len(self.layers), 2):
+            residual = x
+            x = self.layers[i](x)  # Dilated conv block
+            x = self.layers[i + 1](x)  # 1x1 conv with residual connection
+
+            if self.dropout:
+                x = self.dropout(x)
+
+            if residual.size(2) > x.size(2):
+                crop = (residual.size(2) - x.size(2)) // 2
+                residual = residual[:, :, crop:crop + x.size(2)]
+            # Add residual connection
+            x += residual
+
+        return x
+
+@gin.configurable
+@gin.register
 class ConvDropout(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, dropout, weight_decay=0):
+    def __init__(self, in_channels, filters, kernel_size, dropout, weight_decay=0, pad=False):
         super(ConvDropout, self).__init__()
         self.kernel_size = kernel_size
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size)
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size, padding = (kernel_size -1)//2 if pad else 0)
         self.dropout = nn.Dropout(dropout)
         self.weight_decay = weight_decay
 
@@ -148,7 +214,7 @@ class ConvDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1, weight_decay=0):
+    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
         super(ConvFinal, self).__init__()
         self.kernel_size = kernel_size
         self.filters = filters
@@ -156,9 +222,9 @@ class ConvFinal(nn.Module):
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         self.weight_decay = weight_decay
         if self.shared_head:
-            self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride) # only one filter
+            self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # only one filter
         else:
-            self.conv = nn.Conv1d(in_channels, filters, kernel_size, stride=stride) # multiple different output head filters
+            self.conv = nn.Conv1d(in_channels, filters, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # multiple different output head filters
 
     def forward(self, x):
         x = self.conv(x)

@@ -21,6 +21,8 @@ class MethylSeqNN(L.LightningModule):
         layers,
         out_tracks=None,
         regression=False,
+        pad_all_layers=False,
+        crop_off_final=0,
         label_threshold_cts=5,
         learning_rate=0.005, 
         momentum=0.98, 
@@ -31,9 +33,15 @@ class MethylSeqNN(L.LightningModule):
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
+        self.pad_all_layers = pad_all_layers
+        self.crop_off_final = crop_off_final
         self.layers = nn.ModuleList()
         for layer in layers:
-            self.layers.append(layer())
+            try:
+                self.layers.append(layer(pad=self.pad_all_layers))
+            except:
+                # print(f"Padding is not defined for {layer}, adding without specifying padding.")
+                self.layers.append(layer())
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
         # print(f"receptive field calculated to be {self.receptive_field}")
         # self.out_bins = out_bins
@@ -59,6 +67,8 @@ class MethylSeqNN(L.LightningModule):
             x = layer(x)
         if self.regression:
             x = self.softplus(x)
+        if self.crop_off_final:
+            x = x[:,:,self.crop_off_final:-self.crop_off_final]
         return x
 
     def training_step(self,batch,batch_idx):
@@ -67,7 +77,7 @@ class MethylSeqNN(L.LightningModule):
         # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
         # off the end given there is no padding in the network, i.e. all predictions have full sequence information
         # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
+        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
         # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
@@ -86,7 +96,7 @@ class MethylSeqNN(L.LightningModule):
         # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
         # off the end given there is no padding in the network, i.e. all predictions have full sequence information
         # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
+        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
         # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
@@ -111,7 +121,7 @@ class MethylSeqNN(L.LightningModule):
         # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
         # off the end given there is no padding in the network, i.e. all predictions have full sequence information
         # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride)
+        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
         targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
@@ -155,6 +165,7 @@ class MethylSeqNN(L.LightningModule):
         checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
         # Parse the gin configuration from the checkpoint
         operative_config_str = checkpoint["operative_config_str"]
+        gin.clear_config()
         gin.parse_config(operative_config_str)
         del checkpoint
         gc.collect() 
@@ -187,6 +198,7 @@ class MethylSeqNN(L.LightningModule):
             stride = getattr(layer, 'stride', 1)
             dilation = getattr(layer, 'dilation', 1)
             repeat = getattr(layer, 'repeat', 1)
+            rate_mult = getattr(layer, 'rate_mult', 1.0)
             
             # Update receptive field using the formula
             for _ in range(repeat):
@@ -194,6 +206,8 @@ class MethylSeqNN(L.LightningModule):
                 total_stride *= stride  # Update the total stride
                 receptive_field += (pool_size - 1) * total_stride
                 total_stride *= pool_size
+                dilation *= rate_mult
+                dilation = round(dilation)
     
         return receptive_field,total_stride
 
