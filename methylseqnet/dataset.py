@@ -10,12 +10,11 @@ from io import StringIO
 # MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, pow=False):
+    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False):
         self.file_path = file_path
         self.batch_size = batch_size
-        self.transforms = transforms
+        self.transforms = [transform() for transform in transforms]
         self.return_specifiers = return_specifiers
-        self.pow = pow
         # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
             # Determine the length of the dataset
@@ -41,8 +40,6 @@ class CustomH5Dataset(Dataset):
             target = f['tracks'][start_idx:end_idx,:,:]
             input_data = torch.tensor(input_data, dtype=torch.float32)
             target = torch.tensor(target, dtype=torch.float32)
-            if self.pow:
-                target = torch.clamp((torch.pow(10, target) - 1)/2,max=10)
             if self.mask:
                 mask = f['mask'][start_idx:end_idx,:,:]
                 mask = torch.tensor(mask, dtype=torch.bool)
