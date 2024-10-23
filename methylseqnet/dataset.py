@@ -12,7 +12,7 @@ import sys
 # MEM_LOADER_CHUNKS = 32000
 
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, max_retries=10, retry_delay=1):
+    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_path = file_path
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
@@ -71,12 +71,13 @@ class CustomH5Dataset(Dataset):
                 else:
                     return input_data, target, mask
             except OSError as e:
-                print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
-                time.sleep(self.retry_delay)
-    
-        # If all retries fail, print the error and re-raise the last exception
-        print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
-        raise  # Re-raise the last caught exception
+                if attempt<self.max_retries-1:
+                    print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
+                    time.sleep(self.retry_delay)
+                else:
+                    # If all retries fail, print the error and re-raise the last exception
+                    print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
+                    raise  # Re-raise the last caught exception
 
     def get_config(self):
         with h5py.File(self.file_path, 'r') as f:

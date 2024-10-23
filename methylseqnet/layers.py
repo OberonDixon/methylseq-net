@@ -101,7 +101,10 @@ class ConvTower(nn.Module):
         self.layers = nn.ModuleList()
         filters_step = (filters_end - filters_init) // (repeat - 1) if repeat>1 else 0
         for i in range(repeat):
-            filters = filters_init + i * filters_step
+            if i<repeat-1:
+                filters = filters_init + i * filters_step
+            else:
+                filters = filters_end
             self.layers.append(nn.Sequential(
                 nn.Conv1d(in_channels, filters, kernel_size, padding=(kernel_size - 1) // 2 if pad else 0),
                 nn.BatchNorm1d(filters),
@@ -232,24 +235,219 @@ class ConvFinal(nn.Module):
             x = x.repeat(1, self.filters, 1) # duplicate output value across all tracks
         return x
 
-# class DenseBlock(nn.Module):
-#     def __init__(self, in_features, units, dropout):
-#         super(DenseBlock, self).__init__()
-#         self.fc = nn.Linear(in_features, units)
-#         self.dropout = nn.Dropout(dropout)
+################################################################################################################
+####                                        Layer Splitting Classes                                         ####
+################################################################################################################
 
-#     def forward(self, x):
-#         x = self.fc(x)
-# #         x = F.gelu(x)
-#         x = self.dropout(x)
-#         return x
+@gin.configurable
+@gin.register
+class ChannelSplitter(nn.Module):
+    def __init__(self, split_ranges):
+        super().__init__()
+        self.split_ranges = split_ranges
 
-# class Final(nn.Module):
-#     def __init__(self, in_features, units):
-#         super(Final, self).__init__()
-#         self.fc = nn.Linear(in_features, units)
+    def forward(self,x):
+        return tuple([x[:,start:end,:] for start,end in self.split_ranges])
 
-#     def forward(self, x):
-#         x = self.fc(x)
-#         # x = torch.sigmoid(x)
-#         return x
+@gin.configurable
+@gin.register
+class ChannelMerger(nn.Module):
+    def forward(self,x_tuple):
+        return torch.cat(x_tuple,dim=1)
+
+class SplitModule(nn.Module):
+    def _calculate_split_filters(self,filters,split_fracs):
+        if sum(split_fracs)==1.0:
+            split_filters = [round(frac*filters) for frac in split_fracs]
+            diff = filters - sum(split_filters)
+            if diff != 0:
+                max_idx = split_filters.index(max(split_filters))
+                split_filters[max_idx] += diff       
+            return tuple(split_filters)
+        else:
+            raise ValueError(f"split_fracs {split_fracs} do not add to 1")   
+
+@gin.configurable
+@gin.register
+class LearnedWeightedSum(nn.Module):
+    def __init__(self, num_tensors):
+        super().__init__()
+        # Initialize learnable weights for each tensor in the tuple
+        self.weights = nn.Parameter(torch.ones(num_tensors))
+
+    def forward(self, x_tuple):
+        # Normalize the weights (optional, but ensures they sum to 1)
+        normalized_weights = torch.softmax(self.weights, dim=0)
+
+        # Linearly combine the tensors in the tuple with learned weights
+        weighted_sum = sum(normalized_weights[i] * x_tuple[i] for i in range(len(x_tuple)))
+        
+        return weighted_sum
+
+@gin.configurable
+@gin.register
+class SplitConvDNA(SplitModule):
+    def __init__(self, in_channels, filters, kernel_size, pool_size, input_splits, output_splits, weight_decay=0, pad=False):
+        super().__init__()
+        self.kernel_size=kernel_size
+        self.pool_size=pool_size
+        self.weight_decay = weight_decay
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters = self._calculate_split_filters(filters,output_splits)
+
+        self.conv_dna_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters in zip(self.split_channels,self.split_filters):
+            self.conv_dna_list.append(
+                ConvDNA(submodule_in_channels, submodule_filters, kernel_size, pool_size, weight_decay, pad)
+            )
+        
+
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, conv_dna in enumerate(self.conv_dna_list):
+            output_tensors.append(conv_dna(x[tensor_idx]))
+        return tuple(output_tensors)
+
+@gin.configurable
+@gin.register
+class SplitConvTower(SplitModule):
+    def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, input_splits, output_splits, weight_decay=0, pad=False):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.pool_size = pool_size
+        self.repeat = repeat
+        self.weight_decay = weight_decay
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters_init = self._calculate_split_filters(filters_init,output_splits)
+        self.split_filters_end = self._calculate_split_filters(filters_end,output_splits)
+
+        self.conv_tower_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters_init,submodule_filters_end in zip(self.split_channels,self.split_filters_init,self.split_filters_end):
+            self.conv_tower_list.append(
+                ConvTower(submodule_in_channels, submodule_filters_init, submodule_filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay, pad)
+            )
+
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, conv_tower in enumerate(self.conv_tower_list):
+            output_tensors.append(conv_tower(x[tensor_idx]))
+        return tuple(output_tensors)
+
+@gin.configurable
+@gin.register
+class SplitConvBlock(SplitModule):
+    def __init__(self, in_channels, filters, kernel_size, input_splits, output_splits, dilation=1, weight_decay=0, pad=False):
+        super().__init__()
+        self.kernel_size=kernel_size
+        self.dilation=dilation
+        self.weight_decay = weight_decay
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters = self._calculate_split_filters(filters,output_splits)
+        
+        self.conv_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters in zip(self.split_channels,self.split_filters):
+            self.conv_list.append(
+                ConvBlock(submodule_in_channels, submodule_filters, kernel_size, dilation, weight_decay, pad)
+            )    
+
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, conv in enumerate(self.conv_list):
+            output_tensors.append(conv(x[tensor_idx]))
+        return tuple(output_tensors)
+
+@gin.configurable
+@gin.register
+class SplitDilatedResidual(SplitModule):
+    def __init__(
+            self, 
+            in_channels, 
+            filters, 
+            kernel_size, 
+            rate_mult, 
+            repeat, 
+            input_splits,
+            output_splits,
+            dropout=0, 
+            pad=False,
+            ):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.rate_mult = rate_mult
+        self.repeat = repeat
+        self.pad = pad
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters = self._calculate_split_filters(filters,output_splits)
+
+        self.dilated_residual_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters in zip(self.split_channels,self.split_filters):
+            self.dilated_residual_list.append(
+                DilatedResidual(
+                    submodule_in_channels, 
+                    submodule_filters, 
+                    kernel_size, 
+                    rate_mult, 
+                    repeat, 
+                    dropout,
+                    pad,
+                )
+            )
+
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, dilated_residual in enumerate(self.dilated_residual_list):
+            output_tensors.append(dilated_residual(x[tensor_idx]))
+        return tuple(output_tensors)
+
+@gin.configurable
+@gin.register
+class SplitConvDropout(SplitModule):
+    def __init__(self, in_channels, filters, kernel_size, dropout, input_splits, output_splits, weight_decay=0, pad=False):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.dropout = nn.Dropout(dropout)
+        self.weight_decay = weight_decay
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters = self._calculate_split_filters(filters,output_splits)
+
+        self.conv_dropout_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters in zip(self.split_channels,self.split_filters):
+            self.conv_dropout_list.append(
+                ConvDropout(submodule_in_channels, submodule_filters, kernel_size, dropout, weight_decay, pad)
+            )
+
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, conv_dropout in enumerate(self.conv_dropout_list):
+            output_tensors.append(conv_dropout(x[tensor_idx]))
+        return tuple(output_tensors)
+
+@gin.configurable
+@gin.register
+class SplitConvFinal(SplitModule):
+    def __init__(self, in_channels, filters, input_splits, output_splits, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
+        super().__init__()
+        self.kernel_size = kernel_size
+        self.stride = stride
+        self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
+        self.weight_decay = weight_decay
+
+        self.split_channels = self._calculate_split_filters(in_channels,input_splits)
+        self.split_filters = self._calculate_split_filters(filters,output_splits)
+
+        self.conv_final_list = nn.ModuleList()
+        for submodule_in_channels,submodule_filters in zip(self.split_channels,self.split_filters):
+            self.conv_final_list.append(
+                ConvFinal(submodule_in_channels, submodule_filters, kernel_size, shared_head, stride, weight_decay, pad)
+            )
+            
+    def forward(self, x):
+        output_tensors = []
+        for tensor_idx, conv_final in enumerate(self.conv_final_list):
+            output_tensors.append(conv_final(x[tensor_idx]))
+        return tuple(output_tensors)
