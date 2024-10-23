@@ -26,7 +26,7 @@ os.environ["SLURM_JOB_NAME"] = "interactive"
 
 @gin.configurable
 class MethylSeqDataModule(LightningDataModule):
-    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32, transforms=[]):
+    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32, transforms=[], pow=False):
         super().__init__()
         self.train_dataset_file = train_dataset_file
         self.validation_dataset_file = validation_dataset_file

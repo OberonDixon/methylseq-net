@@ -129,8 +129,8 @@ def run_whole_dataset_specify_dtype(
         inputs,targets = inputs.to(device),targets.to(device)
         
         outputs = model(inputs)
-
-        trim_off_targets = targets.shape[2]-((inputs.shape[2]-model.receptive_field+model.total_stride)//model.total_stride)
+        trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-model.receptive_field+model.total_stride)//model.total_stride))
+        # trim_off_targets = targets.shape[2]-((inputs.shape[2]-model.receptive_field+model.total_stride)//model.total_stride)
         
         if mask is None:
             # for code clarity, we make a "fake" mask that is just True everywhere
