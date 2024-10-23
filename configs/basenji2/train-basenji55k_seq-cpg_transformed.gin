@@ -2,6 +2,13 @@ initial_filters = 288
 tower_end_filters = 508
 dilated_residual_filters = 384
 
+methylseqnet.transforms.ReverseComplement.probability=0.5
+methylseqnet.transforms.ReverseComplement.batch_wise=False
+
+methylseqnet.transforms.SequenceJitter.stdev=10
+methylseqnet.transforms.SequenceJitter.max_jitter=32
+methylseqnet.transforms.SequenceJitter.batch_wise=False
+
 methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_binary-seq'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
@@ -20,7 +27,7 @@ methylseqnet.layers.ConvTower.repeat=6
 
 methylseqnet.layers.DilatedResidual.in_channels=%tower_end_filters
 methylseqnet.layers.DilatedResidual.filters=%dilated_residual_filters 
-methylseqnet.layers.DilatedResidual.kernel_size=5
+methylseqnet.layers.DilatedResidual.kernel_size=3
 methylseqnet.layers.DilatedResidual.rate_mult=1.5 
 methylseqnet.layers.DilatedResidual.repeat=11
 methylseqnet.layers.DilatedResidual.dropout=0.3
@@ -45,3 +52,4 @@ methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=16
+methylseqnet.trainer.MethylSeqDataModule.transforms=[@ReverseComplement,@SequenceJitter]

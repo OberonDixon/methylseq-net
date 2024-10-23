@@ -17,8 +17,8 @@
 
 # Define an array of config files
 CONFIG_FILES=(
-    "../configs/basenji2/train-regression-cage_seq-only_basenji.gin"
-    "../configs/basenji2/train-regression-cage_seq-cpg_basenji.gin"
+    "../configs/basenji2/train-regression-cage_seq-only_basenji55k.gin"
+    "../configs/basenji2/train-regression-cage_seq-cpg_basenji55k.gin"
 )
 
 # Get the config file for this array task

@@ -17,8 +17,8 @@
 
 # Define an array of config files
 CONFIG_FILES=(
-    "../configs/basenji2/train-basenji_seq-only_transformed.gin"
-    "../configs/basenji2/train-basenji_seq-cpg_transformed.gin"
+    "../configs/basenji2/train-basenji55k_seq-only_transformed.gin"
+    "../configs/basenji2/train-basenji55k_seq-cpg_transformed.gin"
 )
 
 # Get the config file for this array task
