@@ -48,6 +48,7 @@ methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
 methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
 methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
+methylseqnet.methylseqnn.MethylSeqNN.pos_weight=0.1
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/seq-to-methyl/train.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/seq-to-methyl/valid.h5"
