@@ -20,6 +20,7 @@ import pandas as pd
 from io import StringIO
 import ast
 import re
+from multiprocessing import Pool
 
 def run_whole_dataset(
     model_path: str | Path,
@@ -191,7 +192,20 @@ def run_one_locus(
     mask[:,label_index,:] = True
 
     return labels,output[mask].detach().numpy()
+    
+def write_channel(channel, writer, genome_channel_data):
+    """
+    Function to handle writing a single channel to a BigWig file.
+    Args:
+        channel: Channel name (key in genome_channels_dict).
+        writer: BigWigWriter object for this channel.
+        genome_channel_data: Data for the channel to be written.
+    """
+    writer.write_genome(genome_channel_data) 
 
+# Wrapper function to unpack arguments for imap_unordered
+def write_channel_wrapper(args):
+    return write_channel(*args)
 
 def run_whole_genome_write_methylation(
     model_path,
@@ -212,7 +226,7 @@ def run_whole_genome_write_methylation(
     bin_size = model.total_stride
     targets_size = chunk_size//bin_size
     trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
-    print(trim_off_targets)
+
     io_mappings_df = model.get_io_mappings_df()
     output_file_paths_dict = {}
     for channel,entry in zip(io_mappings_df['cell_type'],io_mappings_df['label_files']):
@@ -223,7 +237,7 @@ def run_whole_genome_write_methylation(
         file_names = [p.stem for p in paths]
         
         # Split file names into components using regex (non-alphanumeric delimiters)
-        split_file_names = [re.split(r'[-.]', name) for name in file_names]
+        split_file_names = [re.split(r'[-_.]', name) for name in file_names]
         
         # Find matching components in their original order
         matching_ordered_substrings = split_file_names[0]  # Start with tokens from the first file name
@@ -235,9 +249,7 @@ def run_whole_genome_write_methylation(
             ]
         
         # Combine matching substrings into a synthetic name
-        output_file_paths_dict[channel] = Path(output_directory) / f"Synthetic-{'-'.join(matching_ordered_substrings)}.bigwig"
-
-    # print(output_file_paths_dict)
+        output_file_paths_dict[channel] = Path(output_directory) / f"Synthetic-{'-'.join(matching_ordered_substrings)}.hg38.bigwig"
 
     genome_channels_dict = defaultdict(lambda: defaultdict(dict))
 
@@ -291,9 +303,20 @@ def run_whole_genome_write_methylation(
                 filtered_positions = motif_indices  # Map indices to genome positions
                 genome_channels_dict[channel][contig]['entries'] = filtered_entries
                 genome_channels_dict[channel][contig]['motifs'] = filtered_positions
-                
-        for channel,writer in tqdm(bigwig_datawriters_dict.items(),desc="writing files channel-by-channel"):
-            writer.write_genome(genome_channels_dict[channel])
+  
+        # Prepare arguments for parallel processing
+        args = [
+            (channel, writer, genome_channels_dict[channel])
+            for channel, writer in bigwig_datawriters_dict.items()
+        ]       
+
+
+        
+        # Use multiprocessing Pool for parallel writes
+        with Pool(processes=os.cpu_count()) as pool:
+            with tqdm(total=len(args), desc="Writing BigWig files") as pbar:
+                for _ in pool.imap_unordered(write_channel_wrapper, args):
+                    pbar.update(1)
     
 # def run_whole_dataset_specified_indices(
 #     model_path: str | Path,
