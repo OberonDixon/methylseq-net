@@ -3,6 +3,8 @@ from torch import nn
 from methylseqnet.methylseqnn import MethylSeqNN
 from methylseqnet.trainer import Trainer
 from methylseqnet.io_handlers import *
+from methylseqnet.dna_io import one_hot_encode_dna
+from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
 from methylseqnet.dataset import CustomH5Dataset
@@ -14,30 +16,10 @@ import re
 import methylseqnet
 import os
 from lightning import Trainer
-
-# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-# def load_for_eval(model_path: str | Path):
-    
-#     saved_model = torch.load(str(model_path)+'_state.pth',map_location=torch.device(device))
-#     operative_config_str = saved_model['gin_file']
-#     gin.parse_config(operative_config_str)
-#     # with open(str(model_path)+'_meta.json', 'r') as f:
-#     #     metadata_list = json.load(f)
-#     # hyperparams = metadata_list[0]
-#     model = MethylSeqNN()
-#     model.load_state_dict(saved_model['model_state_dict'])
-#     model.eval()
-#     return model
-
-# def get_attribute_value(model_path: str | Path, attribute: str):
-#     pattern = rf'{attribute} = (.+)'
-#     saved_model = torch.load(str(model_path)+'_state.pth',map_location=torch.device(device))
-#     operative_config_str = saved_model['gin_file']
-#     match = re.search(pattern, operative_config_str)
-#     if match:
-#         return match.group(1).strip().strip('\'"')
-#     return ''
+import pandas as pd
+from io import StringIO
+import ast
+import re
 
 def run_whole_dataset(
     model_path: str | Path,
@@ -209,6 +191,109 @@ def run_one_locus(
     mask[:,label_index,:] = True
 
     return labels,output[mask].detach().numpy()
+
+
+def run_whole_genome_write_methylation(
+    model_path,
+    ref_genome,
+    output_directory,
+    chunk_size=131072,
+    early_stop=None,
+):
+    import pysam
+
+    if not os.path.exists(output_directory):
+        os.makedirs(output_directory)
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model.to(device)
+    
+    bin_size = model.total_stride
+    targets_size = chunk_size//bin_size
+    trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
+    print(trim_off_targets)
+    io_mappings_df = model.get_io_mappings_df()
+    output_file_paths_dict = {}
+    for channel,entry in zip(io_mappings_df['cell_type'],io_mappings_df['label_files']):
+        parsed_list = ast.literal_eval(entry.replace("PosixPath", ""))
+        paths = [Path(p.strip("'")) for p in parsed_list]
+    
+        # Extract file names
+        file_names = [p.stem for p in paths]
+        
+        # Split file names into components using regex (non-alphanumeric delimiters)
+        split_file_names = [re.split(r'[-.]', name) for name in file_names]
+        
+        # Find matching components in their original order
+        matching_ordered_substrings = split_file_names[0]  # Start with tokens from the first file name
+        for tokens in split_file_names[1:]:
+            matching_ordered_substrings = [
+                substring
+                for substring in matching_ordered_substrings
+                if substring in tokens
+            ]
+        
+        # Combine matching substrings into a synthetic name
+        output_file_paths_dict[channel] = Path(output_directory) / f"Synthetic-{'-'.join(matching_ordered_substrings)}.bigwig"
+
+    # print(output_file_paths_dict)
+
+    genome_channels_dict = defaultdict(lambda: defaultdict(dict))
+
+    with pysam.FastaFile(ref_genome) as fasta:
+        contigs =  [(name, fasta.get_reference_length(name)) for name in fasta.references if '_' not in name]
+        bigwig_datawriters_dict = {channel: BigWigWriter(str(path),contigs) for channel,path in output_file_paths_dict.items()}
+        for contig,length in tqdm(contigs):
+            methylation_predictions = {channel:np.zeros(length) for channel in bigwig_datawriters_dict.keys()}
+            motif_sites = {channel:np.zeros(length,dtype=bool) for channel in bigwig_datawriters_dict.keys()}
+            for channel in bigwig_datawriters_dict.keys():
+                genome_channels_dict[channel][contig]['start']=0 
+                genome_channels_dict[channel][contig]['end']=length
+            for start in tqdm(range(0,length-chunk_size,chunk_size-trim_off_targets*bin_size),leave=False):
+
+                pred_start = start + trim_off_targets*bin_size//2
+                pred_end = start + chunk_size - trim_off_targets*bin_size//2        
+
+                if early_stop and (pred_start > early_stop):
+                    continue
+                    
+                sequence = fasta.fetch(contig,start,start+chunk_size).upper()
+                # Convert the sequence into a NumPy array
+                seq_array = np.array(list(sequence))[trim_off_targets*bin_size//2:chunk_size - trim_off_targets*bin_size//2]
+                cg_mask = (seq_array[:-1] == "C") & (seq_array[1:] == "G")
+                # Expand the mask to include both "C" and "G" positions in the motif
+                cg_motifs = np.zeros(len(seq_array), dtype=bool)
+                cg_motifs[:-1] |= cg_mask  # Mark the "C" positions
+                cg_motifs[1:] |= cg_mask   # Mark the "G" positions
+                # print(seq_array)
+                # print(cg_motifs)
+                
+                input = torch.Tensor(
+                    np.transpose(
+                        one_hot_encode_dna(dna_strand=sequence),
+                        (1,0),
+                    )
+                ).unsqueeze(0).to(device)
+                
+                logits = model(input)
+                output = torch.sigmoid(logits)
+                for channel,writer in bigwig_datawriters_dict.items():
+                    unbinned_output = np.repeat(output[0,channel,:].detach().cpu().numpy(),bin_size)
+                    methylation_predictions[channel][pred_start:pred_end] = unbinned_output
+                    motif_sites[channel][pred_start:pred_end] = cg_motifs
+
+            for channel in genome_channels_dict.keys():
+                motif_indices = np.where(motif_sites[channel])[0]  # Indices where CG motifs occur
+                filtered_entries = methylation_predictions[channel][motif_indices]  # Filtered values
+                filtered_positions = motif_indices  # Map indices to genome positions
+                genome_channels_dict[channel][contig]['entries'] = filtered_entries
+                genome_channels_dict[channel][contig]['motifs'] = filtered_positions
+
+            # break
+                
+        for channel,writer in tqdm(bigwig_datawriters_dict.items(),desc="writing files channel-by-channel"):
+            writer.write_genome(genome_channels_dict[channel])
     
 # def run_whole_dataset_specified_indices(
 #     model_path: str | Path,

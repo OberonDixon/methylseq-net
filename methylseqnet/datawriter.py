@@ -1,9 +1,9 @@
-# import pysam
 import h5py
 from pathlib import Path
 import numpy as np
 import gin
 import pandas as pd
+from tqdm.auto import tqdm
 
 @gin.register
 @gin.configurable
@@ -149,4 +149,44 @@ class DatasetWriter:
             except ValueError as e:
                 raise ValueError(f"Value assignment error: check dimensions of assigned data. {e}") from e
                         
-                        
+class BigWigWriter:
+    def __init__(self, output_file, contigs):
+        """
+        Initializes the BigWigWriter.
+
+        Args:
+            output_file (str): Path to the output BigWig file.
+            reference_genome (str): Path to the reference genome file (FASTA).
+        """
+        self.output_file = output_file
+        self.contigs = contigs
+
+    def write_genome(self,genome_data_dict):
+        """
+        Writes data to the specified coordinate range for a given contig.
+
+        Args:
+            contig (str): The name of the contig.
+            start (int): Start position (0-based, inclusive).
+            end (int): End position (0-based, exclusive).
+            data (np.ndarray): Numpy array of data values to write.
+        """
+        import pyBigWig
+
+        # Open the BigWig file in append mode and write data
+        with pyBigWig.open(self.output_file, "w") as bw:
+            bw.addHeader(self.contigs)
+            for contig,contig_data in tqdm(genome_data_dict.items(),desc=f"writing contigs for {Path(self.output_file).name}",leave=False):
+                entries = contig_data['entries']
+                motifs = contig_data['motifs']
+                start = contig_data['start']
+                end = contig_data['end']
+
+                if len(motifs)>0:
+                    # Write only filtered positions to the BigWig file
+                    bw.addEntries(
+                        ([contig] * len(motifs)),  # Contig names
+                        motifs.tolist(),          # Start positions
+                        ends=(motifs + 1).tolist(),  # End positions
+                        values=entries.tolist()       # Corresponding values
+                    )
