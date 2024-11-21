@@ -266,8 +266,6 @@ def run_whole_genome_write_methylation(
                 cg_motifs = np.zeros(len(seq_array), dtype=bool)
                 cg_motifs[:-1] |= cg_mask  # Mark the "C" positions
                 cg_motifs[1:] |= cg_mask   # Mark the "G" positions
-                # print(seq_array)
-                # print(cg_motifs)
                 
                 input = torch.Tensor(
                     np.transpose(
@@ -283,14 +281,16 @@ def run_whole_genome_write_methylation(
                     methylation_predictions[channel][pred_start:pred_end] = unbinned_output
                     motif_sites[channel][pred_start:pred_end] = cg_motifs
 
+                # clear out the big arrays/tensors to avoid memory issues as we loop through
+                del sequence, seq_array, cg_mask, cg_motifs, input, logits, output, unbinned_output
+                torch.cuda.empty_cache()
+
             for channel in genome_channels_dict.keys():
                 motif_indices = np.where(motif_sites[channel])[0]  # Indices where CG motifs occur
                 filtered_entries = methylation_predictions[channel][motif_indices]  # Filtered values
                 filtered_positions = motif_indices  # Map indices to genome positions
                 genome_channels_dict[channel][contig]['entries'] = filtered_entries
                 genome_channels_dict[channel][contig]['motifs'] = filtered_positions
-
-            # break
                 
         for channel,writer in tqdm(bigwig_datawriters_dict.items(),desc="writing files channel-by-channel"):
             writer.write_genome(genome_channels_dict[channel])
