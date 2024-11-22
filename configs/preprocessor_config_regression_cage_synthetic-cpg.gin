@@ -1,6 +1,6 @@
 ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
 regions_bed = '/clusterfs/nilah/oberon/datasets/basenji2_human_training/sequences.bed'
-methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/synthetic'
+methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/synthetic_chunked_write'
 atac_directory = '/global/scratch/users/dixonluinenburg/atac_atlas/bigwigs'
 cage_directory = '/global/scratch/users/dixonluinenburg/cage_atlas/hg38_v9'
 match_file = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/cell_type_matching_atac-cage.tsv'

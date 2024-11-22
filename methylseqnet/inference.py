@@ -309,8 +309,6 @@ def run_whole_genome_write_methylation(
             (channel, writer, genome_channels_dict[channel])
             for channel, writer in bigwig_datawriters_dict.items()
         ]       
-
-
         
         # Use multiprocessing Pool for parallel writes
         with Pool(processes=os.cpu_count()) as pool:

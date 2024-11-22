@@ -161,7 +161,7 @@ class BigWigWriter:
         self.output_file = output_file
         self.contigs = contigs
 
-    def write_genome(self,genome_data_dict):
+    def write_genome(self,genome_data_dict,chunk_size=1000):
         """
         Writes data to the specified coordinate range for a given contig.
 
@@ -173,7 +173,7 @@ class BigWigWriter:
         """
         import pyBigWig
 
-        # Open the BigWig file in append mode and write data
+        # Open the BigWig file write data
         with pyBigWig.open(self.output_file, "w") as bw:
             bw.addHeader(self.contigs)
             for contig,contig_data in tqdm(genome_data_dict.items(),desc=f"writing contigs for {Path(self.output_file).name}",leave=False):
@@ -182,11 +182,15 @@ class BigWigWriter:
                 start = contig_data['start']
                 end = contig_data['end']
 
-                if len(motifs)>0:
-                    # Write only filtered positions to the BigWig file
-                    bw.addEntries(
-                        ([contig] * len(motifs)),  # Contig names
-                        motifs.tolist(),          # Start positions
-                        ends=(motifs + 1).tolist(),  # End positions
-                        values=entries.tolist()       # Corresponding values
-                    )
+                for chunk_start in range(0,len(entries)-1,chunk_size):
+                    chunk_end = min(len(entries),chunk_start+chunk_size)
+                    motifs_chunk = motifs[chunk_start:chunk_end]
+                    entries_chunk = entries[chunk_start:chunk_end]
+                    if len(motifs)>0:
+                        # Write only filtered positions to the BigWig file
+                        bw.addEntries(
+                            ([contig] * len(entries_chunk)),  # Contig names
+                            motifs_chunk.tolist(),          # Start positions
+                            ends=(motifs_chunk + 1).tolist(),  # End positions
+                            values=entries_chunk.tolist()       # Corresponding values
+                        )
