@@ -87,10 +87,10 @@ class MethylSeqNN(L.LightningModule):
             outputs = outputs[mask]
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
-        print(outputs.shape,targets.shape,mask.shape)
-        print(loss)
-        print(self.layers[0].channels)
-        print(self.layers[1].conv.weight.grad)
+        # print(outputs.shape,targets.shape,mask.shape)
+        # print(loss)
+        # print(self.layers[0].channels)
+        # print(self.layers[1].conv.weight.grad)
         self.log("train_loss", loss)
         return loss  
 
