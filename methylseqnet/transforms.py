@@ -153,6 +153,50 @@ class SequenceJitter(LoaderTransform):
         return seq
 
 ################################################################################################################
+####                                         LayerTransform classes                                         ####
+################################################################################################################
+
+@gin.configurable
+@gin.register
+class CpGSparsifier(nn.Module):
+    """
+    Randomly add sparsity to the CpG methylation input tracks, if available. By default this is only done at training
+    time.
+    Args:
+        in_channels: the number of encoding channels coming in. Channels 0,1,2,3 are assumed to be sequence channels.
+        remove_fracs: different fractional removal options. If more than one is provided, each tensor will have a random
+            fraction removed, e.g. if remove_fracs=[0,0.2,0.99], one third of the time 99% of CpG information will be
+            removed and one third of the time no CpG information will be removed. The same fraction is applied to the 
+            whole batch, but specific CpGs are selected one sample at a time.
+        chunk_size: CpGs will be kept or removed in chunks of this size. Using chunk_size=1 will mean that most removed
+            methylation information can be "filled in" from adjacent CpGs
+        training_only: if training_only=True (default), sparsification will only occur at training time and not eval/test
+    """
+    def __init__(
+        self, 
+        in_channels, 
+        remove_fracs=[0.2], 
+        chunk_size=8, 
+        training_only=True,
+    ):
+        super(CpGSparsifier, self).__init__()
+        self.in_channels=in_channels
+        self.remove_fracs=remove_fracs
+        self.chunk_size=chunk_size
+        self.training_only=training_only
+    def forward(self,x):
+        if self.in_channels>4 and (not self.training_only or self.training):
+            fraction = random.choice(self.remove_fracs)
+            num_samples, num_channels, length = x.shape
+            effective_length = (length + self.chunk_size - 1) // self.chunk_size
+            chunk_mask = torch.rand(num_samples, effective_length, device=x.device) > fraction
+            mask = chunk_mask.repeat_interleave(self.chunk_size, dim=1)
+            mask = mask[:,:length]
+            mask = mask.unsqueeze(1).expand(num_samples, self.in_channels-4, length)
+            x[:,4:,:]*=mask # Zero out the methylation channels using the mask
+        return x
+
+################################################################################################################
 ####                                          Obsolete Old Classes                                          ####
 ################################################################################################################
 
