@@ -74,14 +74,21 @@ class MethylationDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False):
+    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1):
         super(ConvDNA, self).__init__()
         self.in_channels=in_channels
         self.kernel_size=kernel_size
         self.pool_size=pool_size
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size, padding = (kernel_size-1)//2 if pad else 0)
+        self.conv = nn.Conv1d(
+            in_channels, 
+            filters, 
+            kernel_size, 
+            padding = (kernel_size-1)//2 if pad else 0, 
+            stride=stride
+        )
         self.pool = nn.MaxPool1d(pool_size)
         self.weight_decay = weight_decay
+        self.stride=stride
 
     def forward(self, x):
         x = self.conv(x)

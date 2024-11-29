@@ -71,39 +71,25 @@ class MethylSeqNN(L.LightningModule):
     def training_step(self,batch,batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)  
-        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
-        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
-        # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
-        # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
-        targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
         if mask is not None:
-            mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+            mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
-        # print(outputs.shape,targets.shape,mask.shape)
-        # print(loss)
-        # print(self.layers[0].channels)
-        # print(self.layers[1].conv.weight.grad)
         self.log("train_loss", loss)
         return loss  
 
     def validation_step(self, batch, batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)
-        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
-        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
-        # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
-        # raise ValueError(f"receptive field {self.receptive_field}, trim off {trim_off_targets}")
-        targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
         if mask is not None:
-            mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+            mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
@@ -117,17 +103,12 @@ class MethylSeqNN(L.LightningModule):
         
     def test_step(self, batch, batch_idx):
         inputs, targets, mask = batch
-
         outputs = self(inputs)
-        # Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
-        # off the end given there is no padding in the network, i.e. all predictions have full sequence information
-        # and thus for bigger receptive field there are fewer prediction bins along the sequence
-        trim_off_targets = 2*self.crop_off_final + (not self.pad_all_layers)*(targets.shape[2]-((inputs.shape[2]-self.receptive_field+self.total_stride)//self.total_stride))
-        targets = targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
         if mask is not None:
-            mask = mask[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+            mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
 
@@ -173,6 +154,34 @@ class MethylSeqNN(L.LightningModule):
         # Continue with the regular loading process
         return super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
 
+    def trim_targets(self,inputs,targets):
+        """
+        Trim the targets (or the targets mask) to what the model will actually be able to output.
+        Based on the calculated receptive field alongside the cropping of the final layer.
+
+        Trimming is basically taking into account the receptive field to determine how many labels must be trimmed
+        off the end given there is no padding in the network, i.e. all predictions have full sequence information
+        and thus for bigger receptive field there are fewer prediction bins along the sequence
+
+        Args:
+            inputs: the input tensor provided to the model. This will be used to determine the input lengths
+            targets: the targets (or targets mask) that needs to be trimmed based on the input and network
+        """
+        inputs_length = inputs.shape[2]
+        targets_length = targets.shape[2]
+        
+        if not self.pad_all_layers:
+            network_outputs_length = (inputs_length - self.receptive_field+self.total_stride)//self.total_stride
+        else:
+            network_outputs_length = inputs_length//self.total_stride
+
+        trim_off_targets = 2*self.crop_off_final + targets_length - network_outputs_length
+        
+        if trim_off_targets>1:
+            return targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+        else:
+            return targets
+    
     def calculate_receptive_field_and_stride(self):
         """
         Calculate the receptive field based on the layers in the model.
