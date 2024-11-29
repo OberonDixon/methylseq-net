@@ -40,11 +40,8 @@ class MethylSeqNN(L.LightningModule):
             try:
                 self.layers.append(layer(pad=self.pad_all_layers))
             except:
-                # print(f"Padding is not defined for {layer}, adding without specifying padding.")
                 self.layers.append(layer())
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
-        # print(f"receptive field calculated to be {self.receptive_field}")
-        # self.out_bins = out_bins
 
         
         self.regression = regression
