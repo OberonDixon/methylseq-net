@@ -17,7 +17,7 @@ class EncodingAdjuster(nn.Module):
             self.channels = 7
         elif self.encoding_str in ['seq+methyl_no-mask']:
             self.channels = 6
-        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask']:
+        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask','seq+smoothed-methyl']:
             self.channels = 5
         elif self.encoding_str in ['seq-only']:
             self.channels = 4
@@ -39,6 +39,16 @@ class EncodingAdjuster(nn.Module):
             x[:,4:6,:] = (x[:,4:6,:]>0.5)
         elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
             x[:,4,:] = x[:,4,:] + x[:,5,:]
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq+smoothed-methyl':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            padding = (129 - 1) // 2
+            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
+            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
+            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
+            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x[:,4,:] = smoothed
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq-only':
             x = x[:,0:4,:]
