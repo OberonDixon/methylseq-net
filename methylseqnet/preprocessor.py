@@ -16,7 +16,7 @@ class PreprocessingPipeline:
             sample_generator,
             multitask_io_handler,
             dataset_writer_class,
-            samples_per_batch,
+            samples_per_batch=1,
             output_directory=None,
             ):
         # run sampler
@@ -62,7 +62,11 @@ class PreprocessingPipeline:
     def initialize_dataset_writer(self,split_name):
         num_tracks = self.multitask_io_handler.num_tracks
         output_path = Path(self.output_directory) / (split_name.strip() + ".h5")
-        dataset_writer = self.dataset_writer_class(output_path=output_path,num_tracks=num_tracks)
+        dataset_writer = self.dataset_writer_class(
+            output_path=output_path,
+            num_tracks=num_tracks,
+            io_mappings_list=self.multitask_io_handler.io_mappings_list,
+        )
         return dataset_writer
 
     def process_samples(
@@ -116,7 +120,6 @@ class PreprocessingPipeline:
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file. No default.")
-    # parser.add_argument("--bed_file", required=True, help="Path to the BED file")
     parser.add_argument("--subset", required=False, default='all', help="Subset to process (e.g., train, test, validation, or all). Defaults to all.")
     parser.add_argument("--mode", required=False, default="sequential", help="Processing mode, sequential or parallel. Defaults to sequential.")
     parser.add_argument("--workers", required=False, default="all", help="max_workers across which to parallelize. Defaults to all.")

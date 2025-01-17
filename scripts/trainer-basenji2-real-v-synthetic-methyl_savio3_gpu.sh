@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:2
+#SBATCH --gres=gpu:4
 #SBATCH --requeue
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
@@ -17,16 +17,9 @@
 
 # Define an array of config files
 CONFIG_FILES=(
-    "../configs/train-regression_seq-binary-drop8-cpg-decay_lightning.gin"
-    "../configs/train-regression_seq-cpg-5-channels_lightning.gin"
-    "../configs/train-regression_seq-only_lightning.gin"
-    # "../configs/train_seq-binary-drop64-cpg-decay_lightning.gin"
-    # "../configs/train_seq-binary-drop-cpg-decay_lightning.gin"
-    # "../configs/train_seq-binary-cpg_lightning.gin"
-    # "../configs/train_seq-binary-drop-cpg_lightning.gin"
-    # "../configs/train_seq-cpg_lightning.gin"
-    # "../configs/train_seq-cpg-weight-decay_lightning.gin"
-    # "../configs/train_seq-cpg-288-filters_lightning.gin"
+    "../configs/seq-to-methyl/train-basenji55k_seq-only-to-activity.gin"
+    "../configs/seq-to-methyl/train-basenji55k_seq-synthetic-cpg-to-activity.gin"
+    "../configs/seq-to-methyl/train-basenji55k_seq-true-cpg-to-activity.gin"
 )
 
 # Get the config file for this array task

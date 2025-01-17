@@ -26,15 +26,23 @@ os.environ["SLURM_JOB_NAME"] = "interactive"
 
 @gin.configurable
 class MethylSeqDataModule(LightningDataModule):
-    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32):
+    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32, transforms=[], pow=False):
         super().__init__()
         self.train_dataset_file = train_dataset_file
         self.validation_dataset_file = validation_dataset_file
         self.batch_size = batch_size
+        self.transforms = transforms
 
     def setup(self, stage=None):
-        self.train_dataset = CustomH5Dataset(self.train_dataset_file,batch_size=self.batch_size)
-        self.val_dataset = CustomH5Dataset(self.validation_dataset_file,batch_size=self.batch_size)
+        self.train_dataset = CustomH5Dataset(
+            self.train_dataset_file,
+            batch_size=self.batch_size,
+            transforms=self.transforms,
+        )
+        self.val_dataset = CustomH5Dataset(
+            self.validation_dataset_file,
+            batch_size=self.batch_size,
+        )
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=3)
@@ -77,6 +85,16 @@ def main(config,output_dir,unique_identifier,gpus,batch_size):
         data_module = MethylSeqDataModule(batch_size=batch_size)
     else:
         data_module = MethylSeqDataModule()
+
+    # Try to retrieve the io_mappings string from the train dataset, silently skipping if missing
+    # The value here lies in the fact that the task structure is dynamically created from the
+    # preprocessor matches file, so having a record of what the mappings is for a given model
+    # may be useful when trying different datasets, etc
+    try:
+        dataset = CustomH5Dataset(data_module.train_dataset_file)
+        model.io_mappings_str = dataset.get_io_mappings_str()
+    except AttributeError:
+        print(f"No 'io_mappings' attribute found in {data_module.train_dataset_file}.")
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'

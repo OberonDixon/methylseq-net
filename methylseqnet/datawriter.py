@@ -1,8 +1,9 @@
-# import pysam
 import h5py
 from pathlib import Path
 import numpy as np
 import gin
+import pandas as pd
+from tqdm.auto import tqdm
 
 @gin.register
 @gin.configurable
@@ -15,7 +16,18 @@ class DatasetWriter:
         num_tracks: int,
         output_path: str | Path,
         mask: bool = True,
+        io_mappings_list: list=[],
     ):
+        """
+        Args:
+            seq_length: the length of the nucleotide sequence
+            cpg_input: True if you are providing methylation tracks to write into the dataset
+            track_length: the number of predicton track bins
+            num_tracks: the number of different prediction tasks
+            output_path: the place to which the dataset will be written, including filename
+            mask: True if some tasks are masked out for some samples
+            io_mappings_list: the task identification for each output task - what cell type, etc
+        """
         # The length of the input sequence
         self.seq_length = seq_length
         # True if we are going to provide CpG methylation in the input encoding
@@ -31,6 +43,8 @@ class DatasetWriter:
             raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')
         # True means we are using a mask for the loss function
         self.mask = mask
+        self.io_mappings_list = io_mappings_list
+        
         self.initialize_h5()
     def initialize_h5(self):
         with h5py.File(self.output_path,'w') as f:
@@ -75,9 +89,11 @@ class DatasetWriter:
                     compression='gzip',
                     compression_opts=2,
                 )
-            # Log the gin config string as an attribute in the HDF5 file
+            # Log the gin config string and io mappings as attributes in the HDF5 file
             gin_config_str = gin.operative_config_str()
             f.attrs['gin_config'] = gin_config_str
+            f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
+                
     def write_chunk(
         self,
         indices_list,
@@ -143,4 +159,48 @@ class DatasetWriter:
             except ValueError as e:
                 raise ValueError(f"Value assignment error: check dimensions of assigned data. {e}") from e
                         
-                        
+class BigWigWriter:
+    def __init__(self, output_file, contigs):
+        """
+        Initializes the BigWigWriter.
+
+        Args:
+            output_file (str): Path to the output BigWig file.
+            reference_genome (str): Path to the reference genome file (FASTA).
+        """
+        self.output_file = output_file
+        self.contigs = contigs
+
+    def write_genome(self,genome_data_dict,chunk_size=1000):
+        """
+        Writes data to the specified coordinate range for a given contig.
+
+        Args:
+            contig (str): The name of the contig.
+            start (int): Start position (0-based, inclusive).
+            end (int): End position (0-based, exclusive).
+            data (np.ndarray): Numpy array of data values to write.
+        """
+        import pyBigWig
+
+        # Open the BigWig file write data
+        with pyBigWig.open(self.output_file, "w") as bw:
+            bw.addHeader(self.contigs)
+            for contig,contig_data in tqdm(genome_data_dict.items(),desc=f"writing contigs for {Path(self.output_file).name}",leave=False):
+                entries = contig_data['entries']
+                motifs = contig_data['motifs']
+                start = contig_data['start']
+                end = contig_data['end']
+
+                for chunk_start in range(0,len(entries)-1,chunk_size):
+                    chunk_end = min(len(entries),chunk_start+chunk_size)
+                    motifs_chunk = motifs[chunk_start:chunk_end]
+                    entries_chunk = entries[chunk_start:chunk_end]
+                    if len(motifs)>0:
+                        # Write only filtered positions to the BigWig file
+                        bw.addEntries(
+                            ([contig] * len(entries_chunk)),  # Contig names
+                            motifs_chunk.tolist(),          # Start positions
+                            ends=(motifs_chunk + 1).tolist(),  # End positions
+                            values=entries_chunk.tolist()       # Corresponding values
+                        )

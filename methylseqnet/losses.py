@@ -1,21 +1,23 @@
 import torch
 import torch.nn as nn
 
+# TODO: delete un-needed code
+
 class CustomPoissonNLLLossLogTransformed(nn.Module):
     def __init__(self):
         super(CustomPoissonNLLLossLogTransformed,self).__init__()
         self.poisson = nn.PoissonNLLLoss(log_input=False)
-    def forward(self, predicted_log_counts, target_log_counts):
+    def forward(self, predicted_counts, target_counts):
         # Reverse the log(counts + 1) transform
-        predicted_counts = torch.clamp(
-            torch.pow(10, predicted_log_counts) - 1,
-            min=1e-3,
-        )
-        target_counts = torch.clamp(
-            (torch.pow(10, target_log_counts) - 1)/2,
-            min=1e-3,
-            max=10
-        )
+        # predicted_counts = torch.clamp(
+        #     torch.pow(10, predicted_log_counts) - 1,
+        #     min=1e-3,
+        # )
+        # target_counts = torch.clamp(
+        #     (torch.pow(10, target_log_counts) - 1)/2,
+        #     min=1e-3,
+        #     max=10
+        # )
 
         return self.poisson(predicted_counts,target_counts)
 

@@ -1,0 +1,62 @@
+Methylation_Atlas	ATAC_Atlas	ATAC_Tissue	ATAC_scale	ATAC_clip	ATAC_Match_Quality	CAGE_Atlas_Library	CAGE_Atlas_Comment	CAGE_scale	CAGE_clip	CAGE_Match_Quality		
+Pancreas-Acinar	Acinar	Pancreatic	2	32	5			128	384	0		
+Adipocytes	Adipocyte		2	32	5	"CNhs12494,CNhs11371"	"Adipocyte - subcutaneous, donor1,Adipocyte - subcutaneous, donor2"	128	384	5		
+Pancreas-Alpha	"Alpha 1,Alpha 2"	Pancreatic	2	32	5			128	384	0		
+Lung-Alveolar-Endothel	Alveolar Cap Endo		2	32	5			128	384	0		
+Lung-Alveolar-Epithel	"Alveolar Type 1,Alveolar Type 2"		2	32	3	"CNhs11325,CNhs12084"	"Alveolar Epithelial Cells, donor1,Alveolar Epithelial Cells, donor2,Alveolar Epithelial Cells, donor3"	128	384	5		
+Lung-Alveolar-Macrophages	Macrophage Gen or Alv		2	32	3	"CNhs10861,CNhs11899,CNhs12003"	"Macrophage - monocyte derived, donor1,Macrophage - monocyte derived, donor2,Macrophage - monocyte derived, donor3"	128	384	2		
+Coronary-Artery-Smooth-Muscle	"Vasc Sm Muscle 1,Vasc Sm Muscle 2"	Vascular	2	32	3			128	384	0		
+Blood-B			2	32	0	"CNhs12343,CNhs12352,CNhs12354"	"CD19+ B Cells, donor1,CD19+ B Cells, donor2,CD19+ B Cells, donor3"	128	384	4		
+Blood-B-Mem	Memory B		2	32	5			128	384	0		
+Breast-Basal-Epithel	Mammary Basal Epi	Mammary	2	32	5	CNhs11382	"Mammary Epithelial Cell, donor2"	128	384	4		
+Pancreas-Beta	"Beta 1,Beta 2"	Pancreatic	2	32	5			128	384	0		
+Lung-Bronchus-Epithel	Cilliated	Lung	2	32	5	CNhs11327	"Bronchial Epithelial Cell, donor1"	128	384	5		
+Bronchus-Smooth-Muscle	Sm Ms General		2	32	2	"CNhs11328,CNhs12348"	"Smooth Muscle Cells - Bronchial, donor1"	128	384	5		
+Heart-Cardiomyocyte	"V Cardiomyocyte,A Cardiomyocyte"		2	32	4	"CNhs12341,CNhs12350"	"Cardiac Myocyte, donor1,Cardiac Myocyte, donor2,Cardiac Myocyte, donor3"	128	384	5		
+Pancreas-Delta	Delta Gamma	Pancreatic	2	32	2			128	384	0		
+Pancreas-Duct	Ductal	Pancreatic	2	32	5			128	384	0		
+Aorta-Endothel	"Endothelial General 1,Endothelial General 2,Endothelial General 3"		2	32	2	"CNhs10838,CNhs11085,CNhs11305,CNhs11309"	"Smooth Muscle Cells - Aortic, donor0,1,2,3"	128	384	5		
+Gallbladder-Epithel			2	32	0			128	384	0		
+Bone_marrow-Erythrocyte_progenitors			2	32	0			128	384	0		
+Heart-Fibroblasts	Cardiac Fibroblast		2	32	5	CNhs12498	"Fibroblast - Cardiac, donor1"	128	384	5		
+Kidney-Glomerular-Endothel			2	32	0	"CNhs12074,CNhs12086,CNhs12624"	"Renal Glomerular Endothelial Cells, donor1,2,3"	128	384	5		
+Kidney-Glomerular-Epithel			2	32	0			128	384	0		
+Kidney-Glomerular-Podocytes			2	32	0			128	384	0		
+Blood-Granulocytes			2	32	0			128	384	0		
+Liver-Hepatocytes	Hepatocyte		2	32	5	"CNhs12340,CNhs12349,CNhs12626"	"Hepatocyte, donor1,2,3"	128	384	5		
+Lung-Interstitial-Macrophages	Macrophage General		2	32	2	"CNhs10861,CNhs11899,CNhs12003"	"Macrophage - monocyte derived, donor1,Macrophage - monocyte derived, donor2,Macrophage - monocyte derived, donor3"	128	384	2		
+Pancreas-Islet-Endothel	"Endothelial General 1,Endothelial General 2,Endothelial General 3"		2	32	2	CNhs10877	"Pancreatic stromal cells, donor1"	128	384	2		
+Epidermal-Keratinocytes	"Keratinocyte 1,Keratinocyte 2"		2	32	4	"CNhs10879,CNhs11064"	"Keratinocyte - oral, donor1,Keratinocyte - epidermal, donor1"	128	384	4		
+Colon-Left-Endocrine			2	32	0			128	384	0		
+Colon-Left-Epithelial	"Colon Epithelial 1,Colon Epithelial 2,Colon Epithelial 3"		2	32	4			128	384	0		
+Breast-Luminal-Epithel	"Mammary Luminal Epi 1,Mammary Luminal Epi 2"		2	32	0	CNhs11382	"Mammary Epithelial Cell, donor2"	128	384	4		
+Liver-Macrophages	Macrophage General		2	32	2	"CNhs10861,CNhs11899,CNhs12003"	"Macrophage - monocyte derived, donor1,Macrophage - monocyte derived, donor2,Macrophage - monocyte derived, donor3"	128	384	2		
+Blood-Monocytes			2	32	0	"CNhs13224,CNhs13541,CNhs13216,CNhs13207,CNhs13208"	"CD14-CD6 Monocytes, Donor 1 and 2"	128	384	4		
+Skeletal-Muscle	"Type I Skeletal Myocyte,Type II Skeletal Myocyte"		2	32	4	CNhs10869	"Skeletal Muscle Satellite Cells, donor1"	128	384	5		
+Blood-NK	Natural Killer T		2	32	5	CNhs10859	"Natural Killer Cells, donor1"	128	384	5		
+Neuron	"GABA 1,GABA 2,Enteric Neuron"	Neurons	2	32	4	"CNhs12338,CNhs12726,CNhs13815"	"Neurons, donor1"	128	384	5		
+Oligodendrocytes	Oligodendrocyte		2	32	5			128	384	0		
+Bone-Osteoblasts			2	32	0	"CNhs11078,CNhs11311"	"Osteoblast, donor1,Osteoblast - differentiated, donor1"	128	384	5		
+Tonsil-Palatine-Epithel			2	32	0			128	384	0		
+Tonsil-Pharyngeal-Epithel			2	32	0			128	384	0		
+Lung-Pleura	Mesothelial		2	32	1			128	384	0		
+Colon-Right-Endocrine			2	32	0			128	384	0		
+Colon-Right-Epithel			2	32	0			128	384	0		
+Prostate-Smooth-Muscle	Sm Ms General		2	32	3			128	384	0		
+Blood-T-CD3			2	32	0			128	384	0		
+Blood-T-CD4			2	32	0	"CNhs10853,CNhs11955"	"CD4+ T Cells, donor1,CD4+ T Cells, donor2"	128	384	4		
+Blood-T-CD8			2	32	0	"CNhs10854,CNhs11956"	"CD8+ T Cells, donor1,CD8+ T Cells, donor2"	128	384	4		
+Blood-T-CenMem-CD4			2	32	0			128	384	0		
+Blood-T-Eff-CD8			2	32	0			128	384	0		
+Blood-T-EffMem-CD8			2	32	0			128	384	0		
+Blood-T-Naive-CD4	Naive T		2	32	3	"CNhs13223,CNhs13202,CNhs13512"	"CD4+CD25-CD45RA+ naive conventional T cells, donor1,CD4+CD25-CD45RA+ naive conventional T cells expanded, donor1,CD4+CD25-CD45RA+ naive conventional T cells, donor2"	128	384	5		
+Blood-T-Naive-CD8	Naive T		2	32	3			128	384	0		
+Kidney-Tubular-Endothel			2	32	0			128	384	0		
+Kidney-Tubular-Epithel			2	32	0	"CNhs11330,CNhs12087,CNhs12120"	"Renal Proximal Tubular Epithelial Cell, donor1,2,3"	128	384	4		
+Saphenous-Vein-Endothel	Endothelial Exocrine		2	32	2	CNhs12497	"Endothelial Cells - Vein, donor1"	128	384	4		
+Gastric-antrum-Endocrine	Chief		2	32	1			128	384	0		
+Gastric-antrum-Epithel			2	32	0			128	384	0		
+Gastric-body-Epithel			2	32	0			128	384	0		
+Gastric-fundus-Epithel			2	32	0			128	384	0		
+Small-int-Endocrine			2	32	0			128	384	0		
+Small-int-Epithel	"Enterocyte,SI Goblet"	Small Intestine	2	32	4	CNhs10875	"Intestinal epithelial cells (polarized), donor1"	128	384	4		
