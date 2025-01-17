@@ -18,6 +18,16 @@ class DatasetWriter:
         mask: bool = True,
         io_mappings_list: list=[],
     ):
+        """
+        Args:
+            seq_length: the length of the nucleotide sequence
+            cpg_input: True if you are providing methylation tracks to write into the dataset
+            track_length: the number of predicton track bins
+            num_tracks: the number of different prediction tasks
+            output_path: the place to which the dataset will be written, including filename
+            mask: True if some tasks are masked out for some samples
+            io_mappings_list: the task identification for each output task - what cell type, etc
+        """
         # The length of the input sequence
         self.seq_length = seq_length
         # True if we are going to provide CpG methylation in the input encoding

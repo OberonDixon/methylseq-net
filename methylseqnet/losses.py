@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+# TODO: delete un-needed code
+
 class CustomPoissonNLLLossLogTransformed(nn.Module):
     def __init__(self):
         super(CustomPoissonNLLLossLogTransformed,self).__init__()

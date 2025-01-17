@@ -22,7 +22,7 @@ class MethylSeqNN(L.LightningModule):
         out_tracks=None,
         regression=False,
         pad_all_layers=False,
-        crop_off_final=0,
+        crop_off_final=0, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
         label_threshold_cts=5,
         learning_rate=0.005, 
         momentum=0.98, 
@@ -60,10 +60,12 @@ class MethylSeqNN(L.LightningModule):
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
     def forward(self, x):
+        # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
         for layer in self.layers:
             x = layer(x)
         if self.regression:
             x = self.softplus(x)
+        # TODO: check that this cropping logic isn't busted in some cases - e.g. what if crop_off_final is zero??
         if self.crop_off_final:
             x = x[:,:,self.crop_off_final:-self.crop_off_final]
         return x
@@ -147,6 +149,7 @@ class MethylSeqNN(L.LightningModule):
         checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
         # Parse the gin configuration from the checkpoint
         operative_config_str = checkpoint["operative_config_str"]
+        # TODO: verify that clearing config is necessary
         gin.clear_config()
         gin.parse_config(operative_config_str)
         del checkpoint
