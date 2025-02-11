@@ -158,6 +158,62 @@ class SequenceJitter(LoaderTransform):
 
 @gin.configurable
 @gin.register
+class EncodingSelector(nn.Module):
+    """
+    EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
+    different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
+    """
+    def __init__(self, encoding_str):
+        super(EncodingSelector,self).__init__()
+        self.encoding_str = encoding_str
+        if self.encoding_str in ['seq+methyl_binary-seq','seq+methyl_ACGTm-sum-to-1','seq+methyl_binarize-methyl']:
+            self.channels = 7
+        elif self.encoding_str in ['seq+methyl_no-mask']:
+            self.channels = 6
+        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask','seq+smoothed-methyl']:
+            self.channels = 5
+        elif self.encoding_str in ['seq-only']:
+            self.channels = 4
+        elif self.encoding_str in ['methyl-only']:
+            self.channels = 1
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+    def forward(self, x):
+        # the structure of the one-hot sequence is [sample,(A,C,G,T,meth_fraction_fwd,meth_fraction_rev,valid_cpg),position]
+
+        if self.encoding_str == 'seq+methyl_binary-seq':
+            x = x
+        elif self.encoding_str == 'seq+methyl_no-mask':
+            x =  x[:,0:6,:]
+        elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
+        elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x[:,4:6,:] = (x[:,4:6,:]>0.5)
+        elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x[:,4,:] = x[:,4,:] + x[:,5,:]
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq+smoothed-methyl':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            padding = (129 - 1) // 2
+            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
+            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
+            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
+            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x[:,4,:] = smoothed
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq-only':
+            x = x[:,0:4,:]
+        elif self.encoding_str == 'methyl-only':
+            x = x[:,4:6,:]
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+        return x
+
+@gin.configurable
+@gin.register
 class CpGSparsifier(nn.Module):
     """
     Randomly add sparsity to the CpG methylation input tracks, if available. By default this is only done at training

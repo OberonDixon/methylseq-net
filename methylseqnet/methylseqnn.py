@@ -1,9 +1,11 @@
+import importlib
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import gin
 import lightning as L
-from memory_profiler import profile
+# from memory_profiler import profile
 import gc
 import torchmetrics
 import zipfile
@@ -13,35 +15,66 @@ from io import StringIO
 from methylseqnet.transforms import *
 from methylseqnet.layers import *
 from methylseqnet.losses import *
+from methylseqnet.pretrained import *
+
+gin.register(nn.Softplus)
 
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
         layers,
+        pretrained_seq_model_generator=None,
+        pretrained_seq_model_weights=None,
+        seq_input_head=None,
+        seq_output_head=None,
+        model_merge_operation='multiply',
         out_tracks=None,
         regression=False,
         pad_all_layers=False,
-        crop_off_final=0, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
+        crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
         label_threshold_cts=5,
         learning_rate=0.005, 
         momentum=0.98, 
         pos_weight=100,
         betas=(0.97,0.98),
     ):
+        """
+        Args:
+            layers: a list of nn.Modules that run sequentially to form the seq+methyl model
+        """
         super().__init__()
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
         self.pad_all_layers = pad_all_layers
         self.crop_off_final = crop_off_final
+        self.model_merge_operation = model_merge_operation
+        # TODO: rename layers to something like residual_methylseq_model
         self.layers = nn.ModuleList()
-        for layer in layers:
-            try:
-                self.layers.append(layer(pad=self.pad_all_layers))
-            except:
-                self.layers.append(layer())
+        if layers:
+            for layer in layers:
+                try:
+                    self.layers.append(layer(pad=self.pad_all_layers))
+                except:
+                    self.layers.append(layer())
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
+        
+        self.pretrained_seq_model = nn.ModuleList()
+        self.seq_input_head = nn.ModuleList()
+        self.seq_output_head = nn.ModuleList()
+        if pretrained_seq_model_generator is not None:
+            self.pretrained_seq_model = pretrained_seq_model_generator()
+            if pretrained_seq_model_weights:
+                self.pretrained_seq_model.load_state_dict(torch.load(pretrained_seq_model_weights), strict=False)
+            for param in self.pretrained_seq_model.parameters():
+                param.requires_grad = False
+            if seq_input_head:
+                for layer in seq_input_head:
+                    self.seq_input_head.append(layer())
+            if seq_output_head:
+                for layer in seq_output_head:
+                    self.seq_output_head.append(layer())
 
         
         self.regression = regression
@@ -54,20 +87,44 @@ class MethylSeqNN(L.LightningModule):
         self.io_mappings_str = ''
 
         if self.regression:
-            self.softplus = nn.Softplus()
+            # self.softplus = nn.Softplus()
             self.criterion = CustomPoissonNLLLossLogTransformed()
         else:
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
     def forward(self, x):
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
-        for layer in self.layers:
-            x = layer(x)
-        if self.regression:
-            x = self.softplus(x)
-        # TODO: check that this cropping logic isn't busted in some cases - e.g. what if crop_off_final is zero??
-        if self.crop_off_final:
-            x = x[:,:,self.crop_off_final:-self.crop_off_final]
+        if self.layers:
+            x_methylseq = x
+            for layer in self.layers:
+                x_methylseq = layer(x_methylseq)
+            # TODO: check that this cropping logic isn't busted in some cases - e.g. what if crop_off_final is zero??
+            if self.crop_off_final:
+                x_methylseq = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
+            if not self.pretrained_seq_model:
+                return x_methylseq
+        if self.pretrained_seq_model:
+            x_seq = x
+            if self.seq_input_head:
+                for layer in self.seq_input_head:
+                    x_seq = layer(x_seq)
+            x_seq = self.pretrained_seq_model(x_seq)
+            if self.seq_output_head:
+                for layer in self.seq_output_head:
+                    x_seq = layer(x_seq)
+            if not self.layers:
+                return x_seq
+        if self.layers and self.pretrained_seq_model:
+            operations = {
+                'multiply': torch.mul,  # Element-wise multiplication
+                'add': torch.add        # Element-wise addition
+            }
+            
+            if self.model_merge_operation in operations:
+                x = operations[self.model_merge_operation](x_methylseq, x_seq)
+            else:
+                raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
+            
         return x
 
     def training_step(self,batch,batch_idx):
@@ -82,6 +139,7 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
         self.log("train_loss", loss)
+        print(loss)
         return loss  
 
     def validation_step(self, batch, batch_idx):
@@ -122,8 +180,19 @@ class MethylSeqNN(L.LightningModule):
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay
         param_groups = []
-        for layer in self.layers:
-            param_groups.append({'params': layer.parameters(), 'weight_decay': getattr(layer, 'weight_decay', 0)})
+        # Collect parameters from layers if not empty
+        if len(self.layers) > 0:
+            param_groups += [{'params': layer.parameters(), 'weight_decay': getattr(layer, 'weight_decay', 0)} for layer in self.layers]
+    
+        # Collect parameters from other trainable parts of the model
+        # if hasattr(self, "pretrained_seq_model") and any(p.requires_grad for p in self.pretrained_seq_model.parameters()):
+        #     param_groups.append({'params': self.pretrained_seq_model.parameters()})
+    
+        if hasattr(self, "seq_output_head") and any(p.requires_grad for p in self.seq_output_head.parameters()):
+            param_groups.append({'params': self.seq_output_head.parameters()})
+    
+        if not param_groups:
+            raise ValueError("No trainable parameters found. Ensure at least one module has trainable parameters.")
         if self.regression:
             optimizer = optim.Adam(param_groups, lr=self.learning_rate, betas=self.betas)
         else:
@@ -139,10 +208,15 @@ class MethylSeqNN(L.LightningModule):
     def on_save_checkpoint(self, checkpoint):
         checkpoint["operative_config_str"] = gin.operative_config_str()
         checkpoint["io_mappings_str"] = self.io_mappings_str
+        # Store metadata for reloading the external model
+        if self.pretrained_seq_model is not None:
+            external_model = self.pretrained_seq_model
+            checkpoint["pretrained_model_class"] = external_model.__class__.__name__
+            checkpoint["pretrained_model_module"] = external_model.__class__.__module__
 
     def on_load_checkpoint(self, checkpoint):
         self.io_mappings_str = checkpoint.get("io_mappings_str","")
-        
+     
     @classmethod
     def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
         # Load the checkpoint to extract the gin config
@@ -152,10 +226,24 @@ class MethylSeqNN(L.LightningModule):
         # TODO: verify that clearing config is necessary
         gin.clear_config()
         gin.parse_config(operative_config_str)
+        # Reconstruct the pretrained model dynamically
+        # pretrained_seq_model = None
+        # if "pretrained_model_class" in checkpoint and "pretrained_model_module" in checkpoint:
+        #     module_name = checkpoint["pretrained_model_module"]
+        #     class_name = checkpoint["pretrained_model_class"]
+
+        #     # Dynamically import the module and instantiate the model
+        #     module = importlib.import_module(module_name)
+        #     model_class = getattr(module, class_name)
+        #     pretrained_seq_model = model_class()
         del checkpoint
         gc.collect() 
         # Continue with the regular loading process
-        return super().load_from_checkpoint(checkpoint_path, *args, **kwargs)
+        return super().load_from_checkpoint(
+            checkpoint_path, 
+            *args, 
+            **kwargs
+        )
 
     def trim_targets(self,inputs,targets):
         """
@@ -173,12 +261,15 @@ class MethylSeqNN(L.LightningModule):
         inputs_length = inputs.shape[2]
         targets_length = targets.shape[2]
         
-        if not self.pad_all_layers:
-            network_outputs_length = (inputs_length - self.receptive_field+self.total_stride)//self.total_stride
+        if self.layers:
+            if not self.pad_all_layers:
+                network_outputs_length = (inputs_length - self.receptive_field+self.total_stride)//self.total_stride
+            else:
+                network_outputs_length = inputs_length//self.total_stride
+    
+            trim_off_targets = 2*self.crop_off_final + targets_length - network_outputs_length
         else:
-            network_outputs_length = inputs_length//self.total_stride
-
-        trim_off_targets = 2*self.crop_off_final + targets_length - network_outputs_length
+            trim_off_targets = 2*self.crop_off_final
         
         if trim_off_targets>1:
             return targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]

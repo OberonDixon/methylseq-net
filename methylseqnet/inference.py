@@ -208,11 +208,12 @@ def write_channel_wrapper(args):
     return write_channel(*args)
 
 def run_whole_genome_write_methylation(
-    model_path,
+    model,
     ref_genome,
     output_directory,
     chunk_size=131072,
     early_stop=None,
+    trim_off_targets=None,
 ):
     import pysam
 
@@ -220,12 +221,12 @@ def run_whole_genome_write_methylation(
         os.makedirs(output_directory)
         
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.to(device)
     
     bin_size = model.total_stride
     targets_size = chunk_size//bin_size
-    trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
+    if trim_off_targets is None:
+        trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
 
     io_mappings_df = model.get_io_mappings_df()
     output_file_paths_dict = {}

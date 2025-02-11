@@ -22,7 +22,7 @@ class EncodingAdjuster(nn.Module):
         elif self.encoding_str in ['seq-only']:
             self.channels = 4
         elif self.encoding_str in ['methyl-only']:
-            self.channels = 1
+            self.channels = 3
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
@@ -53,7 +53,7 @@ class EncodingAdjuster(nn.Module):
         elif self.encoding_str == 'seq-only':
             x = x[:,0:4,:]
         elif self.encoding_str == 'methyl-only':
-            x = x[:,4:6,:]
+            x = x[:,4:7,:]
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 

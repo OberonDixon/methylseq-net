@@ -73,7 +73,13 @@ class MethylSeqDataModule(LightningDataModule):
 #     if torch.backends.cudnn.benchmark:
 #         print("CUDNN benchmark is enabled.")
 
-def main(config,output_dir,unique_identifier,gpus,batch_size):
+def main(
+    config,
+    output_dir,
+    unique_identifier,
+    gpus,
+    batch_size,
+):
     
     gin.parse_config_file(config)
     
