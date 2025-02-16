@@ -1,12 +1,12 @@
 #!/bin/bash
 #SBATCH --job-name=train_methylseqnet
 #SBATCH --account=fc_nilah
-#SBATCH --partition=savio4_gpu
+#SBATCH --partition=savio3_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=4
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:8
+#SBATCH --gres=gpu:4
 #SBATCH --requeue
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out

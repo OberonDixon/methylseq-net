@@ -26,6 +26,17 @@ class MethylSeqNN(L.LightningModule):
         layers,
         pretrained_seq_model_generator=None,
         pretrained_seq_model_weights=None,
+        train_stages={
+            0:{
+                'mode':'full-model',
+                'grad_dict':{
+                    'layers':True,
+                    'pretrained_seq_model':False,
+                    'seq_input_head':True,
+                    'seq_output_head':True,
+                }
+            }
+        },
         seq_input_head=None,
         seq_output_head=None,
         model_merge_operation='multiply',
@@ -47,6 +58,9 @@ class MethylSeqNN(L.LightningModule):
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
         
+        self.train_stages = train_stages
+        # print(self.train_stages)
+        self.mode = 'full-model'
         self.pad_all_layers = pad_all_layers
         self.crop_off_final = crop_off_final
         self.model_merge_operation = model_merge_operation
@@ -94,16 +108,16 @@ class MethylSeqNN(L.LightningModule):
 
     def forward(self, x):
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
-        if self.layers:
+        if self.layers and self.mode in ['full-model','residual-only']:
             x_methylseq = x
             for layer in self.layers:
                 x_methylseq = layer(x_methylseq)
             # TODO: check that this cropping logic isn't busted in some cases - e.g. what if crop_off_final is zero??
             if self.crop_off_final:
                 x_methylseq = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
-            if not self.pretrained_seq_model:
+            if not self.pretrained_seq_model or self.mode=='residual-only':
                 return x_methylseq
-        if self.pretrained_seq_model:
+        if self.pretrained_seq_model and self.mode in ['full-model','pretrained-only']:
             x_seq = x
             if self.seq_input_head:
                 for layer in self.seq_input_head:
@@ -112,9 +126,9 @@ class MethylSeqNN(L.LightningModule):
             if self.seq_output_head:
                 for layer in self.seq_output_head:
                     x_seq = layer(x_seq)
-            if not self.layers:
+            if not self.layers or self.mode=='pretrained-only':
                 return x_seq
-        if self.layers and self.pretrained_seq_model:
+        if self.layers and self.pretrained_seq_model and self.mode=='full-model':
             operations = {
                 'multiply': torch.mul,  # Element-wise multiplication
                 'add': torch.add        # Element-wise addition
@@ -139,7 +153,6 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[mask]
         loss = self.criterion(outputs, targets)
         self.log("train_loss", loss)
-        print(loss)
         return loss  
 
     def validation_step(self, batch, batch_idx):
@@ -155,11 +168,6 @@ class MethylSeqNN(L.LightningModule):
         loss = self.criterion(outputs, targets)
         self.log("val_loss", loss)
         return loss
-
-    def on_test_epoch_start(self):
-        self.test_targets_list = []
-        self.test_outputs_list = []
-        return
         
     def test_step(self, batch, batch_idx):
         inputs, targets, mask = batch
@@ -180,23 +188,26 @@ class MethylSeqNN(L.LightningModule):
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay
         param_groups = []
-        # Collect parameters from layers if not empty
-        if len(self.layers) > 0:
-            param_groups += [{'params': layer.parameters(), 'weight_decay': getattr(layer, 'weight_decay', 0)} for layer in self.layers]
-    
-        # Collect parameters from other trainable parts of the model
-        # if hasattr(self, "pretrained_seq_model") and any(p.requires_grad for p in self.pretrained_seq_model.parameters()):
-        #     param_groups.append({'params': self.pretrained_seq_model.parameters()})
-    
-        if hasattr(self, "seq_output_head") and any(p.requires_grad for p in self.seq_output_head.parameters()):
-            param_groups.append({'params': self.seq_output_head.parameters()})
-    
+        
+        for attr_name in dir(self):  # Iterate over all attributes of the model
+            if attr_name.startswith("_"):  # Skip private attributes
+                continue
+            
+            module = getattr(self, attr_name)
+            
+            if isinstance(module, nn.Module):  # Check if it's an nn.Module or nn.ModuleList
+                print(attr_name)
+                params = [p for p in module.parameters() if p.requires_grad]  # Filter trainable params
+                if params:  # Only add if there are trainable params
+                    weight_decay = getattr(module, 'weight_decay', 0)
+                    param_groups.append({'params': params, 'weight_decay': weight_decay})
+        
         if not param_groups:
             raise ValueError("No trainable parameters found. Ensure at least one module has trainable parameters.")
         if self.regression:
-            optimizer = optim.Adam(param_groups, lr=self.learning_rate, betas=self.betas)
+            optimizer = [optim.Adam(param_groups, lr=self.learning_rate, betas=self.betas)]
         else:
-            optimizer = optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)
+            optimizer = [optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)]
         return optimizer
     
     def get_layer(self, layer_name):
@@ -204,6 +215,36 @@ class MethylSeqNN(L.LightningModule):
             if name == layer_name:
                 return layer
         raise ValueError(f"Layer {layer_name} not found in the model")
+        
+    def set_module_requires_grad(self, grad_dict):
+        """
+        Sets requires_grad for entire modules in a model based on a dictionary.
+    
+        :param self: The PyTorch model
+        :param grad_dict: Dictionary where keys are model attribute names (str) and values are booleans (True/False)
+        """
+        for attr_name, requires_grad in grad_dict.items():
+            if hasattr(self, attr_name):  # Check if attribute exists
+                module = getattr(self, attr_name)
+                if isinstance(module, nn.Module):  # Ensure it's an nn.Module or nn.ModuleList
+                    for param in module.parameters():
+                        param.requires_grad = requires_grad
+                        
+    def on_train_epoch_start(self,*args,**kwargs):
+        if self.current_epoch in self.train_stages:
+            stage_dict = self.train_stages[self.current_epoch]
+            if 'mode' in stage_dict:
+                self.mode = stage_dict['mode']
+            if 'grad_dict' in stage_dict:
+                self.set_module_requires_grad(stage_dict['grad_dict'])
+                # print("resetting optimizers maybe?")
+                # self.trainer.strategy.setup_optimizers(self.trainer)
+                # trainer.optimizers = self.configure_optimizers()
+
+    def on_test_epoch_start(self):
+        self.test_targets_list = []
+        self.test_outputs_list = []
+        return         
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["operative_config_str"] = gin.operative_config_str()

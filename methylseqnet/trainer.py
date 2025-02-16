@@ -134,7 +134,8 @@ def main(
         logger=logger,
         accelerator='auto', 
         devices=gpus, 
-        max_epochs=100
+        max_epochs=100,
+        strategy="ddp_find_unused_parameters_true",
     )    
 
     # print_random_seed_and_trainer_info(trainer, model)

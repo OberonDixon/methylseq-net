@@ -10,12 +10,12 @@ methylseqnet.transforms.SequenceJitter.max_jitter=3
 methylseqnet.transforms.SequenceJitter.batch_wise=False
 
 seq_model/methylseqnet.layers.EncodingAdjuster.encoding_str='seq-only'
-methylseq_model/methylseqnet.layers.EncodingAdjuster.encoding_str='seq+methyl_binary-seq'
+methylseq_model/methylseqnet.layers.EncodingAdjuster.encoding_str='smoothed-methyl-only'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=15
 methylseqnet.layers.ConvDNA.pool_size=2
-methylseqnet.layers.ConvDNA.in_channels=7
+methylseqnet.layers.ConvDNA.in_channels=1
 methylseqnet.layers.ConvDNA.weight_decay=0
 
 methylseqnet.layers.ConvTower.in_channels=%initial_filters

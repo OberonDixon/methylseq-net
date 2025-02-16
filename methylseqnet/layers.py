@@ -23,6 +23,8 @@ class EncodingAdjuster(nn.Module):
             self.channels = 4
         elif self.encoding_str in ['methyl-only']:
             self.channels = 3
+        elif self.encoding_str in ['smoothed-methyl-only']:
+            self.channels = 1
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
@@ -54,6 +56,16 @@ class EncodingAdjuster(nn.Module):
             x = x[:,0:4,:]
         elif self.encoding_str == 'methyl-only':
             x = x[:,4:7,:]
+        elif self.encoding_str == 'smoothed-methyl-only':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            padding = (129 - 1) // 2
+            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
+            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
+            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
+            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x[:,4,:] = smoothed
+            x = x[:,4:5,:]
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
