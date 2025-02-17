@@ -78,9 +78,9 @@ class MethylSeqNN(L.LightningModule):
         self.seq_input_head = nn.ModuleList()
         self.seq_output_head = nn.ModuleList()
         if pretrained_seq_model_generator is not None:
-            self.pretrained_seq_model = pretrained_seq_model_generator()
-            if pretrained_seq_model_weights:
-                self.pretrained_seq_model.load_state_dict(torch.load(pretrained_seq_model_weights), strict=False)
+            self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
+            # if pretrained_seq_model_weights:
+            #     self.pretrained_seq_model
             for param in self.pretrained_seq_model.parameters():
                 param.requires_grad = False
             if seq_input_head:

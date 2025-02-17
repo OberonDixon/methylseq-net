@@ -1,6 +1,10 @@
 import argparse
+import sys
 import traceback
 from methylseqnet.io_handlers import *
+from methylseqnet.datawriter import *
+from methylseqnet.methylseqnn import *
+from methylseqnet.dataset import *
 from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 import multiprocessing
@@ -8,6 +12,9 @@ from multiprocessing import Manager
 from collections import defaultdict
 import gin
 import os
+from pathlib import Path
+from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 @gin.configurable
 class PreprocessingPipeline:
@@ -116,6 +123,64 @@ class PreprocessingPipeline:
             else:
                 raise NotImplementedError(f"No running mode implemented for {mode}")
 
+def pretrained_model_embeddings():
+    parser = argparse.ArgumentParser(description="Save model embeddings for one or more datasets.")
+    parser.add_argument("--config", required=True, help="Path to the the gin config file for a MethylSeqNN trainer containing a pretrained model.")
+    parser.add_argument("--embeddings-shape", nargs="+", type=int, help="Space separated integers for shape of embeddings.")
+    parser.add_argument("--input-datasets-directory", required=True, help="Path to the input directory from which to run datasets.")
+    parser.add_argument("--input-dataset-names", required=False, nargs="*", help="Dataset names to run. Defaults to all.")
+    parser.add_argument("--output-datasets-directory", required=True, help="Path to an output directory for saving the embeddings datasets.")
+    parser.add_argument("--batch-size", required=False, type=int, default=8, help="Size of batches for passing through model.")
+    
+    args = parser.parse_args(sys.argv[2:])
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    if str(args.input_datasets_directory)==str(args.output_datasets_directory):
+        raise ValueError(f"Cannot set same input and out directories.")
+
+    if not os.path.exists(args.output_datasets_directory):
+        os.makedirs(args.output_datasets_directory)
+
+    gin.parse_config_file(args.config)
+
+    embeddings_shape = tuple(args.embeddings_shape)
+
+    model = MethylSeqNN()
+
+    model.seq_output_head = None
+    model.mode = "pretrained-only"
+    model.eval()
+    model.to(device)
+
+    if args.input_dataset_names:
+        dataset_files = [Path(args.input_datasets_directory) / (filename + ".h5") for filename in args.input_dataset_names]
+    else:
+        dataset_files = [f for f in Path(args.input_datasets_directory).iterdir() if f.suffix.lower() in ['.h5', '.hdf5']]
+
+    print(dataset_files)
+    
+    for dataset_file in dataset_files:
+        output_file = Path(args.output_datasets_directory) / Path(dataset_file).name
+        seq_embeddings_writer = SeqEmbeddingsWriter(
+            embeddings_shape = embeddings_shape,
+            output_path = output_file,
+        )
+        dataset = CustomH5Dataset(dataset_file,batch_size=args.batch_size)
+        dataloader = DataLoader(dataset, batch_size=None, shuffle=False)
+        
+        with torch.no_grad():
+            for batch_idx, (inputs, _, _) in enumerate(tqdm(dataloader)):
+                padding = (0, 524288 - inputs.size(-1))
+                padded_inputs = F.pad(inputs, padding, "constant", 0).to(device)
+                embeddings = model(padded_inputs)
+                print(embeddings.shape)
+                # Convert to numpy if needed
+                embeddings_list = [emb.cpu().numpy() for emb in embeddings]
+                indices_list = list(range(batch_idx*args.batch_size,(batch_idx+1)*args.batch_size))
+
+                # Write embeddings
+                seq_embeddings_writer.write_chunk(indices_list, embeddings_list)
 
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
@@ -124,7 +189,7 @@ def main():
     parser.add_argument("--mode", required=False, default="sequential", help="Processing mode, sequential or parallel. Defaults to sequential.")
     parser.add_argument("--workers", required=False, default="all", help="max_workers across which to parallelize. Defaults to all.")
 
-    args = parser.parse_args()
+    args = parser.parse_args(sys.argv[1:])
 
     # Initialize gin-config with the provided config file
     gin.parse_config_file(args.config)
@@ -150,4 +215,7 @@ def main():
     pipeline.process_samples(subset=args.subset,mode=args.mode,max_workers=cores)
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == "pretrained_model_embeddings":
+        pretrained_model_embeddings()
+    else:
+        main()

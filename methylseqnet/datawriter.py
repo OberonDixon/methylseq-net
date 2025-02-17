@@ -158,7 +158,45 @@ class DatasetWriter:
                 raise IndexError(f"Indexing error with indices_list: {indices_list}. Ensure all indices are within bounds.") from e
             except ValueError as e:
                 raise ValueError(f"Value assignment error: check dimensions of assigned data. {e}") from e
-                        
+
+@gin.register
+@gin.configurable
+class SeqEmbeddingsWriter:
+    def __init__(self, embeddings_shape, output_path):
+        self.embeddings_shape = embeddings_shape
+        if Path(output_path).suffix in ['.h5','.hdf5']:
+            self.output_path = Path(output_path)
+        else:
+            raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')      
+        self.initialize_h5()
+
+    def initialize_h5(self):
+        with h5py.File(self.output_path,'w') as f:
+            if 'embeddings' in f:
+                del f['embeddings']
+            f.create_dataset(
+                'embeddings',
+                (0,) + self.embeddings_shape,
+                maxshape=(None,) + self.embeddings_shape,
+                dtype='float',
+                compression='gzip',
+                compression_opts=2,
+            )  
+    def write_chunk(
+        self,
+        indices_list,
+        embeddings_list,
+    ):
+        if len(indices_list)!=len(embeddings_list):
+            raise ValueError(f'Cannot write chunk, unbalanced lengths: {len(indices_list)} indices and {len(embeddings_list)} embeddings.')
+        end_index = np.max(np.array(indices_list))+1
+        with h5py.File(self.output_path, 'a') as f:
+            embeddings_dataset = f['embeddings']
+            current_embeddings_size = embeddings_dataset.shape[0]
+            if end_index>current_embeddings_size:
+                embeddings_dataset.resize(end_index, axis=0) 
+            embeddings_dataset[indices_list] = embeddings_list
+                
 class BigWigWriter:
     def __init__(self, output_file, contigs):
         """
