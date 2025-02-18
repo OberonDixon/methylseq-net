@@ -146,8 +146,16 @@ class RegionBedParser(SampleGenerator):
     """
     This subclass handles creating the task dict from a bed file defining regions by split.
     """
-    def __init__(self,regions_bed: str | Path):
+    def __init__(
+        self,
+        regions_bed: str | Path,
+        seq_length: str | None = None
+    ):
+        """
+        if seq_length is not provided, the regions bed lengths are used unmodified. If provided, they are padded.
+        """
         self.regions_bed = regions_bed
+        self.seq_length = seq_length
     def create_samples(self):
         """
         This function exists to parse out the regions_bed file into lists for region
@@ -164,6 +172,13 @@ class RegionBedParser(SampleGenerator):
                 chrom = fields[0]
                 start = int(fields[1])
                 end = int(fields[2])
+                # handle the case where the bed file isn't actually the entire sequence length we want
+                if self.seq_length is not None and (end - start) < self.seq_length:
+                    diff = self.seq_length - (end - start)
+                    left_pad = diff // 2
+                    right_pad = diff - left_pad
+                    start -= left_pad
+                    end += right_pad
                 split = fields[3].strip()
                 region_list_by_split[split].append({'source':chrom,'start':start,'end':end,}) 
         return region_list_by_split
@@ -370,8 +385,8 @@ class MultiBigWigLabelHandler(LabelHandler):
     def __init__(
             self,
             bigwig_files: list,
-            # trim_off_ends: int,
             label_bin_size: int,
+            trim_off_ends: int = 0,
             combine_operation='mean',
             normalize_counts=False,
             normalize_gc=False,
@@ -388,7 +403,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.binarize = binarize
         self.threshold = threshold     
-        # self.trim_off_ends = trim_off_ends
+        self.trim_off_ends = trim_off_ends
         self.label_bin_size = label_bin_size 
         self.counts_normalization = 0
         self.scale=scale
@@ -415,8 +430,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
             raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") 
         for bw in bws:
-            raw_values = bw.values(source,start,end)
-            # raw_values = bw.values(source,start+self.trim_off_ends,end-self.trim_off_ends)
+            raw_values = bw.values(source,start+self.trim_off_ends,end-self.trim_off_ends)
             # set nan to zero
             values_list.append(np.nan_to_num(raw_values,nan=0.0))
         if self.combine_operation=='mean':
