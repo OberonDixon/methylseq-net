@@ -117,7 +117,6 @@ class MethylSeqNN(L.LightningModule):
         differential-methylation mode for multitask training or inference. In the latter case, the larger sequence-only model needs to run only once,
         while the methylseq residual model runs many times.
         """
-        print(x.sum())
         if x.shape[1]>7:
             multimethyl_input = True
         elif x.shape[1]==7:
@@ -128,8 +127,8 @@ class MethylSeqNN(L.LightningModule):
         if self.layers and self.mode in ['full-model','residual-only']:
             if multimethyl_input:
                 input_to_outputs_dict = defaultdict(list)
-                for io_mappings_row in self.get_io_mappings_df().iterrows():
-                    input_to_outputs_dict[io_mappings_row['cell_type']].append(io_mappings_row['channel'])
+                for _,io_mappings_row in self.get_io_mappings_df().iterrows():
+                    input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
                 x_methylseq_allchannels = None
                 for cell_type, channels in input_to_outputs_dict.items():
                     x_methylseq = torch.cat(
@@ -146,7 +145,7 @@ class MethylSeqNN(L.LightningModule):
                     if x_methylseq_allchannels is not None:
                         x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
                     else:
-                        x_methylseq_allchannels = torch.full_like(x_methylseq, float('nan'))
+                        x_methylseq_allchannels = torch.zeros_like(x_methylseq)
                         x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
             else:
                 x_methylseq = x

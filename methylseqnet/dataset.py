@@ -10,6 +10,7 @@ import time
 import sys
 import tempfile
 import gin
+import os
 
 class CustomH5Dataset(Dataset):
     def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, max_retries=100, retry_delay=2):
@@ -180,10 +181,9 @@ class MultiMethylDataset(Dataset):
     def get_io_mappings_df(self):
         try:
             io_mappings_str = self.get_io_mappings_str()
-            pd.read_csv(StringIO(io_mappings_str),sep='\t')
+            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
         except:
-            return pd.DataFrame()
-        return 
+            return pd.DataFrame() 
 
     def __del__(self):
         # Cleanup the temporary file when the object is destroyed
