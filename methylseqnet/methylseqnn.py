@@ -1,4 +1,5 @@
 import importlib
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -107,18 +108,56 @@ class MethylSeqNN(L.LightningModule):
             self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
 
     def forward(self, x):
+        """
+        MethylSeqNN forward supports two types of inputs:
+            standard input: a single x tensor (sample, channel, position) with 4 sequence channels and 3 methylation channels
+            multimethyl input: a tensor with the same 4 sequence channels but 3*n methylation channels for n cell types
+
+        These two input types exist to support either one-to-all mapping for methylation to activity or a more efficient shared-sequence 
+        differential-methylation mode for multitask training or inference. In the latter case, the larger sequence-only model needs to run only once,
+        while the methylseq residual model runs many times.
+        """
+        print(x.sum())
+        if x.shape[1]>7:
+            multimethyl_input = True
+        elif x.shape[1]==7:
+            multimethyl_input = False
+        else:
+            raise ValueError(f"Forward passes for MethylSeqNN require that x have 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}")
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
         if self.layers and self.mode in ['full-model','residual-only']:
-            x_methylseq = x
-            for layer in self.layers:
-                x_methylseq = layer(x_methylseq)
-            # TODO: check that this cropping logic isn't busted in some cases - e.g. what if crop_off_final is zero??
-            if self.crop_off_final:
-                x_methylseq = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
-            if not self.pretrained_seq_model or self.mode=='residual-only':
-                return x_methylseq
+            if multimethyl_input:
+                input_to_outputs_dict = defaultdict(list)
+                for io_mappings_row in self.get_io_mappings_df().iterrows():
+                    input_to_outputs_dict[io_mappings_row['cell_type']].append(io_mappings_row['channel'])
+                x_methylseq_allchannels = None
+                for cell_type, channels in input_to_outputs_dict.items():
+                    x_methylseq = torch.cat(
+                        [
+                            x[:,0:4,:],
+                            x[:,4+3*cell_type:4+3*(cell_type+1),:],
+                        ],
+                        dim=1
+                    )
+                    for layer in self.layers:
+                        x_methylseq = layer(x_methylseq)
+                    if self.crop_off_final:
+                        x_methylseq = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
+                    if x_methylseq_allchannels is not None:
+                        x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
+                    else:
+                        x_methylseq_allchannels = torch.full_like(x_methylseq, float('nan'))
+                        x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
+            else:
+                x_methylseq = x
+                for layer in self.layers:
+                    x_methylseq = layer(x_methylseq)
+                if self.crop_off_final:
+                    x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
+                if not self.pretrained_seq_model or self.mode=='residual-only':
+                    return x_methylseq_allchannels
         if self.pretrained_seq_model and self.mode in ['full-model','pretrained-only']:
-            x_seq = x
+            x_seq = x[:,0:7,:]
             if self.seq_input_head:
                 for layer in self.seq_input_head:
                     x_seq = layer(x_seq)
@@ -135,7 +174,7 @@ class MethylSeqNN(L.LightningModule):
             }
             
             if self.model_merge_operation in operations:
-                x = operations[self.model_merge_operation](x_methylseq, x_seq)
+                x = operations[self.model_merge_operation](x_methylseq_allchannels, x_seq)
             else:
                 raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
             

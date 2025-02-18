@@ -11,7 +11,7 @@ import gin
 from datetime import datetime as dt
 from pathlib import Path
 import argparse
-from methylseqnet.dataset import CustomH5Dataset
+from methylseqnet.dataset import CustomH5Dataset, MultiMethylDataset
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -26,20 +26,28 @@ os.environ["SLURM_JOB_NAME"] = "interactive"
 
 @gin.configurable
 class MethylSeqDataModule(LightningDataModule):
-    def __init__(self, train_dataset_file, validation_dataset_file, batch_size=32, transforms=[], pow=False):
+    def __init__(
+        self, 
+        train_dataset_file, 
+        validation_dataset_file, 
+        batch_size=32, 
+        transforms=[], 
+        dataset_class=CustomH5Dataset,
+    ):
         super().__init__()
         self.train_dataset_file = train_dataset_file
         self.validation_dataset_file = validation_dataset_file
         self.batch_size = batch_size
         self.transforms = transforms
+        self.dataset_class = dataset_class
 
     def setup(self, stage=None):
-        self.train_dataset = CustomH5Dataset(
+        self.train_dataset = self.dataset_class(
             self.train_dataset_file,
             batch_size=self.batch_size,
             transforms=self.transforms,
         )
-        self.val_dataset = CustomH5Dataset(
+        self.val_dataset = self.dataset_class(
             self.validation_dataset_file,
             batch_size=self.batch_size,
         )
@@ -73,6 +81,7 @@ class MethylSeqDataModule(LightningDataModule):
 #     if torch.backends.cudnn.benchmark:
 #         print("CUDNN benchmark is enabled.")
 
+@gin.configurable
 def main(
     config,
     output_dir,

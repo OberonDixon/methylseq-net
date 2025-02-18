@@ -25,17 +25,14 @@ def one_hot_encode_dna(dna_strand=None, cpg_methylation=None, valid_cpgs=None):
         dna_strand = np.char.upper(np.array(list(dna_strand)))
         nucleotide_to_index = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
         for nucleotide, index in nucleotide_to_index.items():
-            encoded_strand[dna_strand == nucleotide, index] = 1
-            
-    if cpg_methylation is not None:
-        if encoded_strand is None:
-            encoded_strand = np.zeros((len(cpg_methylation), 7), dtype=float)
-        if dna_strand and len(dna_strand) != len(cpg_methylation):
-            raise ValueError("The cpg_methylation array must have the same length as the input DNA strand.")
-        if not isinstance(cpg_methylation, np.ndarray):
-            raise TypeError("The cpg_methylation input must be a numpy array.")
-        encoded_strand[:, 4] = cpg_methylation * encoded_strand[:, 1]  # Track 4 for C methylation
-        encoded_strand[:, 5] = cpg_methylation * encoded_strand[:, 2]  # Track 5 for G methylation (rev strand)
+            encoded_strand[dna_strand == nucleotide, index] = 1       
+        if cpg_methylation is not None:
+            if len(dna_strand) != len(cpg_methylation):
+                raise ValueError("The cpg_methylation array must have the same length as the input DNA strand.")
+            if not isinstance(cpg_methylation, np.ndarray):
+                raise TypeError("The cpg_methylation input must be a numpy array.")
+            encoded_strand[:, 4] = cpg_methylation * encoded_strand[:, 1]  # Track 4 for C methylation
+            encoded_strand[:, 5] = cpg_methylation * encoded_strand[:, 2]  # Track 5 for G methylation (rev strand)
 
     if valid_cpgs is not None:
         if encoded_strand is None:

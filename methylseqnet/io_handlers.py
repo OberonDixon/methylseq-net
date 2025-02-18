@@ -1518,17 +1518,23 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
             # We assume that all samples actually have the same DNA sequence for this IO handler
             if label_idx==0:
                 dna_encodings_list = [one_hot_encode_dna(dna_strand=sequence) for sequence in sequence_list]
-                for sample_onehot,sample_dna_encoding in zip(onehot_dna_list,dna_encodings_list):
-                    sample_onehot = sample_dna_encoding[:,0:4]
+                for idx,sample_dna_encoding in enumerate(dna_encodings_list):
+                    onehot_dna_list[idx] = sample_dna_encoding[:,0:4]
                     
             # Load and parse out cpgs (returned as dict with meth fraction,valid CG sites per sample)
             methylation_fractions_list,valid_cpgs_list = label_specifier_dict['cpg_handler'].load_cpg_batch(sample_list)
-            for sample_methyl_info,sample_valid_cpg_encoding in zip(methylation_info_list,valid_cpgs_list):
-                sample_methyl_info[:,3*label_specifier_dict['celltype_index']] = sample_valid_cpg_encoding
+            for idx,sample_valid_cpg_encoding in enumerate(valid_cpgs_list):
+                methylation_info_list[idx][:,3*label_specifier_dict['celltype_index']+2] = sample_valid_cpg_encoding
 
-            cpg_encodings_list = [one_hot_encode_dna(cpg_methylation=cpg) for cpg in methylation_fractions_list]
-            for sample_methyl_info,sample_cpg_encodings in zip(methylation_info_list,cpg_encodings_list):
-                sample_methyl_info[:,3*label_specifier_dict['celltype_index']:3*(label_specifier_dict['celltype_index']+1)-1] = sample_cpg_encodings[:,4:6]
+            cpg_encodings_list = [
+                one_hot_encode_dna(dna_strand=sequence,cpg_methylation=cpg) 
+                for sequence,cpg in zip(
+                    sequence_list,
+                    methylation_fractions_list
+                )
+            ]
+            for idx,sample_cpg_encodings in enumerate(cpg_encodings_list):
+                methylation_info_list[idx][:,3*label_specifier_dict['celltype_index']:3*(label_specifier_dict['celltype_index']+1)-1] = sample_cpg_encodings[:,4:6]
 
             for channel,label_handler in zip(
                 label_specifier_dict['indices'],
@@ -1546,6 +1552,11 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                 for mask_array in mask_list:
                     mask_array[:,channel] = True
 
+        # print([np.sum(onehot,axis=0) for onehot in onehot_dna_list])
+        # print([np.sum(info,axis=0) for info in methylation_info_list])
+        # print([np.sum(label,axis=00) for label in label_list])
+        # print([np.sum(mask,axis=0) for mask in mask_list])
+        
         with lock: # we need the lock so allow parallel threads to all write to the same output file
             dataset_writer.write_chunk(
                 indices_list,
