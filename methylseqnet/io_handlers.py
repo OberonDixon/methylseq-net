@@ -248,10 +248,15 @@ class SingleFastaHandler(SequenceHandler):
             # check that pysam can open the fasta file
             _ = pysam.FastaFile(ref_genome)
             self.ref_genome = ref_genome
+            fastafile = pysam.FastaFile(self.ref_genome)
+            self.chrom_lengths_dict = {ref: fastafile.lengths[i] for i, ref in enumerate(fastafile.references)}
         else:
             raise OSError(f"{ref_genome} does not exist.")
     def load_sequences(self,source,start,end,fastafile):
-        return fastafile.fetch(source,start,end)
+        start_pad = 0 - min(start,0)
+        chrom_length = self.chrom_lengths_dict[source]
+        end_pad = max(end,chrom_length) - chrom_length
+        return start_pad*"N" + fastafile.fetch(source,max(start,0),min(end,chrom_length)) + end_pad*"N"
     def load_sequence_batch(self,sample_list):
         fastafile = pysam.FastaFile(self.ref_genome)
         return [self.load_sequences(**sample,fastafile=fastafile) for sample in sample_list]
@@ -328,7 +333,11 @@ class MultiBigWigCpGHandler(CpGHandler):
         num_bws = len(bws)
         aggregated_valid_cpgs = np.zeros(end - start)
         for bw in bws:
-            raw_values = np.array(bw.values(source,start,end))
+            start_pad = 0 - min(start,0)
+            try:
+                raw_values = np.array(start_pad*[0] + bw.values(source,max(start,0),end))
+            except:
+                raise RuntimeError(f"Error in CpG bigwig loading for {source}:{start}-{end}")
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
             valid_mask = ~np.isnan(raw_values)
@@ -430,7 +439,8 @@ class MultiBigWigLabelHandler(LabelHandler):
         if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
             raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") 
         for bw in bws:
-            raw_values = bw.values(source,start+self.trim_off_ends,end-self.trim_off_ends)
+            start_pad = 0 - min(start,0)
+            raw_values = start_pad*[0] + bw.values(source,max(start+self.trim_off_ends,0),end-self.trim_off_ends)
             # set nan to zero
             values_list.append(np.nan_to_num(raw_values,nan=0.0))
         if self.combine_operation=='mean':
@@ -506,7 +516,8 @@ class MultiBedGzLabelHandler(LabelHandler):
                 
     def counts_vector_from_bedgz(self,bedgz_file,chrom,start,end):
         counts_vector = np.zeros(end-start)
-        for row in pysam.TabixFile(str(bedgz_file)).fetch(chrom,start,end):
+        start_pad = 0 - min(start,0)
+        for row in pysam.TabixFile(str(bedgz_file)).fetch(chrom,max(start,0),end):
             tabix_fields = row.split("\t")
             genomic_coord = int(tabix_fields[1])
             counts = int(tabix_fields[4])

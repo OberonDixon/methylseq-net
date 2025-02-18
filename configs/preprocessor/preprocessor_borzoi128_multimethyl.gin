@@ -32,6 +32,6 @@ PreprocessingPipeline.multitask_io_handler = @MultiMethylAtacCageAtlases()
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
 PreprocessingPipeline.output_directory = %output_directory
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
-PreprocessingPipeline.samples_per_batch = 3
+PreprocessingPipeline.samples_per_batch = 2
 
 
