@@ -246,10 +246,12 @@ class ConvDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
+    def __init__(self, in_channels, filters, pool_size=1, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
         super(ConvFinal, self).__init__()
         self.kernel_size = kernel_size
         self.filters = filters
+        self.pool_size = pool_size
+        self.pool = nn.AvgPool1d(pool_size)
         self.stride = stride
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         self.weight_decay = weight_decay
@@ -262,6 +264,7 @@ class ConvFinal(nn.Module):
         x = self.conv(x)
         if self.shared_head:
             x = x.repeat(1, self.filters, 1) # duplicate output value across all tracks
+        x = self.pool(x)
         return x
 
 ################################################################################################################

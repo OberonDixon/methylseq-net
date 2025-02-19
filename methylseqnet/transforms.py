@@ -158,6 +158,21 @@ class SequenceJitter(LoaderTransform):
 
 @gin.configurable
 @gin.register
+class TrimOffEnds1d(nn.Module):
+    """
+    TrimOffEnds1d will trim off the beginning and end of x along the sequence-length dimension and leave channels/sample untouched
+    """
+    def __init__(self,off_each_end):
+        super(TrimOffEnds1d,self).__init__()
+        self.off_each_end=off_each_end
+    def forward(self,x):
+        if self.off_each_end: # if self.off_each_end if 0, None, or otherwise undefined, don't trim
+            return x[:,:,self.off_each_end:-self.off_each_end]
+        else:
+            return x
+
+@gin.configurable
+@gin.register
 class EncodingSelector(nn.Module):
     """
     EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 

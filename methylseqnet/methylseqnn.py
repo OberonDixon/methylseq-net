@@ -44,6 +44,7 @@ class MethylSeqNN(L.LightningModule):
         out_tracks=None,
         regression=False,
         pad_all_layers=False,
+        crop_off_sequence=None,
         crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
         label_threshold_cts=5,
         learning_rate=0.005, 
@@ -63,6 +64,7 @@ class MethylSeqNN(L.LightningModule):
         # print(self.train_stages)
         self.mode = 'full-model'
         self.pad_all_layers = pad_all_layers
+        self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
         self.model_merge_operation = model_merge_operation
         # TODO: rename layers to something like residual_methylseq_model
@@ -138,6 +140,8 @@ class MethylSeqNN(L.LightningModule):
                         ],
                         dim=1
                     )
+                    if self.crop_off_sequence:
+                        x_methylseq = x_methylseq[:,:,self.crop_off_sequence:-self.crop_off_sequence]
                     for layer in self.layers:
                         x_methylseq = layer(x_methylseq)
                     if self.crop_off_final:
@@ -148,7 +152,10 @@ class MethylSeqNN(L.LightningModule):
                         x_methylseq_allchannels = torch.zeros_like(x_methylseq)
                         x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
             else:
-                x_methylseq = x
+                if self.crop_off_sequence:
+                    x_methylseq = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]
+                else:
+                    x_methylseq = x
                 for layer in self.layers:
                     x_methylseq = layer(x_methylseq)
                 if self.crop_off_final:
@@ -217,7 +224,6 @@ class MethylSeqNN(L.LightningModule):
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
-
         loss = self.criterion(outputs, targets)
         self.test_targets_list.extend(targets.cpu().numpy().tolist())
         self.test_outputs_list.extend(outputs.cpu().numpy().tolist())
@@ -337,7 +343,7 @@ class MethylSeqNN(L.LightningModule):
             inputs: the input tensor provided to the model. This will be used to determine the input lengths
             targets: the targets (or targets mask) that needs to be trimmed based on the input and network
         """
-        inputs_length = inputs.shape[2]
+        inputs_length = inputs.shape[2] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
         targets_length = targets.shape[2]
         
         if self.layers:
