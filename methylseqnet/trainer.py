@@ -106,7 +106,7 @@ def main(
     # preprocessor matches file, so having a record of what the mappings is for a given model
     # may be useful when trying different datasets, etc
     try:
-        dataset = CustomH5Dataset(data_module.train_dataset_file)
+        dataset = data_module.dataset_class(data_module.train_dataset_file)
         model.io_mappings_str = dataset.get_io_mappings_str()
     except AttributeError:
         print(f"No 'io_mappings' attribute found in {data_module.train_dataset_file}.")

@@ -108,7 +108,7 @@ class MultiMethylDataset(Dataset):
         self.max_retries = max_retries
         self.retry_delay = retry_delay
 
-        self.file_path = create_virtual_h5_simple(self.file_paths)
+        self.file_path = create_virtual_h5_with_attributes(self.file_paths)
         
         # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
@@ -175,7 +175,10 @@ class MultiMethylDataset(Dataset):
 
     def get_io_mappings_str(self):
         with h5py.File(self.file_path,'r') as f:
-            io_mappings_str = f.attrs['io_mappings']
+            try:
+                io_mappings_str = f.attrs['io_mappings']
+            except:
+                raise Exception(f"Could not find io_mappings in file for {self.file_path}")
             return io_mappings_str
 
     def get_io_mappings_df(self):
@@ -190,36 +193,46 @@ class MultiMethylDataset(Dataset):
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
 
-def create_virtual_h5_simple(file_paths):
+def create_virtual_h5_with_attributes(file_paths):
     """
-    Creates a temp file that concatenates all h5 files passed in. The file must be deleted when you are done.
+    Creates a temporary HDF5 file that concatenates all datasets from the provided HDF5 files,
+    while preserving both global and dataset-specific attributes.
     """
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.h5')
     temp_file.close()
     output_path = temp_file.name
+
+    # Read dataset names and global attributes from the first file
     with h5py.File(file_paths[0], 'r') as f_first:
         dataset_names = list(f_first.keys())
-    
+        global_attrs = dict(f_first.attrs)
+
     with h5py.File(output_path, 'w') as f_out:
-        total_length = 0
-        # Calculate total length from all files
+        # Copy global attributes
+        for attr_name, attr_value in global_attrs.items():
+            f_out.attrs[attr_name] = attr_value
+
+        total_lengths = {name: 0 for name in dataset_names}
+
+        # Compute total lengths for each dataset
         for fp in file_paths:
             with h5py.File(fp, 'r') as f:
-                if dataset_names[0] in f:
-                    total_length += f[dataset_names[0]].shape[0]
+                for name in dataset_names:
+                    if name in f:
+                        total_lengths[name] += f[name].shape[0]
 
-        # Create virtual datasets for all datasets present
+        # Create virtual datasets and copy dataset-specific attributes
         offsets = {name: 0 for name in dataset_names}
         layouts = {}
 
-        # Initialize layouts
         for name in dataset_names:
             with h5py.File(file_paths[0], 'r') as f:
-                shape = f[name].shape
-                dtype = f[name].dtype
-            layouts[name] = h5py.VirtualLayout(shape=(total_length, *shape[1:]), dtype=dtype)
+                if name in f:
+                    shape = f[name].shape
+                    dtype = f[name].dtype
+                    layouts[name] = h5py.VirtualLayout(shape=(total_lengths[name], *shape[1:]), dtype=dtype)
 
-        # Populate layouts
+        # Populate virtual layouts
         for fp in file_paths:
             with h5py.File(fp, 'r') as f:
                 for name in dataset_names:
@@ -229,8 +242,16 @@ def create_virtual_h5_simple(file_paths):
                         layouts[name][offsets[name]:offsets[name]+length] = src
                         offsets[name] += length
 
-        # Write virtual datasets
+        # Write virtual datasets and copy dataset attributes
         for name, layout in layouts.items():
-            f_out.create_virtual_dataset(name, layout)
-            
+            vds = f_out.create_virtual_dataset(name, layout)
+
+            # Copy dataset-specific attributes from the first file containing this dataset
+            for fp in file_paths:
+                with h5py.File(fp, 'r') as f:
+                    if name in f:
+                        for attr_name, attr_value in f[name].attrs.items():
+                            vds.attrs[attr_name] = attr_value
+                        break  # Copy attributes only from the first occurrence
+
     return output_path

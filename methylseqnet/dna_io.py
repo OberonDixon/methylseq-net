@@ -38,8 +38,8 @@ def one_hot_encode_dna(dna_strand=None, cpg_methylation=None, valid_cpgs=None):
         if encoded_strand is None:
             encoded_strand = np.zeros((len(valid_cpgs), 7), dtype=float)
         if (
-            (dna_strand and len(dna_strand) != len(valid_cpgs)) 
-            or (cpg_methylation and len(cpg_methylation) != len(valid_cpgs))
+            (dna_strand is not None and len(dna_strand) != len(valid_cpgs)) 
+            or (cpg_methylation is not None and len(cpg_methylation) != len(valid_cpgs))
         ):
             raise ValueError("The valid_cpgs array must have the same length as the input DNA strand.")
         if not isinstance(valid_cpgs, np.ndarray):
