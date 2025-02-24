@@ -8,10 +8,10 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:8
 #SBATCH --requeue
-#SBATCH --time=7:30:00
+#SBATCH --time=7:15:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=1-1 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 
 # Command(s) to run:
 # Define an array of config files

@@ -12,7 +12,7 @@
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
 #SBATCH --array=1,3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
-## exclude nodes 174 and 175?? They seem to be extraordinarily slow. Somehow 145 is ok though.
+#SBATCH --exclude=n0174.savio3,n0175.savio3,n0176.savio3
 
 # Command(s) to run:
 # Define an array of config files

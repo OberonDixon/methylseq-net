@@ -107,7 +107,7 @@ class MultiMethylDataset(Dataset):
         self.return_specifiers = return_specifiers
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-
+        
         self.file_path = create_virtual_h5_with_attributes(self.file_paths)
         
         # Check dataset details

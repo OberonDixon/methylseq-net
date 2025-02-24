@@ -53,7 +53,7 @@ methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borz
 methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingAdjuster]
 methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = [@seq_model/ConvFinal,@Softplus]
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
-            0:{
+            -1:{
                 'mode':'pretrained-only',
                 'grad_dict':{
                     'layers':False,
@@ -62,7 +62,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_output_head':True,
                 }
             },
-            4:{
+            0:{
                 'mode':'full-model',
                 'grad_dict':{
                     'layers':True,
@@ -82,13 +82,11 @@ methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
 methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold0.h5",
-    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold1.h5",
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold2.h5",
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold3.h5",
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold5.h5",
 ]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold6.h5"
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/fold7.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=[@ReverseComplement,@SequenceJitter]
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
