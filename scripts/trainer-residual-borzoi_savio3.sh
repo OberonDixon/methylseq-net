@@ -11,7 +11,7 @@
 #SBATCH --time=30:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=1,3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=0-3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 #SBATCH --exclude=n0174.savio3,n0175.savio3,n0176.savio3
 
 # Command(s) to run:
@@ -26,5 +26,5 @@ CONFIG_FILES=(
 CONFIG_FILE=${CONFIG_FILES[$SLURM_ARRAY_TASK_ID]}
 
 UNIQUE_IDENTIFIER="slurm${SLURM_ARRAY_JOB_ID}task${SLURM_ARRAY_TASK_ID}"
-source activate basenji2-pytorch
+source activate methylseqnet-prod
 NCCL_P2P_DISABLE=1 python ../methylseqnet/trainer.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1

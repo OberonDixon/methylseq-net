@@ -41,6 +41,7 @@ class MethylSeqNN(L.LightningModule):
         seq_input_head=None,
         seq_output_head=None,
         model_merge_operation='multiply',
+        merged_output_head=None,
         out_tracks=None,
         regression=False,
         pad_all_layers=False,
@@ -69,17 +70,16 @@ class MethylSeqNN(L.LightningModule):
         self.model_merge_operation = model_merge_operation
         # TODO: rename layers to something like residual_methylseq_model
         self.layers = nn.ModuleList()
+        self.pretrained_seq_model = nn.ModuleList()
+        self.seq_input_head = nn.ModuleList()
+        self.seq_output_head = nn.ModuleList()
+        self.merged_output_head = nn.ModuleList()
         if layers:
             for layer in layers:
                 try:
                     self.layers.append(layer(pad=self.pad_all_layers))
                 except:
                     self.layers.append(layer())
-        self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
-        
-        self.pretrained_seq_model = nn.ModuleList()
-        self.seq_input_head = nn.ModuleList()
-        self.seq_output_head = nn.ModuleList()
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
             # if pretrained_seq_model_weights:
@@ -92,6 +92,14 @@ class MethylSeqNN(L.LightningModule):
             if seq_output_head:
                 for layer in seq_output_head:
                     self.seq_output_head.append(layer())
+        if merged_output_head:
+            for layer in merged_output_head:
+                try:
+                    self.merged_output_head.append(layer(pad=self.pad_all_layers))
+                except:
+                    self.merged_output_head.append(layer())             
+
+        self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
         
         self.regression = regression
@@ -126,6 +134,8 @@ class MethylSeqNN(L.LightningModule):
         else:
             raise ValueError(f"Forward passes for MethylSeqNN require that x have 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}")
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
+        
+        # this block runs if the residual model layers are populated and if the model is in a mode that runs the residual model
         if self.layers and self.mode in ['full-model','residual-only']:
             if multimethyl_input:
                 input_to_outputs_dict = defaultdict(list)
@@ -161,7 +171,8 @@ class MethylSeqNN(L.LightningModule):
                 if self.crop_off_final:
                     x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
                 if not self.pretrained_seq_model or self.mode=='residual-only':
-                    return x_methylseq_allchannels
+                    x = x_methylseq_allchannels
+        # this block runs if the pretrained_seq_model is defined and the model is in a mode that runs the pretrained model
         if self.pretrained_seq_model and self.mode in ['full-model','pretrained-only']:
             x_seq = x[:,0:7,:]
             if self.seq_input_head:
@@ -172,7 +183,8 @@ class MethylSeqNN(L.LightningModule):
                 for layer in self.seq_output_head:
                     x_seq = layer(x_seq)
             if not self.layers or self.mode=='pretrained-only':
-                return x_seq
+                x = x_seq
+        # this block runs if both pretrained and residual models are defined and if the full model is running
         if self.layers and self.pretrained_seq_model and self.mode=='full-model':
             operations = {
                 'multiply': torch.mul,  # Element-wise multiplication
@@ -183,6 +195,10 @@ class MethylSeqNN(L.LightningModule):
                 x = operations[self.model_merge_operation](x_methylseq_allchannels, x_seq)
             else:
                 raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
+        # this block runs if there is a post-merge output head
+        if self.merged_output_head and self.mode in ['full-model','pretrained-only']:
+            for layer in self.merged_output_head:
+                x = layer(x)
             
         return x
 
@@ -381,7 +397,7 @@ class MethylSeqNN(L.LightningModule):
         # Total pooling
         total_pooling = 1
     
-        for layer in self.layers:
+        for layer in self.layers+self.merged_output_head:
             kernel_size = getattr(layer, 'kernel_size', 1)
             pool_size = getattr(layer, 'pool_size', 1)
             stride = getattr(layer, 'stride', 1)
