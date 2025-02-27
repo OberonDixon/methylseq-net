@@ -216,6 +216,7 @@ class EncodingSelector(nn.Module):
             smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
             mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
             smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x = x.clone()
             x[:,4,:] = smoothed
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq-only':

@@ -18,5 +18,7 @@ setup(
         "pysam",
         "lightning", 
         "h5py",
+        "pyBigWig",
+        "wandb",
     ],
 )

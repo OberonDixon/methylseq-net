@@ -7,6 +7,7 @@ from methylseqnet.methylseqnn import *
 from methylseqnet.dataset import *
 from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 import multiprocessing
 from multiprocessing import Manager
 from collections import defaultdict
@@ -128,16 +129,17 @@ def pretrained_model_embeddings():
     parser.add_argument("--config", required=True, help="Path to the the gin config file for a MethylSeqNN trainer containing a pretrained model.")
     parser.add_argument("--embeddings-shape", nargs="+", type=int, help="Space separated integers for shape of embeddings.")
     parser.add_argument("--input-datasets-directory", required=True, help="Path to the input directory from which to run datasets.")
-    parser.add_argument("--input-dataset-names", required=False, nargs="*", help="Dataset names to run. Defaults to all.")
+    parser.add_argument("--subset", required=False, nargs="*", help="Dataset subset(s) to run. Defaults to all.")
     parser.add_argument("--output-datasets-directory", required=True, help="Path to an output directory for saving the embeddings datasets.")
     parser.add_argument("--batch-size", required=False, type=int, default=8, help="Size of batches for passing through model.")
+    parser.add_argument("--write-batch-size", required=False, type=int, default=16, help="Size of batches for writing to disk.")
     
     args = parser.parse_args(sys.argv[2:])
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     if str(args.input_datasets_directory)==str(args.output_datasets_directory):
-        raise ValueError(f"Cannot set same input and out directories.")
+        raise ValueError(f"Cannot set same input and out directories - this would overwrite files and break the pipeline.")
 
     if not os.path.exists(args.output_datasets_directory):
         os.makedirs(args.output_datasets_directory)
@@ -153,8 +155,8 @@ def pretrained_model_embeddings():
     model.eval()
     model.to(device)
 
-    if args.input_dataset_names:
-        dataset_files = [Path(args.input_datasets_directory) / (filename + ".h5") for filename in args.input_dataset_names]
+    if args.subset:
+        dataset_files = [Path(args.input_datasets_directory) / (filename + ".h5") for filename in args.subset]
     else:
         dataset_files = [f for f in Path(args.input_datasets_directory).iterdir() if f.suffix.lower() in ['.h5', '.hdf5']]
 
@@ -166,22 +168,32 @@ def pretrained_model_embeddings():
             embeddings_shape = embeddings_shape,
             output_path = output_file,
         )
-        dataset = CustomH5Dataset(dataset_file,batch_size=args.batch_size)
+        try:
+            dataset = MultiMethylDataset(dataset_file,batch_size=args.batch_size)
+        except:
+            dataset = CustomH5Dataset(dataset_file,batch_size=args.batch_size)
         dataloader = DataLoader(dataset, batch_size=None, shuffle=False)
-        
+        executor = ThreadPoolExecutor(max_workers=1)
+        futures = []
         with torch.no_grad():
+            indices_list = []
+            embeddings_list = []
             for batch_idx, (inputs, _, _) in enumerate(tqdm(dataloader)):
-                padding = (0, 524288 - inputs.size(-1))
-                padded_inputs = F.pad(inputs, padding, "constant", 0).to(device)
-                embeddings = model(padded_inputs)
-                print(embeddings.shape)
+                inputs = inputs.to(device)
+                embeddings = model(inputs)
+
                 # Convert to numpy if needed
-                embeddings_list = [emb.cpu().numpy() for emb in embeddings]
-                indices_list = list(range(batch_idx*args.batch_size,(batch_idx+1)*args.batch_size))
+                embeddings_list+=[emb.cpu().numpy() for emb in embeddings]
+                indices_list+=list(range(batch_idx*args.batch_size,(batch_idx+1)*args.batch_size))
 
-                # Write embeddings
-                seq_embeddings_writer.write_chunk(indices_list, embeddings_list)
-
+                if len(embeddings_list)>args.write_batch_size:
+                    future = executor.submit(seq_embeddings_writer.write_chunk, indices_list, embeddings_list)
+                    futures.append(future)
+                    embeddings_list=[]
+                    indices_list=[]
+            seq_embeddings_writer.write_chunk(indices_list, embeddings_list)
+        for future in futures:
+            future.result()
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file. No default.")

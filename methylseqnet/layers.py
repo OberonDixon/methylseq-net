@@ -36,10 +36,13 @@ class EncodingAdjuster(nn.Module):
         elif self.encoding_str == 'seq+methyl_no-mask':
             x =  x[:,0:6,:]
         elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x = x.clone()
             x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
         elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x = x.clone()
             x[:,4:6,:] = (x[:,4:6,:]>0.5)
         elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x = x.clone()
             x[:,4,:] = x[:,4,:] + x[:,5,:]
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq+smoothed-methyl':
@@ -50,6 +53,7 @@ class EncodingAdjuster(nn.Module):
             smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
             mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
             smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x = x.clone()
             x[:,4,:] = smoothed
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq-only':
@@ -64,6 +68,7 @@ class EncodingAdjuster(nn.Module):
             smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
             mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
             smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x = x.clone()
             x[:,4,:] = smoothed
             x = x[:,4:5,:]
         else:
