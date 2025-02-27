@@ -202,10 +202,13 @@ class EncodingSelector(nn.Module):
         elif self.encoding_str == 'seq+methyl_no-mask':
             x =  x[:,0:6,:]
         elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x = x.clone()
             x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
         elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x = x.clone()
             x[:,4:6,:] = (x[:,4:6,:]>0.5)
         elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x = x.clone()
             x[:,4,:] = x[:,4,:] + x[:,5,:]
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq+smoothed-methyl':
