@@ -55,8 +55,8 @@ class DatasetWriter:
                 (0,),
                 maxshape=(None,),
                 dtype=h5py.string_dtype(encoding="utf-8"),
-                compression='gzip',
-                compression_opts=2,
+                compression='lzf',
+                chunks=(1,),
             )
             if 'sequence' in f:
                 del f['sequence']
@@ -65,8 +65,8 @@ class DatasetWriter:
                 (0,7,self.seq_length),
                 maxshape=(None,7,self.seq_length),
                 dtype=np.float16,
-                compression='gzip',
-                compression_opts=2
+                compression='lzf',
+                chunks=(1,7,self.seq_length),
             )
             if 'tracks' in f:
                 del f['tracks']
@@ -75,8 +75,8 @@ class DatasetWriter:
                 (0,self.num_tracks,self.track_length),
                 maxshape=(None,self.num_tracks,self.track_length),
                 dtype='float',
-                compression='gzip',
-                compression_opts=2,
+                compression='lzf',
+                chunks=(1,self.num_tracks,self.track_length),
             )
             if self.mask:
                 if 'mask' in f:
@@ -86,8 +86,8 @@ class DatasetWriter:
                     (0,self.num_tracks,self.track_length),
                     maxshape=(None,self.num_tracks,self.track_length),
                     dtype='bool',
-                    compression='gzip',
-                    compression_opts=2,
+                    compression='lzf',
+                    chunks=(1,self.num_tracks,self.track_length),
                 )
             # Log the gin config string and io mappings as attributes in the HDF5 file
             gin_config_str = gin.operative_config_str()
@@ -209,8 +209,8 @@ class MultiMethylWriter:
                 (0,),
                 maxshape=(None,),
                 dtype=h5py.string_dtype(encoding="utf-8"),
-                compression='gzip',
-                compression_opts=2,
+                compression='lzf',
+                chunks=(1,),
             )
             if 'sequence' in f:
                 del f['sequence']
@@ -219,8 +219,8 @@ class MultiMethylWriter:
                 (0,4,self.seq_length),
                 maxshape=(None,4,self.seq_length),
                 dtype=np.float16,
-                compression='gzip',
-                compression_opts=2
+                compression='lzf',
+                chunks=(1,4,self.seq_length),
             )
             if 'methylation' in f:
                 del f['methylation']
@@ -229,8 +229,8 @@ class MultiMethylWriter:
                 (0,3*self.num_cell_types,self.seq_length),
                 maxshape=(None,3*self.num_cell_types,self.seq_length),
                 dtype=np.float16,
-                compression='gzip',
-                compression_opts=2
+                compression='lzf',
+                chunks=(1,3*self.num_cell_types,self.seq_length),
             )
             if 'tracks' in f:
                 del f['tracks']
@@ -239,8 +239,8 @@ class MultiMethylWriter:
                 (0,self.num_tracks,self.track_length),
                 maxshape=(None,self.num_tracks,self.track_length),
                 dtype='float',
-                compression='gzip',
-                compression_opts=2,
+                compression='lzf',
+                chunks=(1,self.num_tracks,self.track_length),
             )
             if self.mask:
                 if 'mask' in f:
@@ -250,8 +250,8 @@ class MultiMethylWriter:
                     (0,self.num_tracks,self.track_length),
                     maxshape=(None,self.num_tracks,self.track_length),
                     dtype='bool',
-                    compression='gzip',
-                    compression_opts=2,
+                    compression='lzf',
+                    chunks=(1,self.num_tracks,self.track_length),
                 )
             # Log the gin config string and io mappings as attributes in the HDF5 file
             gin_config_str = gin.operative_config_str()
@@ -354,8 +354,8 @@ class SeqEmbeddingsWriter:
                 (0,) + self.embeddings_shape,
                 maxshape=(None,) + self.embeddings_shape,
                 dtype='float',
-                compression='gzip',
-                compression_opts=2,
+                compression='lzf',
+                chunks=(1,) + self.embeddings_shape,
             )  
             gin_config_str = gin.operative_config_str()
             f.attrs['gin_config'] = gin_config_str
