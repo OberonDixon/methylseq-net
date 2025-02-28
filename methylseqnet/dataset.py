@@ -11,9 +11,10 @@ import sys
 import tempfile
 import gin
 import os
+import inspect
 
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, max_retries=100, retry_delay=2):
+    def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_path = file_path
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
@@ -100,7 +101,7 @@ class CustomH5Dataset(Dataset):
 
 @gin.register
 class MultiMethylDataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=[], return_specifiers=False, max_retries=100, retry_delay=2):
+    def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
@@ -108,6 +109,7 @@ class MultiMethylDataset(Dataset):
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
+        # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
         self.file_path = create_virtual_h5_with_attributes(self.file_paths)
         
         # Check dataset details
@@ -193,6 +195,101 @@ class MultiMethylDataset(Dataset):
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
 
+@gin.register
+class EmbeddingsDataset(Dataset):
+    def __init__(self, file_path, batch_size=64, transforms=(), max_retries=100, retry_delay=2):
+        """
+        args:
+            - file_path: a path to an h5 file, or a list of paths to h5 files
+            - batch_size: how many samples per batch
+            - transforms: unused for this class. present because we want a shared interface between dataset classes
+        """
+        self.file_paths = file_path if isinstance(file_path, list) else [file_path]
+        self.batch_size = batch_size
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        
+        # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
+        self.file_path = create_virtual_h5_with_attributes(self.file_paths)
+        
+        # Check dataset details
+        with h5py.File(self.file_path, 'r') as f:
+            # Determine the length of the dataset
+            self.length = len(f['embeddings'])
+        
+    def __len__(self):
+        return (self.length + self.batch_size -1) // self.batch_size
+
+    def __getitem__(self, idx):
+        start_idx = idx * self.batch_size
+        end_idx = min(start_idx + self.batch_size, self.length)
+        for attempt in range(self.max_retries):
+            try:
+                with h5py.File(self.file_path, 'r') as f:
+                    embeddings = f['embeddings'][start_idx:end_idx,:,:]
+                    return torch.tensor(embeddings, dtype=torch.float32), None, None
+            except OSError as e:
+                if attempt<self.max_retries-1:
+                    print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
+                    raise  # Re-raise the last caught exception
+
+    def get_config(self):
+        with h5py.File(self.file_path, 'r') as f:
+            gin_config_str = f.attrs['gin_config']
+            return gin_config_str
+
+    def __del__(self):
+        # Cleanup the temporary file when the object is destroyed
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+
+@gin.register
+class MultiDataset(Dataset):
+    def __init__(self, file_path, dataset_classes, batch_size=64, transforms=(), allow_unequal_lengths=True):
+        if not isinstance(file_path,tuple):
+            raise TypeError("MultiDataset file_path must be passed as a tuple of file paths corresponding to the dataset_classes.")
+        if not isinstance(dataset_classes,tuple):
+            raise TypeError("MultiDataset dataset_classes must be pass as a tuple containing class handles.")
+        self.datasets = tuple(
+            dataset_class(
+                file_path=file_path_for_class,
+                batch_size=batch_size,
+                transforms=transforms,
+            )
+            for dataset_class, file_path_for_class in zip(dataset_classes, file_path)
+        )
+        lengths = [len(dataset) for dataset in self.datasets]
+        if not allow_unequal_lengths:
+            raise ValueError(f"All MultiDataset datasets must have the same length; instead found lengths {lengths}. Pass allow_unequal_lengths=True to override.")
+        self.length=min(lengths)
+        
+    def __len__(self):
+        return self.length
+        
+    def __getitem__(self, idx):  
+        batch_tuples = tuple(dataset[idx] for dataset in self.datasets)
+        inputs, targets, masks = zip(*batch_tuples)
+        input = unpack_if_single(tuple(x for x in inputs if x is not None))
+        target = unpack_if_single(tuple(x for x in targets if x is not None))
+        mask = unpack_if_single(tuple(x for x in masks if x is not None))
+        return input, target, mask
+
+    def get_io_mappings_str(self):
+        for dataset in self.datasets:
+            if hasattr(dataset, "get_io_mappings_str") and callable(getattr(dataset, "get_io_mappings_str")):
+                return dataset.get_io_mappings_str()
+        raise AttributeError("None of the MultiDataset dataset members can return an io_mappings_str.")
+
+    def get_io_mappings_df(self):
+        try:
+            io_mappings_str = self.get_io_mappings_str()
+            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
+        except:
+            return pd.DataFrame()         
+        
 def create_virtual_h5_with_attributes(file_paths):
     """
     Creates a temporary HDF5 file that concatenates all datasets from the provided HDF5 files,
@@ -255,3 +352,6 @@ def create_virtual_h5_with_attributes(file_paths):
                         break  # Copy attributes only from the first occurrence
 
     return output_path
+
+def unpack_if_single(t):
+    return t[0] if len(t) == 1 else t

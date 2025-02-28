@@ -357,6 +357,8 @@ class SeqEmbeddingsWriter:
                 compression='gzip',
                 compression_opts=2,
             )  
+            gin_config_str = gin.operative_config_str()
+            f.attrs['gin_config'] = gin_config_str
     def write_chunk(
         self,
         indices_list,

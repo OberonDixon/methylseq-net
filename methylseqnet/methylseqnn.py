@@ -63,7 +63,7 @@ class MethylSeqNN(L.LightningModule):
         
         self.train_stages = train_stages
         # print(self.train_stages)
-        self.mode = 'full-model'
+        self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
@@ -127,6 +127,8 @@ class MethylSeqNN(L.LightningModule):
         differential-methylation mode for multitask training or inference. In the latter case, the larger sequence-only model needs to run only once,
         while the methylseq residual model runs many times.
         """
+        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
+            x, embeddings = x
         if x.shape[1]>7:
             multimethyl_input = True
         elif x.shape[1]==7:
@@ -136,7 +138,7 @@ class MethylSeqNN(L.LightningModule):
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
         
         # this block runs if the residual model layers are populated and if the model is in a mode that runs the residual model
-        if self.layers and self.mode in ['full-model','residual-only']:
+        if self.layers and self.mode in ('full-model','residual-only','residual-w/-pretrained-embeddings'):
             if multimethyl_input:
                 input_to_outputs_dict = defaultdict(list)
                 for _,io_mappings_row in self.get_io_mappings_df().iterrows():
@@ -170,10 +172,11 @@ class MethylSeqNN(L.LightningModule):
                     x_methylseq = layer(x_methylseq)
                 if self.crop_off_final:
                     x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
-                if not self.pretrained_seq_model or self.mode=='residual-only':
-                    x = x_methylseq_allchannels
+            if not self.pretrained_seq_model or self.mode=='residual-only':
+                x = x_methylseq_allchannels
+                    
         # this block runs if the pretrained_seq_model is defined and the model is in a mode that runs the pretrained model
-        if self.pretrained_seq_model and self.mode in ['full-model','pretrained-only']:
+        if self.pretrained_seq_model and self.mode in ('full-model','pretrained-only'):
             x_seq = x[:,0:7,:]
             if self.seq_input_head:
                 for layer in self.seq_input_head:
@@ -182,10 +185,20 @@ class MethylSeqNN(L.LightningModule):
             if self.seq_output_head:
                 for layer in self.seq_output_head:
                     x_seq = layer(x_seq)
-            if not self.layers or self.mode=='pretrained-only':
+            if not self.layers or self.mode in ('pretrained-only'):
                 x = x_seq
+                
+        # this block runs if you are running with pretrained model embeddings rather than running forward passes on the model itself
+        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
+            x_seq = embeddings
+            if self.seq_output_head:
+                for layer in self.seq_output_head:
+                    x_seq = layer(x_seq)
+            if not self.layers or self.mode in ('pretrained-embeddings-only'): 
+                x = x_seq
+                
         # this block runs if both pretrained and residual models are defined and if the full model is running
-        if self.layers and self.pretrained_seq_model and self.mode=='full-model':
+        if self.layers and self.pretrained_seq_model and self.mode in ('full-model','residual-w/-pretrained-embeddings'):
             operations = {
                 'multiply': torch.mul,  # Element-wise multiplication
                 'add': torch.add        # Element-wise addition
@@ -359,7 +372,11 @@ class MethylSeqNN(L.LightningModule):
             inputs: the input tensor provided to the model. This will be used to determine the input lengths
             targets: the targets (or targets mask) that needs to be trimmed based on the input and network
         """
-        inputs_length = inputs.shape[2] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
+        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
+            x,_ = inputs
+        else:
+            x = inputs
+        inputs_length = x.shape[2] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
         targets_length = targets.shape[2]
         
         if self.layers:

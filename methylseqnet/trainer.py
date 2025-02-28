@@ -53,10 +53,10 @@ class MethylSeqDataModule(LightningDataModule):
         )
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=3)
+        return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=4)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=3)
+        return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=4)
 
 # def print_random_seed_and_trainer_info(trainer, model):
 #     # Print the random seed being used (if set)
