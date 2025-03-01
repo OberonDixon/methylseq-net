@@ -27,17 +27,7 @@ class MethylSeqNN(L.LightningModule):
         layers,
         pretrained_seq_model_generator=None,
         pretrained_seq_model_weights=None,
-        train_stages={
-            0:{
-                'mode':'full-model',
-                'grad_dict':{
-                    'layers':True,
-                    'pretrained_seq_model':False,
-                    'seq_input_head':True,
-                    'seq_output_head':True,
-                }
-            }
-        },
+        train_stages={},
         seq_input_head=None,
         seq_output_head=None,
         model_merge_operation='multiply',
@@ -63,7 +53,7 @@ class MethylSeqNN(L.LightningModule):
         
         self.train_stages = train_stages
         # print(self.train_stages)
-        self.mode = 'residual-w/-pretrained-embeddings'# 'full-model' #
+        self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
@@ -298,7 +288,7 @@ class MethylSeqNN(L.LightningModule):
                 return layer
         raise ValueError(f"Layer {layer_name} not found in the model")
         
-    def set_module_requires_grad(self, grad_dict):
+    def set_requires_grad(self, grad_dict):
         """
         Sets requires_grad for entire modules in a model based on a dictionary.
     
@@ -311,17 +301,17 @@ class MethylSeqNN(L.LightningModule):
                 if isinstance(module, nn.Module):  # Ensure it's an nn.Module or nn.ModuleList
                     for param in module.parameters():
                         param.requires_grad = requires_grad
-                        
-    def on_train_epoch_start(self,*args,**kwargs):
-        if self.current_epoch in self.train_stages:
-            stage_dict = self.train_stages[self.current_epoch]
-            if 'mode' in stage_dict:
-                self.mode = stage_dict['mode']
-            if 'grad_dict' in stage_dict:
-                self.set_module_requires_grad(stage_dict['grad_dict'])
-                # print("resetting optimizers maybe?")
-                # self.trainer.strategy.setup_optimizers(self.trainer)
-                # trainer.optimizers = self.configure_optimizers()
+    
+    # def on_train_epoch_start(self,*args,**kwargs):
+    #     if self.current_epoch in self.train_stages:
+    #         stage_dict = self.train_stages[self.current_epoch]
+    #         if 'mode' in stage_dict:
+    #             self.mode = stage_dict['mode']
+    #         if 'grad_dict' in stage_dict:
+    #             self.set_module_requires_grad(stage_dict['grad_dict'])
+    #             # print("resetting optimizers maybe?")
+    #             # self.trainer.strategy.setup_optimizers(self.trainer)
+    #             # trainer.optimizers = self.configure_optimizers()
 
     def on_test_epoch_start(self):
         self.test_targets_list = []

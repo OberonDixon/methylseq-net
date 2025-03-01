@@ -81,6 +81,12 @@ class MethylSeqDataModule(LightningDataModule):
 #     if torch.backends.cudnn.benchmark:
 #         print("CUDNN benchmark is enabled.")
 
+def get_current_epoch(ckpt_path):
+    if os.path.isfile(ckpt_path):
+        checkpoint = torch.load(ckpt_path, map_location='cpu')
+        return checkpoint.get('epoch', 0)
+    return 0
+
 @gin.configurable
 def main(
     config,
@@ -113,6 +119,7 @@ def main(
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
+    best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
 
     logger = WandbLogger(
         save_dir=model_dir,
@@ -136,26 +143,58 @@ def main(
         filename='best-checkpoint',           # Name for the best checkpoint
         save_last=False                       # Don't save a 'last' checkpoint
     )
-    
-    trainer = Trainer(
-        callbacks = [temp_checkpoint,best_val_checkpoint],
-        default_root_dir=model_dir,
-        logger=logger,
-        accelerator='auto', 
-        devices=gpus, 
-        max_epochs=100,
-        strategy="ddp_find_unused_parameters_true",
-    )    
-
-    # print_random_seed_and_trainer_info(trainer, model)
-    
-    trainer.fit(
-        model,
-        datamodule=data_module,
-        ckpt_path=temp_checkpoint_path 
-            if os.path.isfile(temp_checkpoint_path) 
-            else None
-    )
+    if model.train_stages:
+        epochs_elapsed = 0
+        checkpoint_to_use = temp_checkpoint_path
+        for stage_name,stage_dict in model.train_stages.items():
+            current_epoch = get_current_epoch(temp_checkpoint_path)
+            target_epoch = epochs_elapsed+stage_dict["epochs"]-1
+            if current_epoch >= target_epoch:
+                print(f"Stage {stage_name} already completed. Skipping.")
+            else:
+                print(f"""
+                #############################################################
+                Running training stage {stage_name}.
+                #############################################################
+                """)
+                model.mode = stage_dict['mode']
+                model.set_requires_grad(stage_dict['grad_dict'])
+                trainer = Trainer(
+                    callbacks = [temp_checkpoint,best_val_checkpoint],
+                    default_root_dir=model_dir,
+                    logger=logger,
+                    accelerator='auto', 
+                    devices=gpus, 
+                    max_epochs=epochs_elapsed+stage_dict["epochs"],
+                    strategy="ddp_find_unused_parameters_true",
+                )  
+                trainer.fit(
+                    model,
+                    datamodule=data_module,
+                    ckpt_path=checkpoint_to_use 
+                        if os.path.isfile(checkpoint_to_use) 
+                        else None
+                )
+                checkpoint_to_use = best_checkpoint_path
+                
+            epochs_elapsed+=stage_dict["epochs"]
+    else:
+        trainer = Trainer(
+            callbacks = [temp_checkpoint,best_val_checkpoint],
+            default_root_dir=model_dir,
+            logger=logger,
+            accelerator='auto', 
+            devices=gpus, 
+            max_epochs=100,
+            strategy="ddp_find_unused_parameters_true",
+        )    
+        trainer.fit(
+            model,
+            datamodule=data_module,
+            ckpt_path=temp_checkpoint_path 
+                if os.path.isfile(temp_checkpoint_path) 
+                else None
+        )
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
