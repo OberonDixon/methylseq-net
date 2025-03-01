@@ -63,7 +63,7 @@ class MethylSeqNN(L.LightningModule):
         
         self.train_stages = train_stages
         # print(self.train_stages)
-        self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
+        self.mode = 'residual-w/-pretrained-embeddings'# 'full-model' #
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
@@ -144,7 +144,8 @@ class MethylSeqNN(L.LightningModule):
                 for _,io_mappings_row in self.get_io_mappings_df().iterrows():
                     input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
                 x_methylseq_allchannels = None
-                for cell_type, channels in input_to_outputs_dict.items():
+                x_pseudobatch_list = []
+                for cell_type in input_to_outputs_dict.keys():
                     x_methylseq = torch.cat(
                         [
                             x[:,0:4,:],
@@ -154,15 +155,23 @@ class MethylSeqNN(L.LightningModule):
                     )
                     if self.crop_off_sequence:
                         x_methylseq = x_methylseq[:,:,self.crop_off_sequence:-self.crop_off_sequence]
-                    for layer in self.layers:
-                        x_methylseq = layer(x_methylseq)
-                    if self.crop_off_final:
-                        x_methylseq = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
-                    if x_methylseq_allchannels is not None:
-                        x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
-                    else:
-                        x_methylseq_allchannels = torch.zeros_like(x_methylseq)
-                        x_methylseq_allchannels[:,channels,:] = x_methylseq[:,channels,:]
+                    x_pseudobatch_list.append(x_methylseq)
+
+                x_pseudobatch = torch.cat(x_pseudobatch_list, dim=0)
+                
+                for layer in self.layers:
+                    x_pseudobatch = layer(x_pseudobatch)
+                if self.crop_off_final:
+                    x_pseudobatch = x_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final]
+                
+                x_methylseq_allchannels = x_pseudobatch.new_zeros(x.size(0), *x_pseudobatch.shape[1:])
+                
+                batch_size = x.size(0)
+                for cell_type_idx, (cell_type, channels) in enumerate(input_to_outputs_dict.items()):
+                    start = cell_type_idx*batch_size
+                    end = (cell_type_idx+1)*batch_size
+                    x_cell_type = x_pseudobatch[start:end]
+                    x_methylseq_allchannels[:, channels, :] = x_cell_type[:, channels, :]
             else:
                 if self.crop_off_sequence:
                     x_methylseq = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]

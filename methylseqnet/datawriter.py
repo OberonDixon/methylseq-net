@@ -17,6 +17,7 @@ class DatasetWriter:
         output_path: str | Path,
         mask: bool = True,
         io_mappings_list: list=[],
+        append=False,
     ):
         """
         Args:
@@ -44,56 +45,62 @@ class DatasetWriter:
         # True means we are using a mask for the loss function
         self.mask = mask
         self.io_mappings_list = io_mappings_list
+        self.append = append
         
         self.initialize_h5()
     def initialize_h5(self):
-        with h5py.File(self.output_path,'w') as f:
-            if 'specifier' in f:
-                del f['specifier']
-            f.create_dataset(
-                'specifier',
-                (0,),
-                maxshape=(None,),
-                dtype=h5py.string_dtype(encoding="utf-8"),
-                compression='lzf',
-                chunks=(1,),
-            )
-            if 'sequence' in f:
-                del f['sequence']
-            f.create_dataset(
-                'sequence',
-                (0,7,self.seq_length),
-                maxshape=(None,7,self.seq_length),
-                dtype=np.float16,
-                compression='lzf',
-                chunks=(1,7,self.seq_length),
-            )
-            if 'tracks' in f:
-                del f['tracks']
-            f.create_dataset(
-                'tracks',
-                (0,self.num_tracks,self.track_length),
-                maxshape=(None,self.num_tracks,self.track_length),
-                dtype='float',
-                compression='lzf',
-                chunks=(1,self.num_tracks,self.track_length),
-            )
-            if self.mask:
-                if 'mask' in f:
-                    del f['mask']
+        if not self.append:
+            with h5py.File(self.output_path,'w') as f:
+                if 'specifier' in f:
+                    del f['specifier']
                 f.create_dataset(
-                    'mask',
+                    'specifier',
+                    (0,),
+                    maxshape=(None,),
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                    compression='lzf',
+                    chunks=(1,),
+                )
+                if 'sequence' in f:
+                    del f['sequence']
+                f.create_dataset(
+                    'sequence',
+                    (0,7,self.seq_length),
+                    maxshape=(None,7,self.seq_length),
+                    dtype=np.float16,
+                    compression='lzf',
+                    chunks=(1,7,self.seq_length),
+                )
+                if 'tracks' in f:
+                    del f['tracks']
+                f.create_dataset(
+                    'tracks',
                     (0,self.num_tracks,self.track_length),
                     maxshape=(None,self.num_tracks,self.track_length),
-                    dtype='bool',
+                    dtype='float',
                     compression='lzf',
                     chunks=(1,self.num_tracks,self.track_length),
                 )
-            # Log the gin config string and io mappings as attributes in the HDF5 file
-            gin_config_str = gin.operative_config_str()
-            f.attrs['gin_config'] = gin_config_str
-            f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
+                if self.mask:
+                    if 'mask' in f:
+                        del f['mask']
+                    f.create_dataset(
+                        'mask',
+                        (0,self.num_tracks,self.track_length),
+                        maxshape=(None,self.num_tracks,self.track_length),
+                        dtype='bool',
+                        compression='lzf',
+                        chunks=(1,self.num_tracks,self.track_length),
+                    )
+                # Log the gin config string and io mappings as attributes in the HDF5 file
+                gin_config_str = gin.operative_config_str()
+                f.attrs['gin_config'] = gin_config_str
+                f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
                 
+    def __len__(self):
+        with h5py.File(self.output_path, 'r') as f:
+            return f['sequence'].shape[0]
+    
     def write_chunk(
         self,
         indices_list,
@@ -170,6 +177,7 @@ class MultiMethylWriter:
         output_path: str | Path,
         mask: bool = True,
         io_mappings_list: list=[],
+        append=False,
     ):
         """
         Args:
@@ -198,66 +206,74 @@ class MultiMethylWriter:
         # True means we are using a mask for the loss function
         self.mask = mask
         self.io_mappings_list = io_mappings_list
+
+        self.append = append
         
         self.initialize_h5()
+        
     def initialize_h5(self):
-        with h5py.File(self.output_path,'w') as f:
-            if 'specifier' in f:
-                del f['specifier']
-            f.create_dataset(
-                'specifier',
-                (0,),
-                maxshape=(None,),
-                dtype=h5py.string_dtype(encoding="utf-8"),
-                compression='lzf',
-                chunks=(1,),
-            )
-            if 'sequence' in f:
-                del f['sequence']
-            f.create_dataset(
-                'sequence',
-                (0,4,self.seq_length),
-                maxshape=(None,4,self.seq_length),
-                dtype=np.float16,
-                compression='lzf',
-                chunks=(1,4,self.seq_length),
-            )
-            if 'methylation' in f:
-                del f['methylation']
-            f.create_dataset(
-                'methylation',
-                (0,3*self.num_cell_types,self.seq_length),
-                maxshape=(None,3*self.num_cell_types,self.seq_length),
-                dtype=np.float16,
-                compression='lzf',
-                chunks=(1,3*self.num_cell_types,self.seq_length),
-            )
-            if 'tracks' in f:
-                del f['tracks']
-            f.create_dataset(
-                'tracks',
-                (0,self.num_tracks,self.track_length),
-                maxshape=(None,self.num_tracks,self.track_length),
-                dtype='float',
-                compression='lzf',
-                chunks=(1,self.num_tracks,self.track_length),
-            )
-            if self.mask:
-                if 'mask' in f:
-                    del f['mask']
+        if not self.append:
+            with h5py.File(self.output_path,'w') as f:
+                if 'specifier' in f:
+                    del f['specifier']
                 f.create_dataset(
-                    'mask',
+                    'specifier',
+                    (0,),
+                    maxshape=(None,),
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                    compression='lzf',
+                    chunks=(1,),
+                )
+                if 'sequence' in f:
+                    del f['sequence']
+                f.create_dataset(
+                    'sequence',
+                    (0,4,self.seq_length),
+                    maxshape=(None,4,self.seq_length),
+                    dtype=np.float16,
+                    compression='lzf',
+                    chunks=(1,4,self.seq_length),
+                )
+                if 'methylation' in f:
+                    del f['methylation']
+                f.create_dataset(
+                    'methylation',
+                    (0,3*self.num_cell_types,self.seq_length),
+                    maxshape=(None,3*self.num_cell_types,self.seq_length),
+                    dtype=np.float16,
+                    compression='lzf',
+                    chunks=(1,3*self.num_cell_types,self.seq_length),
+                )
+                if 'tracks' in f:
+                    del f['tracks']
+                f.create_dataset(
+                    'tracks',
                     (0,self.num_tracks,self.track_length),
                     maxshape=(None,self.num_tracks,self.track_length),
-                    dtype='bool',
+                    dtype='float',
                     compression='lzf',
                     chunks=(1,self.num_tracks,self.track_length),
                 )
-            # Log the gin config string and io mappings as attributes in the HDF5 file
-            gin_config_str = gin.operative_config_str()
-            f.attrs['gin_config'] = gin_config_str
-            f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
-                
+                if self.mask:
+                    if 'mask' in f:
+                        del f['mask']
+                    f.create_dataset(
+                        'mask',
+                        (0,self.num_tracks,self.track_length),
+                        maxshape=(None,self.num_tracks,self.track_length),
+                        dtype='bool',
+                        compression='lzf',
+                        chunks=(1,self.num_tracks,self.track_length),
+                    )
+                # Log the gin config string and io mappings as attributes in the HDF5 file
+                gin_config_str = gin.operative_config_str()
+                f.attrs['gin_config'] = gin_config_str
+                f.attrs['io_mappings'] = pd.DataFrame(self.io_mappings_list).to_csv(sep='\t', index=False)
+
+    def __len__(self):
+        with h5py.File(self.output_path, 'r') as f:
+            return f['sequence'].shape[0]
+    
     def write_chunk(
         self,
         indices_list,
@@ -337,28 +353,42 @@ class MultiMethylWriter:
 @gin.register
 @gin.configurable
 class SeqEmbeddingsWriter:
-    def __init__(self, embeddings_shape, output_path):
+    def __init__(
+        self, 
+        embeddings_shape, 
+        output_path,
+        append = False,
+    ):
         self.embeddings_shape = embeddings_shape
         if Path(output_path).suffix in ['.h5','.hdf5']:
             self.output_path = Path(output_path)
         else:
-            raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')      
+            raise ValueError(f'{Path(output_path)} is not an .h5 or .hdf5 path')  
+        
+        self.append = append
+        
         self.initialize_h5()
 
     def initialize_h5(self):
-        with h5py.File(self.output_path,'w') as f:
-            if 'embeddings' in f:
-                del f['embeddings']
-            f.create_dataset(
-                'embeddings',
-                (0,) + self.embeddings_shape,
-                maxshape=(None,) + self.embeddings_shape,
-                dtype='float',
-                compression='lzf',
-                chunks=(1,) + self.embeddings_shape,
-            )  
-            gin_config_str = gin.operative_config_str()
-            f.attrs['gin_config'] = gin_config_str
+        if not self.append:
+            with h5py.File(self.output_path,'w') as f:
+                if 'embeddings' in f:
+                    del f['embeddings']
+                f.create_dataset(
+                    'embeddings',
+                    (0,) + self.embeddings_shape,
+                    maxshape=(None,) + self.embeddings_shape,
+                    dtype='float',
+                    compression='lzf',
+                    chunks=(1,) + self.embeddings_shape,
+                )  
+                gin_config_str = gin.operative_config_str()
+                f.attrs['gin_config'] = gin_config_str
+                
+    def __len__(self):
+        with h5py.File(self.output_path, 'r') as f:
+            return f['embeddings'].shape[0]
+    
     def write_chunk(
         self,
         indices_list,

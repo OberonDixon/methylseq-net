@@ -133,6 +133,7 @@ def pretrained_model_embeddings():
     parser.add_argument("--output-datasets-directory", required=True, help="Path to an output directory for saving the embeddings datasets.")
     parser.add_argument("--batch-size", required=False, type=int, default=8, help="Size of batches for passing through model.")
     parser.add_argument("--write-batch-size", required=False, type=int, default=16, help="Size of batches for writing to disk.")
+    parser.add_argument("--append-to-existing", action="store_true", help="Append to existing dataset if this is a restarted job.")
     
     args = parser.parse_args(sys.argv[2:])
 
@@ -167,6 +168,7 @@ def pretrained_model_embeddings():
         seq_embeddings_writer = SeqEmbeddingsWriter(
             embeddings_shape = embeddings_shape,
             output_path = output_file,
+            append = args.append_to_existing,
         )
         try:
             dataset = MultiMethylDataset(dataset_file,batch_size=args.batch_size)

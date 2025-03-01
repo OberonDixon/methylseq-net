@@ -270,12 +270,11 @@ class MultiDataset(Dataset):
         return self.length
         
     def __getitem__(self, idx):  
-        batch_tuples = tuple(dataset[idx] for dataset in self.datasets)
-        inputs, targets, masks = zip(*batch_tuples)
-        input = unpack_if_single(tuple(x for x in inputs if x is not None))
-        target = unpack_if_single(tuple(x for x in targets if x is not None))
-        mask = unpack_if_single(tuple(x for x in masks if x is not None))
-        return input, target, mask
+        results = [dataset[idx] for dataset in self.datasets]
+        inputs  = [r[0] for r in results]
+        targets = [r[1] for r in results]
+        masks   = [r[2] for r in results]
+        return _pack(inputs), _pack(targets), _pack(masks)
 
     def get_io_mappings_str(self):
         for dataset in self.datasets:
@@ -353,5 +352,12 @@ def create_virtual_h5_with_attributes(file_paths):
 
     return output_path
 
-def unpack_if_single(t):
-    return t[0] if len(t) == 1 else t
+def _pack(values):
+    # Filter out None values.
+    valid = [v for v in values if v is not None]
+    if not valid:
+        return None
+    elif len(valid) == 1:
+        return valid[0]
+    else:
+        return tuple(valid)
