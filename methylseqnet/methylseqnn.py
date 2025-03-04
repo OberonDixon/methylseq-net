@@ -42,6 +42,7 @@ class MethylSeqNN(L.LightningModule):
         momentum=0.98, 
         pos_weight=100,
         betas=(0.97,0.98),
+        residual_activation_loss_weight=0,
     ):
         """
         Args:
@@ -91,6 +92,10 @@ class MethylSeqNN(L.LightningModule):
 
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
+        self.hooked_activations = {}
+        self.residual_activation_loss_weight = residual_activation_loss_weight
+        if self.residual_activation_loss_weight!=0:
+            self.layers[-1].register_forward_hook(self._capture_activations_hook)
         
         self.regression = regression
         self.label_threshold_cts = label_threshold_cts
@@ -214,6 +219,11 @@ class MethylSeqNN(L.LightningModule):
             
         return x
 
+    def _capture_activations_hook(self, module, inputs, outputs):
+        # Store the output of the module
+        # Use id(module) or module.__class__.__name__ to distinguish them
+        self.hooked_activations[id(module)] = outputs
+    
     def training_step(self,batch,batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)  
@@ -229,6 +239,12 @@ class MethylSeqNN(L.LightningModule):
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
+            residual_activations = self.hooked_activations[id(self.layers[-1])]
+            loss = loss + self.residual_activation_loss_weight*(
+                torch.clamp(
+                    residual_activations, min=1e-8,
+                ).log()**2).mean()
         self.log("train_loss", loss)
         return loss  
 
@@ -247,6 +263,12 @@ class MethylSeqNN(L.LightningModule):
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
+            residual_activations = self.hooked_activations[id(self.layers[-1])]
+            loss = loss + self.residual_activation_loss_weight*(
+                torch.clamp(
+                    residual_activations, min=1e-8,
+                ).log()**2).mean()
         self.log("val_loss", loss)
         return loss
         
@@ -260,9 +282,17 @@ class MethylSeqNN(L.LightningModule):
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
-        loss = self.criterion(outputs, targets)
-        self.test_targets_list.extend(targets.cpu().numpy().tolist())
-        self.test_outputs_list.extend(outputs.cpu().numpy().tolist())
+        if mask.any():
+            loss = self.criterion(outputs, targets)
+        else:
+            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
+            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
+            residual_activations = self.hooked_activations[id(self.layers[-1])]
+            loss = loss + self.residual_activation_loss_weight*(
+                torch.clamp(
+                    residual_activations, min=1e-8,
+                ).log()**2).mean()
         return loss
     
     def configure_optimizers(self):

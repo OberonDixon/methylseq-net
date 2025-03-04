@@ -63,7 +63,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_input_head':False,
                     'seq_output_head':True,
                 },
-                'epochs':3,
+                'epochs':5,
             },
             'train-residual':{
                 'mode':'residual-w/-pretrained-embeddings',
@@ -83,6 +83,7 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
 methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
 methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
+methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0.1
 
 methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)
 
