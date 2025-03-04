@@ -242,7 +242,10 @@ class EmbeddingsDataset(Dataset):
                 with h5py.File(self.file_path, 'r') as f:
                     embeddings = f['embeddings'][start_idx:end_idx,:,:]
                     if self.return_specifiers:
-                        specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        try:
+                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        except:
+                            specifiers = np.array(['' for _ in range(embeddings.shape[0])])
                         return torch.tensor(embeddings, dtype=torch.float32), None, None, specifiers
                     else:
                         return torch.tensor(embeddings, dtype=torch.float32), None, None
@@ -275,6 +278,7 @@ class MultiDataset(Dataset):
         return_specifiers=False,
         transforms=(), 
         allow_unequal_lengths=True,
+        validate_specifiers=True,
     ):
         if not isinstance(file_path,tuple):
             raise TypeError("MultiDataset file_path must be passed as a tuple of file paths corresponding to the dataset_classes.")
@@ -293,6 +297,7 @@ class MultiDataset(Dataset):
         lengths = [len(dataset) for dataset in self.datasets]
         if not allow_unequal_lengths and len(set(lengths)) > 1:
             raise ValueError(f"All MultiDataset datasets must have the same length; instead found lengths {lengths}. Pass allow_unequal_lengths=True to override.")
+        self.validate_specifiers = validate_specifiers
         self.length=min(lengths)
         
     def __len__(self):
@@ -304,7 +309,7 @@ class MultiDataset(Dataset):
         targets = [r[1] for r in results]
         masks   = [r[2] for r in results]
         specifiers = [r[3] for r in results]
-        if len(set([",".join(specifier_list) for specifier_list in specifiers])) > 1:
+        if self.validate_specifiers and len(set([",".join(specifier_list) for specifier_list in specifiers])) > 1:
             raise ValueError(f"Mistmatch between datasets for index {idx}: {specifiers} corresponding to {self.datasets}.")
         if self.return_specifiers:
             return _pack(inputs), _pack(targets), _pack(masks), specifiers[0]
