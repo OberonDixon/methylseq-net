@@ -11,7 +11,7 @@ import gin
 from datetime import datetime as dt
 from pathlib import Path
 import argparse
-from methylseqnet.dataset import CustomH5Dataset, MultiMethylDataset
+from methylseqnet.dataset import *
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -149,13 +149,15 @@ def main(
         for stage_name,stage_dict in model.train_stages.items():
             current_epoch = get_current_epoch(temp_checkpoint_path)
             target_epoch = epochs_elapsed+stage_dict["epochs"]-1
+            print(stage_dict)
+            print(f"Current epoch: {current_epoch}, target epoch: {target_epoch}")
             if current_epoch >= target_epoch:
                 print(f"Stage {stage_name} already completed. Skipping.")
             else:
                 print(f"""
-                #############################################################
-                Running training stage {stage_name}.
-                #############################################################
+#############################################################################
+                   Running training stage {stage_name}.
+#############################################################################
                 """)
                 model.mode = stage_dict['mode']
                 model.set_requires_grad(stage_dict['grad_dict'])

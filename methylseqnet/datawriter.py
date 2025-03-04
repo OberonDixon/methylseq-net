@@ -372,6 +372,16 @@ class SeqEmbeddingsWriter:
     def initialize_h5(self):
         if not self.append:
             with h5py.File(self.output_path,'w') as f:
+                if 'specifier' in f:
+                    del f['specifier']
+                f.create_dataset(
+                    'specifier',
+                    (0,),
+                    maxshape=(None,),
+                    dtype=h5py.string_dtype(encoding="utf-8"),
+                    compression='lzf',
+                    chunks=(1,),
+                )
                 if 'embeddings' in f:
                     del f['embeddings']
                 f.create_dataset(
@@ -392,16 +402,21 @@ class SeqEmbeddingsWriter:
     def write_chunk(
         self,
         indices_list,
+        sample_specifier_list,
         embeddings_list,
     ):
         if len(indices_list)!=len(embeddings_list):
             raise ValueError(f'Cannot write chunk, unbalanced lengths: {len(indices_list)} indices and {len(embeddings_list)} embeddings.')
         end_index = np.max(np.array(indices_list))+1
         with h5py.File(self.output_path, 'a') as f:
+            specifier_dataset = f['specifier']
             embeddings_dataset = f['embeddings']
+            current_specifier_size = specifier_dataset.shape[0]
             current_embeddings_size = embeddings_dataset.shape[0]
             if end_index>current_embeddings_size:
+                specifier_dataset.resize(end_index, axis=0) 
                 embeddings_dataset.resize(end_index, axis=0) 
+            specifier_dataset[indices_list] = sample_specifier_list
             embeddings_dataset[indices_list] = embeddings_list
                 
 class BigWigWriter:

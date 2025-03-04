@@ -13,6 +13,8 @@ import gin
 import os
 import inspect
 
+@gin.register
+@gin.configurable
 class CustomH5Dataset(Dataset):
     def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_path = file_path
@@ -55,14 +57,14 @@ class CustomH5Dataset(Dataset):
                         mask = None
                     if self.return_specifiers:
                         try:
-                            specifiers = f['specifier'][start_idx:end_idx]
-                        except:
+                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        except Exception as e:
                             try: 
                                 # this exists to support legacy datasets and will be obsoleted and removed at some point
                                 specifiers = f['region'][start_idx:end_idx]
                             except:
                                 # adjust this line when the region option is removed
-                                raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False')
+                                raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False') from e
                             
                 
                 for transform in self.transforms:
@@ -100,6 +102,7 @@ class CustomH5Dataset(Dataset):
         return 
 
 @gin.register
+@gin.configurable
 class MultiMethylDataset(Dataset):
     def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
@@ -149,10 +152,11 @@ class MultiMethylDataset(Dataset):
                         mask = None
                     if self.return_specifiers:
                         try:
-                            specifiers = f['specifier'][start_idx:end_idx]
-                        except:
+                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        except Exception as e:
                             # adjust this line when the region option is removed
-                            raise ValueError('Dataset does not contain "specifier". Consider running with return_specifiers=False')
+                            
+                            raise ValueError('Dataset does not contain "specifier". Consider running with return_specifiers=False') from e
                             
                 for transform in self.transforms:
                     input_data, target, mask = transform(input_data, target, mask)
@@ -196,8 +200,17 @@ class MultiMethylDataset(Dataset):
             os.remove(self.file_path)
 
 @gin.register
+@gin.configurable
 class EmbeddingsDataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=(), max_retries=100, retry_delay=2):
+    def __init__(
+        self, 
+        file_path, 
+        batch_size=64, 
+        transforms=(), 
+        return_specifiers=False,
+        max_retries=100, 
+        retry_delay=2,
+    ):
         """
         args:
             - file_path: a path to an h5 file, or a list of paths to h5 files
@@ -206,6 +219,7 @@ class EmbeddingsDataset(Dataset):
         """
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
+        self.return_specifiers = return_specifiers
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
@@ -227,7 +241,11 @@ class EmbeddingsDataset(Dataset):
             try:
                 with h5py.File(self.file_path, 'r') as f:
                     embeddings = f['embeddings'][start_idx:end_idx,:,:]
-                    return torch.tensor(embeddings, dtype=torch.float32), None, None
+                    if self.return_specifiers:
+                        specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        return torch.tensor(embeddings, dtype=torch.float32), None, None, specifiers
+                    else:
+                        return torch.tensor(embeddings, dtype=torch.float32), None, None
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
@@ -247,8 +265,17 @@ class EmbeddingsDataset(Dataset):
             os.remove(self.file_path)
 
 @gin.register
+@gin.configurable
 class MultiDataset(Dataset):
-    def __init__(self, file_path, dataset_classes, batch_size=64, transforms=(), allow_unequal_lengths=True):
+    def __init__(
+        self, 
+        file_path, 
+        dataset_classes, 
+        batch_size=64, 
+        return_specifiers=False,
+        transforms=(), 
+        allow_unequal_lengths=True,
+    ):
         if not isinstance(file_path,tuple):
             raise TypeError("MultiDataset file_path must be passed as a tuple of file paths corresponding to the dataset_classes.")
         if not isinstance(dataset_classes,tuple):
@@ -258,11 +285,13 @@ class MultiDataset(Dataset):
                 file_path=file_path_for_class,
                 batch_size=batch_size,
                 transforms=transforms,
+                return_specifiers=True,
             )
             for dataset_class, file_path_for_class in zip(dataset_classes, file_path)
         )
+        self.return_specifiers = return_specifiers
         lengths = [len(dataset) for dataset in self.datasets]
-        if not allow_unequal_lengths:
+        if not allow_unequal_lengths and len(set(lengths)) > 1:
             raise ValueError(f"All MultiDataset datasets must have the same length; instead found lengths {lengths}. Pass allow_unequal_lengths=True to override.")
         self.length=min(lengths)
         
@@ -274,7 +303,13 @@ class MultiDataset(Dataset):
         inputs  = [r[0] for r in results]
         targets = [r[1] for r in results]
         masks   = [r[2] for r in results]
-        return _pack(inputs), _pack(targets), _pack(masks)
+        specifiers = [r[3] for r in results]
+        if len(set([",".join(specifier_list) for specifier_list in specifiers])) > 1:
+            raise ValueError(f"Mistmatch between datasets for index {idx}: {specifiers} corresponding to {self.datasets}.")
+        if self.return_specifiers:
+            return _pack(inputs), _pack(targets), _pack(masks), specifiers[0]
+        else:
+            return _pack(inputs), _pack(targets), _pack(masks)
 
     def get_io_mappings_str(self):
         for dataset in self.datasets:

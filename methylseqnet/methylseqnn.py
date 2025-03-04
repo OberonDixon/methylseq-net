@@ -208,7 +208,7 @@ class MethylSeqNN(L.LightningModule):
             else:
                 raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
         # this block runs if there is a post-merge output head
-        if self.merged_output_head and self.mode in ['full-model','pretrained-only']:
+        if self.merged_output_head and self.mode in ['full-model','pretrained-only','pretrained-embeddings-only']:
             for layer in self.merged_output_head:
                 x = layer(x)
             
@@ -219,26 +219,34 @@ class MethylSeqNN(L.LightningModule):
         outputs = self(inputs)  
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
-            targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
+            targets = (targets>self.label_threshold_cts).float()
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
-        loss = self.criterion(outputs, targets)
+        if mask.any():
+            loss = self.criterion(outputs, targets)
+        else:
+            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
+            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
         self.log("train_loss", loss)
         return loss  
 
     def validation_step(self, batch, batch_idx):
         inputs, targets, mask = batch
-        outputs = self(inputs)
+        outputs = self(inputs)  
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
-            targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
+            targets = (targets>self.label_threshold_cts).float()
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]
             targets = targets[mask]
-        loss = self.criterion(outputs, targets)
+        if mask.any():
+            loss = self.criterion(outputs, targets)
+        else:
+            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
+            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
         self.log("val_loss", loss)
         return loss
         
@@ -247,7 +255,7 @@ class MethylSeqNN(L.LightningModule):
         outputs = self(inputs)
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
-            targets = (targets>torch.log10(torch.tensor(float(self.label_threshold_cts)) + 1)).float()
+            targets = (targets>self.label_threshold_cts).float()
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask]

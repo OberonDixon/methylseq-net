@@ -28,8 +28,8 @@ FOLDS=(
     )
 FOLD=${FOLDS[$SLURM_ARRAY_TASK_ID]}
 CONFIG_FILE="../configs/residual/borzoi_pretrain_head_only.gin"
-INPUT_DIR="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128-multimethyl-bisulfite-atac-cage/"
-OUTPUT_DIR="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings-lzf/"
+INPUT_DIR="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/"
+OUTPUT_DIR="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/"
 # Check if this is a requeued job by examining SLURM_RESTART_COUNT
 if [ "${SLURM_RESTART_COUNT:-0}" -gt 0 ]; then
     EXTRA_ARGS="--append-to-existing"

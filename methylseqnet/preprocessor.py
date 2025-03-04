@@ -8,6 +8,8 @@ from methylseqnet.dataset import *
 from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
+from threading import Thread
 import multiprocessing
 from multiprocessing import Manager
 from collections import defaultdict
@@ -171,31 +173,75 @@ def pretrained_model_embeddings():
             append = args.append_to_existing,
         )
         try:
-            dataset = MultiMethylDataset(dataset_file,batch_size=args.batch_size)
+            dataset = MultiMethylDataset(
+                dataset_file,
+                batch_size=args.batch_size,
+                return_specifiers=True,
+            )
         except:
-            dataset = CustomH5Dataset(dataset_file,batch_size=args.batch_size)
+            dataset = CustomH5Dataset(
+                dataset_file,
+                batch_size=args.batch_size,
+                return_specifiers=True,
+            )
         dataloader = DataLoader(dataset, batch_size=None, shuffle=False)
-        executor = ThreadPoolExecutor(max_workers=1)
-        futures = []
+
+        def writer_worker(write_queue):
+            """Worker function that processes items from the queue."""
+            while True:
+                item = write_queue.get()
+                if item is None:  # Sentinel value to signal termination.
+                    write_queue.task_done()
+                    break
+                indices_list, sample_specifiers_list, embeddings_list = item
+                print(f'writing regions: {sample_specifiers_list}')
+                seq_embeddings_writer.write_chunk(indices_list, sample_specifiers_list, embeddings_list)
+                write_queue.task_done()
+        
+        # Create a bounded queue with a maximum number of pending tasks.
+        write_queue = Queue(maxsize=10)
+        
+        # Start the writer thread.
+        writer_thread = Thread(target=writer_worker, args=(write_queue,))
+        writer_thread.start()
+        
         with torch.no_grad():
             indices_list = []
             embeddings_list = []
-            for batch_idx, (inputs, _, _) in enumerate(tqdm(dataloader)):
+            sample_specifiers_list = []
+            
+            for batch_idx, (inputs, _, _, specifiers) in enumerate(tqdm(dataloader)):
                 inputs = inputs.to(device)
                 embeddings = model(inputs)
+                
+                # Convert embeddings to numpy arrays if needed.
+                embeddings_list += [emb.cpu().numpy() for emb in embeddings]
+                
+                batch_start_idx = batch_idx * args.batch_size
+                batch_end_idx = batch_start_idx + len(specifiers.tolist())
+                indices_list += list(range(batch_start_idx, batch_end_idx))
+                sample_specifiers_list += specifiers.tolist()
+                
+                # When we accumulate enough samples, push the work to the queue.
+                if len(embeddings_list) > args.write_batch_size:
+                    # This put() will block if the queue already has maxsize items.
+                    write_queue.put((indices_list, sample_specifiers_list, embeddings_list))
+                    # Reset lists for the next chunk.
+                    indices_list = []
+                    sample_specifiers_list = []
+                    embeddings_list = []
+        
+            # If there is any remaining data after the loop, write it as well.
+            if embeddings_list:
+                write_queue.put((indices_list, sample_specifiers_list, embeddings_list))
+        
+        # Wait until all items in the queue have been processed.
+        write_queue.join()
+        
+        # Signal the writer thread to exit by putting a sentinel value.
+        write_queue.put(None)
+        writer_thread.join()
 
-                # Convert to numpy if needed
-                embeddings_list+=[emb.cpu().numpy() for emb in embeddings]
-                indices_list+=list(range(batch_idx*args.batch_size,(batch_idx+1)*args.batch_size))
-
-                if len(embeddings_list)>args.write_batch_size:
-                    future = executor.submit(seq_embeddings_writer.write_chunk, indices_list, embeddings_list)
-                    futures.append(future)
-                    embeddings_list=[]
-                    indices_list=[]
-            seq_embeddings_writer.write_chunk(indices_list, embeddings_list)
-        for future in futures:
-            future.result()
 def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file. No default.")
