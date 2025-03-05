@@ -82,7 +82,7 @@ class MethylSeqDataModule(LightningDataModule):
 #         print("CUDNN benchmark is enabled.")
 
 def get_current_epoch(ckpt_path):
-    if os.path.isfile(ckpt_path):
+    if ckpt_path and os.path.isfile(ckpt_path):
         checkpoint = torch.load(ckpt_path, map_location='cpu')
         return checkpoint.get('epoch', 0)
     return 0
@@ -94,6 +94,7 @@ def main(
     unique_identifier,
     gpus,
     batch_size,
+    start_from_checkpoint,
 ):
     
     gin.parse_config_file(config)
@@ -120,6 +121,20 @@ def main(
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
     best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
+    if start_from_checkpoint:
+        start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt'
+    # if the temp checkpoint exists, model training has been restarted
+    if os.path.isfile(temp_checkpoint_path):
+        checkpoint_to_use = temp_checkpoint_path
+        print(f"Starting from temp checkpoint {checkpoint_to_use}.")
+    # if the temp checkpoint does not exist, try using the start-point checkpoint if provided
+    elif start_from_checkpoint and os.path.isfile(start_checkpoint_path):
+        checkpoint_to_use = start_checkpoint_path
+        print(f"Starting from previously trained checkpoint {checkpoint_to_use}.")
+    # if there is no start point checkpoint nor temp checkpoint, we are starting from scratch
+    else:
+        print(f"Starting training from scratch.")
+        checkpoint_to_use = None    
 
     logger = WandbLogger(
         save_dir=model_dir,
@@ -145,13 +160,14 @@ def main(
     )
     if model.train_stages:
         epochs_elapsed = 0
-        checkpoint_to_use = temp_checkpoint_path
         for stage_name,stage_dict in model.train_stages.items():
-            current_epoch = get_current_epoch(temp_checkpoint_path)
+            
+            current_epoch = get_current_epoch(checkpoint_to_use)
             target_epoch = epochs_elapsed+stage_dict["epochs"]
             print(stage_dict)
             print(f"Current epoch: {current_epoch}, target epoch: {target_epoch}")
             if current_epoch >= target_epoch:
+                # if the checkpoint_to_use is already past the current stage, skip to the next stage
                 print(f"Stage {stage_name} already completed. Skipping.")
             else:
                 print(f"""
@@ -174,9 +190,8 @@ def main(
                     model,
                     datamodule=data_module,
                     ckpt_path=checkpoint_to_use 
-                        if os.path.isfile(checkpoint_to_use) 
-                        else None
                 )
+                # once a training stage is complete, the next one should start from the best checkpoint from that stage
                 checkpoint_to_use = best_checkpoint_path
                 
             epochs_elapsed+=stage_dict["epochs"]
@@ -193,9 +208,7 @@ def main(
         trainer.fit(
             model,
             datamodule=data_module,
-            ckpt_path=temp_checkpoint_path 
-                if os.path.isfile(temp_checkpoint_path) 
-                else None
+            ckpt_path=checkpoint_to_use
         )
 
 if __name__ == '__main__':
@@ -205,5 +218,6 @@ if __name__ == '__main__':
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
+    parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
     args = parser.parse_args()
-    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size)
+    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint)

@@ -16,6 +16,7 @@ from io import StringIO
 from methylseqnet.transforms import *
 from methylseqnet.layers import *
 from methylseqnet.losses import *
+from methylseqnet.optimizers import *
 from methylseqnet.pretrained import *
 
 gin.register(nn.Softplus)
@@ -38,11 +39,10 @@ class MethylSeqNN(L.LightningModule):
         crop_off_sequence=None,
         crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
         label_threshold_cts=5,
-        learning_rate=0.005, 
-        momentum=0.98, 
-        pos_weight=100,
-        betas=(0.97,0.98),
         residual_activation_loss_weight=0,
+        prediction_criterion=PoissonLoss,
+        activation_criterion=LogL1Loss,
+        optimizer_class=AdamOptimizer,
     ):
         """
         Args:
@@ -99,18 +99,16 @@ class MethylSeqNN(L.LightningModule):
         
         self.regression = regression
         self.label_threshold_cts = label_threshold_cts
-        self.learning_rate = learning_rate
-        self.momentum = momentum
-        self.pos_weight = torch.tensor([pos_weight])
-        self.betas = betas
+        # self.learning_rate = learning_rate
+        # self.momentum = momentum
+        # self.pos_weight = torch.tensor([pos_weight])
+        # self.betas = betas
 
         self.io_mappings_str = ''
 
-        if self.regression:
-            # self.softplus = nn.Softplus()
-            self.criterion = CustomPoissonNLLLossLogTransformed()
-        else:
-            self.criterion = nn.BCEWithLogitsLoss(pos_weight=self.pos_weight)
+        self.prediction_criterion = prediction_criterion()
+        self.activation_criterion = activation_criterion()
+        self.optimizer_class = optimizer_class
 
     def forward(self, x):
         """
@@ -213,7 +211,7 @@ class MethylSeqNN(L.LightningModule):
             else:
                 raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
         # this block runs if there is a post-merge output head
-        if self.merged_output_head and self.mode in ['full-model','pretrained-only','pretrained-embeddings-only']:
+        if self.merged_output_head and self.mode in ('full-model','pretrained-only','pretrained-embeddings-only'):
             for layer in self.merged_output_head:
                 x = layer(x)
             
@@ -235,16 +233,13 @@ class MethylSeqNN(L.LightningModule):
             outputs = outputs[mask]
             targets = targets[mask]
         if mask.any():
-            loss = self.criterion(outputs, targets)
+            loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = torch.zeros(1, device=outputs.device, requires_grad=True)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight*(
-                torch.clamp(
-                    residual_activations, min=1e-8,
-                ).log()**2).mean()
+            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
         self.log("train_loss", loss)
         return loss  
 
@@ -259,16 +254,13 @@ class MethylSeqNN(L.LightningModule):
             outputs = outputs[mask]
             targets = targets[mask]
         if mask.any():
-            loss = self.criterion(outputs, targets)
+            loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = torch.zeros(1, device=outputs.device, requires_grad=True)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight*(
-                torch.clamp(
-                    residual_activations, min=1e-8,
-                ).log()**2).mean()
+            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
         self.log("val_loss", loss)
         return loss
         
@@ -283,16 +275,13 @@ class MethylSeqNN(L.LightningModule):
             outputs = outputs[mask]
             targets = targets[mask]
         if mask.any():
-            loss = self.criterion(outputs, targets)
+            loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = torch.zeros(1, device=outputs.device, requires_grad=True)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight*(
-                torch.clamp(
-                    residual_activations, min=1e-8,
-                ).log()**2).mean()
+            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
         return loss
     
     def configure_optimizers(self):
@@ -313,11 +302,8 @@ class MethylSeqNN(L.LightningModule):
         
         if not param_groups:
             raise ValueError("No trainable parameters found. Ensure at least one module has trainable parameters.")
-        if self.regression:
-            optimizer = [optim.Adam(param_groups, lr=self.learning_rate, betas=self.betas)]
         else:
-            optimizer = [optim.SGD(param_groups, lr=self.learning_rate, momentum=self.momentum)]
-        return optimizer
+            return [self.optimizer_class(param_groups)]
     
     def get_layer(self, layer_name):
         for name, layer in self.named_modules():
