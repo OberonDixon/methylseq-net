@@ -47,7 +47,7 @@ methylseq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.001
+methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = [@methylseq_model/EncodingAdjuster,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
@@ -84,7 +84,7 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
-methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0.0001
+methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0.00001
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)

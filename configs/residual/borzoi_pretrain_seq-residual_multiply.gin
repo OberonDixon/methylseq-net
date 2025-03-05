@@ -84,7 +84,7 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
-methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0.01
+methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0.0001
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)
