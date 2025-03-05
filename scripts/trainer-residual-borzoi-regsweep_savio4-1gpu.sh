@@ -4,7 +4,7 @@
 #SBATCH --partition=savio4_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
-#SBATCH --ntasks=4
+#SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --requeue
@@ -23,7 +23,7 @@ CONFIG_FILES=(
     "../configs/residual/regularization_sweep/borzoi_pretrain_0.1reg_methylseq-residual_multiply.gin"
 )
 
-START_CHECKPOINT="slurm23966228task2"
+START_CHECKPOINT="slurm23966228task0"
 
 echo $START_CHECKPOINT
 

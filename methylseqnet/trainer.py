@@ -121,16 +121,19 @@ def main(
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
     best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
+    start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
     if start_from_checkpoint:
-        start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt'
+        model.load_state_dict(
+            torch.load(
+                start_checkpoint_path,
+                map_location=model.device,
+            ),
+            strict=False,
+        )
     # if the temp checkpoint exists, model training has been restarted
     if os.path.isfile(temp_checkpoint_path):
         checkpoint_to_use = temp_checkpoint_path
         print(f"Starting from temp checkpoint {checkpoint_to_use}.")
-    # if the temp checkpoint does not exist, try using the start-point checkpoint if provided
-    elif start_from_checkpoint and os.path.isfile(start_checkpoint_path):
-        checkpoint_to_use = start_checkpoint_path
-        print(f"Starting from previously trained checkpoint {checkpoint_to_use}.")
     # if there is no start point checkpoint nor temp checkpoint, we are starting from scratch
     else:
         print(f"Starting training from scratch.")
@@ -161,8 +164,9 @@ def main(
     if model.train_stages:
         epochs_elapsed = 0
         for stage_name,stage_dict in model.train_stages.items():
-            
-            current_epoch = get_current_epoch(checkpoint_to_use)
+            start_ckpt_epoch = get_current_epoch(start_checkpoint_path)
+            temp_epoch = get_current_epoch(checkpoint_to_use)
+            current_epoch = max(start_ckpt_epoch,temp_epoch)
             target_epoch = epochs_elapsed+stage_dict["epochs"]
             print(stage_dict)
             print(f"Current epoch: {current_epoch}, target epoch: {target_epoch}")
@@ -183,7 +187,7 @@ def main(
                     logger=logger,
                     accelerator='auto', 
                     devices=gpus, 
-                    max_epochs=epochs_elapsed+stage_dict["epochs"],
+                    max_epochs=epochs_elapsed+stage_dict["epochs"]-start_ckpt_epoch,
                     strategy="ddp_find_unused_parameters_true",
                 )  
                 trainer.fit(

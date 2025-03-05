@@ -43,6 +43,10 @@ class MethylSeqNN(L.LightningModule):
         prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
         optimizer_class=AdamOptimizer,
+        learning_rate=None,
+        betas=None,
+        momentum=None,
+        pos_weight=None,
     ):
         """
         Args:
