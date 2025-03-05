@@ -68,5 +68,5 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
 ]
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=[]
+methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset

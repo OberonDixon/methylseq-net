@@ -98,5 +98,5 @@ methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=(
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold1.h5",
 )
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=[@ReverseComplement,@SequenceJitter]
+methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiDataset
