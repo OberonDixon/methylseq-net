@@ -217,6 +217,9 @@ class EmbeddingsDataset(Dataset):
             - batch_size: how many samples per batch
             - transforms: unused for this class. present because we want a shared interface between dataset classes
         """
+        if len(transforms)>0:
+            raise NotImplementedError("The EmbeddingsDataset class cannot currently handle transforms, or rather, the transforms in transforms.py cannot handle the embeddings tensors appropriately. As of March 4 2025 this is planned for later but is not urgent.")
+        
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.return_specifiers = return_specifiers
