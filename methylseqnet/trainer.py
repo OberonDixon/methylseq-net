@@ -127,7 +127,7 @@ def main(
             torch.load(
                 start_checkpoint_path,
                 map_location=model.device,
-            ),
+            )["state_dict"],
             strict=False,
         )
     # if the temp checkpoint exists, model training has been restarted
