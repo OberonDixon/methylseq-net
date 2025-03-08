@@ -18,6 +18,7 @@ from methylseqnet.layers import *
 from methylseqnet.losses import *
 from methylseqnet.optimizers import *
 from methylseqnet.pretrained import *
+from methylseqnet.activations import *
 
 gin.register(nn.Softplus)
 
