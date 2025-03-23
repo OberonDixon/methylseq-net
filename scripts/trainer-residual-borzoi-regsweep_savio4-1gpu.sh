@@ -11,7 +11,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=6-6 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=0-3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 #SBATCH --exclude=n0386.savio4
 # exclude node 386 temporarily because it has a hardware issue
 # Command(s) to run:

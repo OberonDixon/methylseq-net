@@ -229,7 +229,7 @@ class DilatedResidual(nn.Module):
                 crop = (residual.size(2) - x.size(2)) // 2
                 residual = residual[:, :, crop:crop + x.size(2)]
             # Add residual connection
-            x += residual
+            x = x + residual
 
         return x
 
