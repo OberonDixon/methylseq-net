@@ -2,16 +2,24 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import gin
+import warnings
 
 @gin.configurable
 @gin.register
 class EncodingAdjuster(nn.Module):
     """
+    OBSOLETE: this class is obsolete. Use transforms.py::EncodingSelector instead.
     EncodingAdjuster / EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
     different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
     """
     def __init__(self, encoding_str):
         super(EncodingAdjuster,self).__init__()
+        warnings.warn(
+            "The EncodingAdjuster class in layers.py is deprecated and will be removed in a future release. "
+            "Please use transforms.py::EncodingSelector instead.",
+            UserWarning,
+            stacklevel=2
+        )
         self.encoding_str = encoding_str
         if self.encoding_str in ['seq+methyl_binary-seq','seq+methyl_ACGTm-sum-to-1','seq+methyl_binarize-methyl']:
             self.channels = 7
@@ -81,6 +89,12 @@ class EncodingAdjuster(nn.Module):
 class MethylationDropout(nn.Module):
     def __init__(self, in_channels, dropout=0.2, chunk_size=1, inverted=False):
         super(MethylationDropout, self).__init__()
+        warnings.warn(
+            "The MethylationDropout class in layers.py is deprecated and will be removed in a future release. "
+            "Please use transforms.py::CpGSparsifier instead.",
+            UserWarning,
+            stacklevel=2
+        )
         self.in_channels=in_channels
         self.dropout=dropout
         self.chunk_size=chunk_size
