@@ -23,6 +23,9 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor, dim: int=-1, ext
     Returns:
         The interpolated values, same size as `x`.
     """
+    # Gracefully handle empty input tensor
+    if x.numel() == 0 or xp.numel() == 0 or fp.numel() == 0:
+        return torch.zeros_like(x)
     # Move the interpolation dimension to the last axis
     x = x.movedim(dim, -1)
     xp = xp.movedim(dim, -1)

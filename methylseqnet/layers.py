@@ -4,6 +4,9 @@ import torch.nn.functional as F
 import gin
 import warnings
 
+gin.external_configurable(nn.AvgPool1d, module='torch.nn')
+gin.external_configurable(nn.MaxPool1d, module='torch.nn')
+
 @gin.configurable
 @gin.register
 class EncodingAdjuster(nn.Module):
@@ -115,7 +118,7 @@ class MethylationDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1):
+    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1, pool_class=nn.MaxPool1d):
         super(ConvDNA, self).__init__()
         self.in_channels=in_channels
         self.kernel_size=kernel_size
@@ -127,7 +130,7 @@ class ConvDNA(nn.Module):
             padding = (kernel_size-1)//2 if pad else 0, 
             stride=stride
         )
-        self.pool = nn.MaxPool1d(pool_size)
+        self.pool = pool_class(pool_size)
         self.weight_decay = weight_decay
         self.stride=stride
 

@@ -246,7 +246,9 @@ class EncodingSelector(LayerTransform):
             x = x[:,4:5,:]
         elif self.encoding_str == 'interp-methyl-only':
             x = x.clone()
-            x = tensor_ops.interpolate_collapsed_methylation(x)
+            # for some reason tensor_ops.interpolate_collapsed_methylation isn't putting the tensor on the right device
+            x[:,4:5,:] = tensor_ops.interpolate_collapsed_methylation(x)
+            x = x[:,4:5,:]
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
