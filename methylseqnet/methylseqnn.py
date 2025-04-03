@@ -241,7 +241,7 @@ class MethylSeqNN(L.LightningModule):
             loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
@@ -262,7 +262,7 @@ class MethylSeqNN(L.LightningModule):
             loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
@@ -283,7 +283,7 @@ class MethylSeqNN(L.LightningModule):
             loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = torch.zeros(1, device=outputs.device, requires_grad=True)
+            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)

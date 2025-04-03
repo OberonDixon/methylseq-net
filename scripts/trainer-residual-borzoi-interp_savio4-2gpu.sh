@@ -4,15 +4,15 @@
 #SBATCH --partition=savio4_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --ntasks=2
 #SBATCH --cpus-per-task=4
-#SBATCH --gres=gpu:1
+#SBATCH --gres=gpu:2
 #SBATCH --requeue
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
 #SBATCH --array=0-3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
-#SBATCH --exclude=n0386.savio4
+#SBATCH --exclude=n0386.savio4,n0133.savio4,n0134.savio4
 # exclude node 386 temporarily because it has a hardware issue
 # Command(s) to run:
 # Define an array of config files
