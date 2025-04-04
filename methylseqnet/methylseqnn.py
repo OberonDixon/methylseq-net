@@ -60,6 +60,7 @@ class MethylSeqNN(L.LightningModule):
         self.train_stages = train_stages
         # print(self.train_stages)
         self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
+        self.peak_subset_threshold = 0
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
@@ -179,6 +180,8 @@ class MethylSeqNN(L.LightningModule):
                     x_methylseq = layer(x_methylseq)
                 if self.crop_off_final:
                     x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
+                else:
+                    x_methylseq_allchannels = x_methylseq
             if not self.pretrained_seq_model or self.mode=='residual-only':
                 x = x_methylseq_allchannels
                     
@@ -233,10 +236,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask]
-            targets = targets[mask]
+            outputs = outputs[mask & active_pos_mask]
+            targets = targets[mask & active_pos_mask]
+        else:
+            outputs = outputs[active_pos_mask]
+            targets = targets[active_pos_mask]
         if mask.any():
             loss = self.prediction_criterion(outputs, targets)
         else:
@@ -254,10 +261,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask]
-            targets = targets[mask]
+            outputs = outputs[mask & active_pos_mask]
+            targets = targets[mask & active_pos_mask]
+        else:
+            outputs = outputs[active_pos_mask]
+            targets = targets[active_pos_mask]
         if mask.any():
             loss = self.prediction_criterion(outputs, targets)
         else:
@@ -275,10 +286,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask]
-            targets = targets[mask]
+            outputs = outputs[mask & active_pos_mask]
+            targets = targets[mask & active_pos_mask]
+        else:
+            outputs = outputs[active_pos_mask]
+            targets = targets[active_pos_mask]
         if mask.any():
             loss = self.prediction_criterion(outputs, targets)
         else:
