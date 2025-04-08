@@ -33,6 +33,7 @@ class MethylSeqDataModule(LightningDataModule):
         batch_size=32, 
         transforms=[], 
         dataset_class=CustomH5Dataset,
+        pow=False, # temporarily restored for backwards compatibility
     ):
         super().__init__()
         self.train_dataset_file = train_dataset_file

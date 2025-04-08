@@ -48,6 +48,7 @@ class MethylSeqNN(L.LightningModule):
         betas=None,
         momentum=None,
         pos_weight=None,
+        pow=False, # temporarily brought back for backward compatibility 
     ):
         """
         Args:
