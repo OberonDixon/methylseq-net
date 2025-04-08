@@ -79,17 +79,6 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_output_head':False,
                     'peak_subset_threshold':3,
                 },
-                'epochs':1
-            },
-            'train-probe-and-residual':{
-                'mode':'residual-w/-pretrained-embeddings',
-                'grad_dict':{
-                    'layers':True,
-                    'pretrained_seq_model':False,
-                    'seq_input_head':False,
-                    'seq_output_head':True,
-                    'peak_subset_threshold':3,
-                },
                 'epochs':20
             },
         }

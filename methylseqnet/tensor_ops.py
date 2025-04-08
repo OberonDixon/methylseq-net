@@ -26,6 +26,8 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor, dim: int=-1, ext
     # Gracefully handle empty input tensor
     if x.numel() == 0 or xp.numel() == 0 or fp.numel() == 0:
         return torch.zeros_like(x)
+    elif xp.shape[-1] == 1:
+        return fp[..., 0].expand_as(x)
     # Move the interpolation dimension to the last axis
     x = x.movedim(dim, -1)
     xp = xp.movedim(dim, -1)
@@ -41,7 +43,7 @@ def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor, dim: int=-1, ext
         b = torch.cat([fp[..., :1], b, fp[..., -1:]], dim=-1)
     else: # extrapolate == 'linear'
         indices = torch.clamp(indices - 1, 0, m.shape[-1] - 1)
-
+    
     values = m.gather(-1, indices) * x + b.gather(-1, indices)
     
     return values.movedim(-1, dim)
