@@ -20,5 +20,6 @@ setup(
         "h5py",
         "pyBigWig",
         "wandb",
+        "borzoi-pytorch",
     ],
 )
