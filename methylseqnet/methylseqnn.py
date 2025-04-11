@@ -39,6 +39,7 @@ class MethylSeqNN(L.LightningModule):
         pad_all_layers=False,
         crop_off_sequence=None,
         crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
+        concat_pretrained_embeddings_at={},
         label_threshold_cts=5,
         residual_activation_loss_weight=0,
         prediction_criterion=PoissonLoss,
@@ -53,6 +54,12 @@ class MethylSeqNN(L.LightningModule):
         """
         Args:
             layers: a list of nn.Modules that run sequentially to form the seq+methyl model
+            ...
+            concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
+                Schema {layer_before_which_to_concat:relative_bin_size}; when relative bin size is >1 pooling will be
+                used to pool embeddings down to size and when relative bin size is <1 interpolation will be used to get
+                the embeddings up to size. In both cases, padding/cropping will be used to match up with the shape[-1]
+                dimension of x after scaling.
         """
         super().__init__()
         if out_tracks is None:
@@ -65,6 +72,10 @@ class MethylSeqNN(L.LightningModule):
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
+        self.concat_pretrained_embeddings_at = { # adjust negative indices to positive
+            (i if i >= 0 else len(layers) + i): v
+            for i, v in concat_pretrained_embeddings_at.items()
+        }
         self.model_merge_operation = model_merge_operation
         # TODO: rename layers to something like residual_methylseq_model
         self.layers = nn.ModuleList()
@@ -127,7 +138,22 @@ class MethylSeqNN(L.LightningModule):
         differential-methylation mode for multitask training or inference. In the latter case, the larger sequence-only model needs to run only once,
         while the methylseq residual model runs many times.
         """
-        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
+        valid_modes = ( # the different ways to run the model forward pass
+            'full-model', # run both the pretrained and residual models, including their outputs heads. Full prediction.
+            'residual-only', # run only the residual model; outputs may not reflect true labels
+            'pretrained-only', # run only the pretrained model, including its output head. Outputs still predict true labels.
+            'pretrained-embeddings-only', # run only the pretrained model output head based on cached embeddings dataset.
+            'residual-w/-pretrained-embeddings', # run full residual model combined with pretrained output head from cached embeddings.
+            'residual-only-w/-pretrained-embeddings', # run only residual model, with cached embeddings available for concatenation
+        )
+        operations = { # the different operations that can be used to combine pretrained and residual models
+            'multiply': torch.mul,  # Element-wise multiplication
+            'add': torch.add        # Element-wise addition
+        }
+        
+        if self.mode not in valid_modes:
+            raise ValueError(f"Invalid forward pass mode {self.mode}. Valid modes are {valid_modes}")
+        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings','residual-only-w/-pretrained-embeddings'):
             x, embeddings = x
         if x.shape[1]>7:
             multimethyl_input = True
@@ -136,6 +162,35 @@ class MethylSeqNN(L.LightningModule):
         else:
             raise ValueError(f"Forward passes for MethylSeqNN require that x have 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}")
         # TODO: add shape assertions here for dim 0, etc -> what do we expect as layers progress
+
+        # this block runs if the pretrained_seq_model is defined and one of the following is true:
+        # (1) the model is in a mode that runs the pretrained model
+        # (2) the submodel in self.layers has pretrained embedding concatenation enabled, so we need the embeddings, and they aren't provided by the dataloader
+        if self.pretrained_seq_model and (
+            self.mode in ('full-model','pretrained-only') or (
+                self.mode in ('residual-only') and self.concat_pretrained_embeddings_at
+            )
+        ):
+            x_seq = x[:,0:7,:]
+            if self.seq_input_head:
+                for layer in self.seq_input_head:
+                    x_seq = layer(x_seq)
+            embeddings = self.pretrained_seq_model(x_seq)
+            if self.seq_output_head:
+                x_seq = embeddings
+                for layer in self.seq_output_head:
+                    x_seq = layer(x_seq)
+            if not self.layers or self.mode in ('pretrained-only'):
+                x = x_seq
+                
+        # this block runs if you are running with pretrained model embeddings rather than running forward passes on the model itself
+        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
+            x_seq = embeddings
+            if self.seq_output_head:
+                for layer in self.seq_output_head:
+                    x_seq = layer(x_seq)
+            if not self.layers or self.mode in ('pretrained-embeddings-only'): 
+                x = x_seq
         
         # this block runs if the residual model layers are populated and if the model is in a mode that runs the residual model
         if self.layers and self.mode in ('full-model','residual-only','residual-w/-pretrained-embeddings'):
@@ -157,9 +212,17 @@ class MethylSeqNN(L.LightningModule):
                         x_methylseq = x_methylseq[:,:,self.crop_off_sequence:-self.crop_off_sequence]
                     x_pseudobatch_list.append(x_methylseq)
 
+                pseudobatch_scaleup = len(x_pseudobatch_list)
                 x_pseudobatch = torch.cat(x_pseudobatch_list, dim=0)
                 
-                for layer in self.layers:
+                for layer_index,layer in enumerate(self.layers):
+                    if layer_index in self.concat_pretrained_embeddings_at:
+                        rbs = self.concat_pretrained_embeddings_at[layer_index]
+                        x_pseudobatch = self._concat_pretrained_embeddings(
+                            embeddings, 
+                            rbs, 
+                            x_pseudobatch, 
+                            embeddings_pseudobatch_scaleup=pseudobatch_scaleup)
                     x_pseudobatch = layer(x_pseudobatch)
                 if self.crop_off_final:
                     x_pseudobatch = x_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final]
@@ -177,7 +240,10 @@ class MethylSeqNN(L.LightningModule):
                     x_methylseq = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]
                 else:
                     x_methylseq = x
-                for layer in self.layers:
+                for layer_index,layer in enumerate(self.layers):
+                    if layer_index in self.concat_pretrained_embeddings_at:
+                        rbs = self.concat_pretrained_embeddings_at[layer_index]
+                        x_methylseq = self._concat_pretrained_embeddings(embeddings, rbs, x_methylseq)
                     x_methylseq = layer(x_methylseq)
                 if self.crop_off_final:
                     x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
@@ -185,36 +251,9 @@ class MethylSeqNN(L.LightningModule):
                     x_methylseq_allchannels = x_methylseq
             if not self.pretrained_seq_model or self.mode=='residual-only':
                 x = x_methylseq_allchannels
-                    
-        # this block runs if the pretrained_seq_model is defined and the model is in a mode that runs the pretrained model
-        if self.pretrained_seq_model and self.mode in ('full-model','pretrained-only'):
-            x_seq = x[:,0:7,:]
-            if self.seq_input_head:
-                for layer in self.seq_input_head:
-                    x_seq = layer(x_seq)
-            x_seq = self.pretrained_seq_model(x_seq)
-            if self.seq_output_head:
-                for layer in self.seq_output_head:
-                    x_seq = layer(x_seq)
-            if not self.layers or self.mode in ('pretrained-only'):
-                x = x_seq
-                
-        # this block runs if you are running with pretrained model embeddings rather than running forward passes on the model itself
-        if self.mode in ('pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
-            x_seq = embeddings
-            if self.seq_output_head:
-                for layer in self.seq_output_head:
-                    x_seq = layer(x_seq)
-            if not self.layers or self.mode in ('pretrained-embeddings-only'): 
-                x = x_seq
                 
         # this block runs if both pretrained and residual models are defined and if the full model is running
         if self.layers and self.pretrained_seq_model and self.mode in ('full-model','residual-w/-pretrained-embeddings'):
-            operations = {
-                'multiply': torch.mul,  # Element-wise multiplication
-                'add': torch.add        # Element-wise addition
-            }
-            
             if self.model_merge_operation in operations:
                 x = operations[self.model_merge_operation](x_methylseq_allchannels, x_seq)
             else:
@@ -226,6 +265,64 @@ class MethylSeqNN(L.LightningModule):
             
         return x
 
+    def _concat_pretrained_embeddings(self, embeddings, rbs, x, embeddings_pseudobatch_scaleup=1):
+        """
+        resize the pretrained embeddings and concatenate with x.
+
+        Args:
+            embeddings: some pretrained embeddings of shape (N,C_pretrained,L_pretrained)
+            rbs: the relative bin size. >1 means pooling must occur, <1 means interpolation must occur
+            x: the embeddings to which the pretrained_seq embeddings must be concatenated. Shape (N, C_layer, L_layer)
+            embeddings_pseudobatch_scaleup: duplicate embeddings to match pseudobatch. 1 means no scaleup. <1 not allowed.
+        """  
+        if embeddings_pseudobatch_scaleup < 1 or not isinstance(embeddings_pseudobatch_scaleup, int):
+            raise ValueError(f"Invalid pseudobatch scaleup {embeddings_pseudobatch_scaleup}. Must be an int >= 1.")
+            
+        if embeddings_pseudobatch_scaleup > 1:
+            embeddings = embeddings.repeat(embeddings_pseudobatch_scaleup, 1, 1)
+
+        assert embeddings.shape[0] == x.shape[0], (
+            f"Batch size mismatch: x has batch size {x.shape[0]}, "
+            f"but pretrained embeddings have batch size {embeddings.shape[0]}"
+        ) 
+            
+        if rbs == 1:
+            embeddings_scaled = embeddings
+        if rbs > 1:
+            kernel = int(rbs)
+            embeddings_scaled = F.avg_pool1d(embeddings,kernel_size=kernel,stride=kernel)
+        elif rbs < 1:
+            scale = int(round(1 / rbs))
+            embeddings_scaled = F.interpolate(embeddings, scale_factor=scale, mode='linear', align_corners=False)
+        else:
+            ValueError(f"Invalid relative_bin_size {rbs}.")
+
+        scaled_len = embeddings_scaled.shape[-1]
+        expected_len = x.shape[-1]
+        diff = scaled_len - expected_len
+        diff_ratio = scaled_len / expected_len if expected_len > 0 else 1
+        if diff_ratio > 2 or diff_ratio < 0.5:
+            raise ValueError(
+                f"Unreasonable length mistamch after scaling embeddings: "
+                f"expected ~{expected_len}, got {scaled_len} (ratio {diff_ratio})."
+                f"This suggests misconfigured relative_bin_size (value {rbs}) or incompatible model layers."
+            )
+        if diff > 0:
+            # Crop embeddings symmetrically
+            left = diff // 2
+            right = diff - left
+            embeddings_matched = embeddings_scaled[:, :, left:-right if right > 0 else None]
+        elif diff < 0:
+            # Pad embeddings symmetrically
+            pad_left = (-diff) // 2
+            pad_right = (-diff) - pad_left
+            embeddings_matched = F.pad(embeddings_scaled, (pad_left, pad_right))
+        else:
+            embeddings_matched = embeddings_scaled
+
+        x_concatenated = torch.cat([x, embeddings_matched], dim=1)
+        return x_concatenated
+        
     def _capture_activations_hook(self, module, inputs, outputs):
         # Store the output of the module
         # Use id(module) or module.__class__.__name__ to distinguish them
