@@ -13,6 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.dataset import *
 from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.callbacks import ForceEpochStartCallback
 from collections import defaultdict
 import pynvml
 from lightning.pytorch import LightningDataModule
@@ -21,6 +22,7 @@ from lightning.pytorch.callbacks import ModelCheckpoint
 from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch import Trainer, seed_everything
 import signal
+import pprint
 
 os.environ["SLURM_JOB_NAME"] = "interactive"
 
@@ -88,7 +90,6 @@ def get_current_epoch(ckpt_path):
         return checkpoint.get('epoch', 0)
     return 0
 
-@gin.configurable
 def main(
     config,
     output_dir,
@@ -97,7 +98,20 @@ def main(
     batch_size,
     start_from_checkpoint,
 ):
+    """
+    Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
+
+    Args:
+        config: the path to a gin config files
+        output_dir: where outputs are getting stored, i.e. best and temp checkpoints
+        unique_identifier: the unique name for the folder in which the model's checkpoints will live
+        gpus: how many gpus lightning gets to use, 'auto' will use all available
+        batch_size: override the batch size that is in the gin config file; useful for e.g. running a config on different hardware without changing it
+        start_from_checkpoint: the unique identifier for a model that you want to start from. This is assumed to be in the same output_dir. 
+            best-checkpoint will be used; this can't be overridden right now.
     
+    TODO: refactor logic for resume from requeue vs starting from a possibly-differently-configured checkpoint to increase clarity and who handles what
+    """
     gin.parse_config_file(config)
     
     model = MethylSeqNN()
@@ -123,26 +137,24 @@ def main(
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
     best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
     start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
-    start_ckpt_epoch = get_current_epoch(start_checkpoint_path)
-
+    
+    force_epoch_cb = None
+    start_checkpoint_epoch = 0
     # if the temp checkpoint exists, model training has been restarted
     if os.path.isfile(temp_checkpoint_path):
         checkpoint_to_use = temp_checkpoint_path
         print(f"Starting from temp checkpoint {checkpoint_to_use}.")
     # if start_from_checkpoint was specified and we aren't already mid-training, load state_dict
     elif start_from_checkpoint:
-        print(f"Starting training from state_dict for {start_checkpoint_path}, epoch {start_ckpt_epoch}.")
         checkpoint_to_use = None
         try:
-            model.load_state_dict(
-                torch.load(
-                    start_checkpoint_path,
-                    map_location=model.device,
-                )["state_dict"],
-                strict=False,
-            )
-        except:
-            print(f"Failed to load {start_checkpoint_path}.")
+            checkpoint = torch.load(start_checkpoint_path, map_location=model.device)
+            model.load_state_dict(checkpoint["state_dict"],strict=False)
+            start_checkpoint_epoch = checkpoint.get("epoch",0)
+            force_epoch_cb = ForceEpochStartCallback(start_checkpoint_epoch)
+            print(f"Starting training from state_dict for {start_checkpoint_path}; epoch will be forced to {start_checkpoint_epoch} on fit start.")
+        except Exception as e:
+            print(f"Failed to load checkpoint {start_checkpoint_path}: {e}. Starting from scratch instead.")
     # if there is no start point checkpoint nor temp checkpoint, we are starting from scratch
     else:
         print(f"Starting training from scratch.")
@@ -173,24 +185,29 @@ def main(
     if model.train_stages:
         epochs_elapsed = 0
         for stage_name,stage_dict in model.train_stages.items():
-            print(stage_dict)              
-                
-            if checkpoint_to_use:
-                current_epoch = get_current_epoch(checkpoint_to_use)
-                target_epoch = epochs_elapsed + stage_dict["epochs"]
-            else:
-                current_epoch = 0
-                target_epoch = epochs_elapsed + stage_dict["epochs"] - start_ckpt_epoch
+
+            current_epoch = get_current_epoch(checkpoint_to_use) # if checkpoint to use is None, returned 0
+            target_epoch = epochs_elapsed + stage_dict["epochs"]
             
-            print(f"Current adjusted epoch: {current_epoch}, target epoch: {target_epoch}")
-            if current_epoch >= target_epoch:
+            pp_stage_dict = pprint.pformat(stage_dict, indent=4, width=50)
+            if current_epoch+start_checkpoint_epoch >= target_epoch:
                 # if the checkpoint_to_use is already past the current stage, skip to the next stage
-                print(f"Stage {stage_name} already completed. Skipping.")
+                print(f"""
+####################################################################################################################################################
+Skipping training stage {stage_name}; already complete due to start checkpoint or requeue.
+Stage details: 
+{pp_stage_dict}
+Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epoch}
+####################################################################################################################################################
+                """)
             else:
                 print(f"""
-########################################################################################################################
-                                         Running training stage {stage_name}.
-########################################################################################################################
+####################################################################################################################################################
+Running training stage {stage_name}.
+Stage details: 
+{pp_stage_dict}
+Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epoch}
+####################################################################################################################################################
                 """)
                 model.mode = stage_dict['mode']
                 model.set_requires_grad(stage_dict['grad_dict'])
@@ -198,8 +215,13 @@ def main(
                     model.peak_subset_threshold = stage_dict['peak_subset_threshold']
                 else:
                     model.peak_subset_threshold = 0
+                    
+                callbacks = [temp_checkpoint, best_val_checkpoint]
+                if force_epoch_cb and current_epoch == 0:
+                    callbacks.insert(0, force_epoch_cb)
+                
                 trainer = Trainer(
-                    callbacks = [temp_checkpoint,best_val_checkpoint],
+                    callbacks = callbacks,
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 

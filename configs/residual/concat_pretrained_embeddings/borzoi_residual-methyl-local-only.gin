@@ -66,7 +66,6 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'pretrained_seq_model':False,
                     'seq_input_head':False,
                     'seq_output_head':True,
-                    'peak_subset_threshold':0,
                 },
                 'epochs':38,
             },
@@ -77,7 +76,6 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'pretrained_seq_model':False,
                     'seq_input_head':False,
                     'seq_output_head':False,
-                    'peak_subset_threshold':0,
                 },
                 'epochs':20
             },
