@@ -1,6 +1,5 @@
 initial_filters = 30
 tower_end_filters = 40
-penultimate_filters = 1536
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
@@ -25,11 +24,15 @@ methylseqnet.layers.ConvTower.kernel_size=5
 methylseqnet.layers.ConvTower.pool_size=2
 methylseqnet.layers.ConvTower.repeat=6
 
-methylseqnet.layers.ConvBlock.in_channels=%tower_end_filters
-methylseqnet.layers.ConvBlock.filters=%penultimate_filters
-methylseqnet.layers.ConvBlock.kernel_size=1
+scaleup_block/methylseqnet.layers.ConvBlock.in_channels=%tower_end_filters
+scaleup_block/methylseqnet.layers.ConvBlock.filters=100
+scaleup_block/methylseqnet.layers.ConvBlock.kernel_size=1
 
-methylseq_model/methylseqnet.layers.ConvFinal.in_channels=%penultimate_filters
+penultimate_block/methylseqnet.layers.ConvBlock.in_channels=100
+penultimate_block/methylseqnet.layers.ConvBlock.filters=3456
+penultimate_block/methylseqnet.layers.ConvBlock.kernel_size=1
+
+methylseq_model/methylseqnet.layers.ConvFinal.in_channels=3456
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 
@@ -41,7 +44,14 @@ seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [@methylseq_model/EncodingSelector,@ConvDNA,@ConvTower,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
+methylseqnet.methylseqnn.MethylSeqNN.layers = [
+    @methylseq_model/EncodingSelector,
+    @ConvDNA,@ConvTower,
+    @scaleup_block/ConvBlock,
+    @penultimate_block/ConvBlock,
+    @methylseq_model/ConvFinal,
+    @Softplus
+]
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
 methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingSelector]
