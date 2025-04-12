@@ -97,6 +97,7 @@ def main(
     gpus,
     batch_size,
     start_from_checkpoint,
+    debug_mode = False,
 ):
     """
     Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
@@ -109,6 +110,7 @@ def main(
         batch_size: override the batch size that is in the gin config file; useful for e.g. running a config on different hardware without changing it
         start_from_checkpoint: the unique identifier for a model that you want to start from. This is assumed to be in the same output_dir. 
             best-checkpoint will be used; this can't be overridden right now.
+        debug_mode: if True, no logs e.g. WandB
     
     TODO: refactor logic for resume from requeue vs starting from a possibly-differently-configured checkpoint to increase clarity and who handles what
     """
@@ -159,20 +161,23 @@ def main(
     else:
         print(f"Starting training from scratch.")
         checkpoint_to_use = None    
+        
+    if not debug_mode:
+        logger = WandbLogger(
+            save_dir=model_dir,
+            name=f"{Path(config).stem}_{unique_identifier}",
+            version=unique_identifier,
+        )
+    else:
+        logger = None
 
-    logger = WandbLogger(
-        save_dir=model_dir,
-        name=f"{Path(config).stem}_{unique_identifier}",  # Set your descriptive experiment name
-        version=unique_identifier,
-    )
     # Temporary checkpoint written every epoch
     temp_checkpoint = ModelCheckpoint(
         dirpath=model_dir/'checkpoints',
         filename='temp-checkpoint',           # Fixed name for overwriting
         save_top_k=1,                         # Keep only the latest checkpoint
         save_on_train_epoch_end=True, 
-    )
-    
+    )   
     # Best validation checkpoint, tracked separately
     best_val_checkpoint = ModelCheckpoint(
         dirpath=model_dir/'checkpoints',
@@ -182,6 +187,7 @@ def main(
         filename='best-checkpoint',           # Name for the best checkpoint
         save_last=False                       # Don't save a 'last' checkpoint
     )
+    
     if model.train_stages:
         epochs_elapsed = 0
         for stage_name,stage_dict in model.train_stages.items():
@@ -262,5 +268,6 @@ if __name__ == '__main__':
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
+    parser.add_argument('--debug-mode', action='store_true', help='Run in debug mode: no logs, no checkpoints, no WandB.')
     args = parser.parse_args()
-    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint)
+    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint,args.debug_mode)
