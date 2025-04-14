@@ -127,6 +127,7 @@ class MethylSeqNN(L.LightningModule):
         self.prediction_criterion = prediction_criterion()
         self.activation_criterion = activation_criterion()
         self.optimizer_class = optimizer_class
+        self.start_epoch = 0
 
     def forward(self, x):
         """
@@ -137,6 +138,9 @@ class MethylSeqNN(L.LightningModule):
         These two input types exist to support either one-to-all mapping for methylation to activity or a more efficient shared-sequence 
         differential-methylation mode for multitask training or inference. In the latter case, the larger sequence-only model needs to run only once,
         while the methylseq residual model runs many times.
+
+        TODO: this should be refactored into a match statement with a case per valid mode and duplicated code split into separate functions. It is
+        too easy for me to get confused I can only imagine how anyone else feels reading this.
         """
         valid_modes = ( # the different ways to run the model forward pass
             'full-model', # run both the pretrained and residual models, including their outputs heads. Full prediction.
@@ -258,8 +262,8 @@ class MethylSeqNN(L.LightningModule):
                 x = operations[self.model_merge_operation](x_methylseq_allchannels, x_seq)
             else:
                 raise ValueError(f"Unsupported model_merge_operation: {self.model_merge_operation}")
-        # this block runs if there is a post-merge output head
-        if self.merged_output_head and self.mode in ('full-model','pretrained-only','pretrained-embeddings-only'):
+        # this block runs if there is a post-merge output head and if we aren't in a residual-only mode
+        if self.merged_output_head and self.mode in ('full-model','pretrained-only','pretrained-embeddings-only','residual-w/-pretrained-embeddings'):
             for layer in self.merged_output_head:
                 x = layer(x)
             
@@ -454,6 +458,12 @@ class MethylSeqNN(L.LightningModule):
     #             # self.trainer.strategy.setup_optimizers(self.trainer)
     #             # trainer.optimizers = self.configure_optimizers()
 
+    def on_train_start(self):
+        if self.start_epoch > 0:
+            # this lets us start at a specified epoch (relevant especially for epoch-based stage-wise training)
+            self.trainer.fit_loop.epoch_progress.current.completed = self.start_epoch
+            self.trainer.fit_loop.epoch_progress.current.processed = self.start_epoch            
+    
     def on_test_epoch_start(self):
         self.test_targets_list = []
         self.test_outputs_list = []

@@ -13,7 +13,6 @@ from pathlib import Path
 import argparse
 from methylseqnet.dataset import *
 from methylseqnet.methylseqnn import MethylSeqNN
-from methylseqnet.callbacks import ForceEpochStartCallback
 from collections import defaultdict
 import pynvml
 from lightning.pytorch import LightningDataModule
@@ -140,7 +139,6 @@ def main(
     best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
     start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
     
-    force_epoch_cb = None
     start_checkpoint_epoch = 0
     # if the temp checkpoint exists, model training has been restarted
     if os.path.isfile(temp_checkpoint_path):
@@ -153,7 +151,6 @@ def main(
             checkpoint = torch.load(start_checkpoint_path, map_location=model.device)
             model.load_state_dict(checkpoint["state_dict"],strict=False)
             start_checkpoint_epoch = checkpoint.get("epoch",0)
-            force_epoch_cb = ForceEpochStartCallback(start_checkpoint_epoch)
             print(f"Starting training from state_dict for {start_checkpoint_path}; epoch will be forced to {start_checkpoint_epoch} on fit start.")
         except Exception as e:
             print(f"Failed to load checkpoint {start_checkpoint_path}: {e}. Starting from scratch instead.")
@@ -215,19 +212,18 @@ Stage details:
 Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epoch}
 ####################################################################################################################################################
                 """)
+                # configure model for stage
                 model.mode = stage_dict['mode']
                 model.set_requires_grad(stage_dict['grad_dict'])
                 if 'peak_subset_threshold' in stage_dict:
                     model.peak_subset_threshold = stage_dict['peak_subset_threshold']
                 else:
                     model.peak_subset_threshold = 0
-                    
-                callbacks = [temp_checkpoint, best_val_checkpoint]
-                if force_epoch_cb and current_epoch == 0:
-                    callbacks.insert(0, force_epoch_cb)
+                if start_checkpoint_epoch > 0 and current_epoch == 0:
+                    model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = callbacks,
+                    callbacks = [temp_checkpoint,best_val_checkpoint],
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -238,7 +234,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 trainer.fit(
                     model,
                     datamodule=data_module,
-                    ckpt_path=checkpoint_to_use 
+                    ckpt_path=checkpoint_to_use
                 )
                 # once a training stage is complete, the next one should start from the best checkpoint from that stage
                 checkpoint_to_use = best_checkpoint_path
