@@ -29,36 +29,59 @@ os.environ["SLURM_JOB_NAME"] = "interactive"
 class MethylSeqDataModule(LightningDataModule):
     def __init__(
         self, 
-        train_dataset_file, 
-        validation_dataset_file, 
+        train_dataset_file=None, 
+        validation_dataset_file=None, 
+        predict_dataset_file=None,
         batch_size=32, 
         transforms=[], 
         dataset_class=CustomH5Dataset,
         pow=False, # temporarily restored for backwards compatibility; does nothing
+        num_workers=4,
     ):
         super().__init__()
         self.train_dataset_file = train_dataset_file
         self.validation_dataset_file = validation_dataset_file
+        self.predict_dataset_file = predict_dataset_file
         self.batch_size = batch_size
         self.transforms = transforms
         self.dataset_class = dataset_class
+        self.num_workers = num_workers
 
     def setup(self, stage=None):
-        self.train_dataset = self.dataset_class(
-            self.train_dataset_file,
-            batch_size=self.batch_size,
-            transforms=self.transforms,
-        )
-        self.val_dataset = self.dataset_class(
-            self.validation_dataset_file,
-            batch_size=self.batch_size,
-        )
+        if stage in (None, "fit"):
+            if self.train_dataset_file:
+                self.train_dataset = self.dataset_class(
+                    self.train_dataset_file,
+                    transforms=self.transforms,
+                    batch_size=None,
+                )
+            if self.validation_dataset_file:
+                self.val_dataset = self.dataset_class(
+                    self.validation_dataset_file,
+                    batch_size=None,
+                )
+
+        if stage in (None, "predict") and self.predict_dataset_file:
+            if self.predict_dataset_file:
+                self.predict_dataset = self.dataset_class(
+                    self.predict_dataset_file,
+                    batch_size=None,
+                )
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, batch_size=None, shuffle=True, num_workers=4)
+        if self.train_dataset_file is None:
+            raise ValueError("Train dataset is not set. Provide `train_dataset_file`.")
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, batch_size=None, shuffle=False, num_workers=4)
+        if self.validation_dataset_file is None:
+            raise ValueError("Validation dataset is not set. Provide `validation_dataset_file`.")
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+
+    def predict_dataloader(self):
+        if self.predict_dataset_file is None:
+            raise ValueError("Prediction dataset is not set. Provide `predict_dataset_file`.")
+        return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
 # def print_random_seed_and_trainer_info(trainer, model):
 #     # Print the random seed being used (if set)

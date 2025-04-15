@@ -7,7 +7,9 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
-from methylseqnet.dataset import CustomH5Dataset
+from methylseqnet.dataset import CustomH5Dataset,MultiMethylDataset,EmbeddingsDataset,MultiDataset
+from methylseqnet.callbacks import HDF5PredictionWriter
+from methylseqnet.trainer import MethylSeqDataModule
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 import gin
@@ -21,6 +23,45 @@ from io import StringIO
 import ast
 import re
 from multiprocessing import Pool
+
+def run_dataset_save_h5(
+    model_path: str | Path,
+    dataset_path: str | Path | tuple[str,Path],
+    mode: str,
+    dataset_type: str,
+    output_path: str | Path,
+    gpus: int = 1,
+    num_workers: int = 4,
+):
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model.eval()
+    model.mode=mode
+    
+    match dataset_type:
+        case 'multimethyl-and-embeddings':
+            data_module = MethylSeqDataModule(
+                predict_dataset_file = dataset_path,
+                batch_size = 1,
+                dataset_class = MultiDataset,
+                num_workers = num_workers,
+            )
+    
+    data_module.setup(stage="predict")
+    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch")
+
+    trainer = Trainer(
+        accelerator="auto",
+        devices=gpus,
+        strategy="auto",
+        callbacks=[pred_writer],
+        logger=False,
+    )
+
+    trainer.predict(
+        model=model,
+        dataloaders=data_module,
+        return_predictions=False,
+    )
 
 def run_whole_dataset(
     model_path: str | Path,

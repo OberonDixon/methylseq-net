@@ -420,6 +420,11 @@ class MethylSeqNN(L.LightningModule):
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
         return loss
+
+    def predict_step(self, batch, batch_idx):
+        inputs, targets, mask = batch
+        outputs = self(inputs)
+        return outputs
     
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay

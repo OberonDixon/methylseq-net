@@ -16,7 +16,7 @@ import inspect
 @gin.register
 @gin.configurable
 class CustomH5Dataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
+    def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_path = file_path
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
@@ -38,11 +38,14 @@ class CustomH5Dataset(Dataset):
 
         
     def __len__(self):
-        return (self.length + self.batch_size -1) // self.batch_size
+        if self.batch_size is not None:
+            return (self.length + self.batch_size -1) // self.batch_size
+        else:
+            return self.length
 
     def __getitem__(self, idx):
-        start_idx = idx * self.batch_size
-        end_idx = min(start_idx + self.batch_size, self.length)
+        start_idx = idx * self.batch_size if self.batch_size else idx
+        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
                 with h5py.File(self.file_path, 'r') as f:
@@ -64,12 +67,21 @@ class CustomH5Dataset(Dataset):
                                 specifiers = f['region'][start_idx:end_idx]
                             except:
                                 # adjust this line when the region option is removed
-                                raise ValueError('Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False') from e
+                                raise ValueError(
+                                    'Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False'
+                                ) from e
+                        if batch_size is None:
+                            specifiers = specifiers[0]
                             
                 
                 for transform in self.transforms:
                     input_data, target, mask = transform(input_data, target, mask)
         
+                if batch_size is None:
+                    input_data = input_data.squeeze(0)
+                    target = target.squeeze(0)
+                    mask = mask.squeeze(0) if mask is not None else mask
+                
                 if self.return_specifiers:
                     return input_data, target, mask, specifiers
                 else:
@@ -104,7 +116,7 @@ class CustomH5Dataset(Dataset):
 @gin.register
 @gin.configurable
 class MultiMethylDataset(Dataset):
-    def __init__(self, file_path, batch_size=64, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
+    def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
@@ -130,11 +142,14 @@ class MultiMethylDataset(Dataset):
 
         
     def __len__(self):
-        return (self.length + self.batch_size -1) // self.batch_size
+        if self.batch_size is not None:
+            return (self.length + self.batch_size -1) // self.batch_size
+        else:
+            return self.length
 
     def __getitem__(self, idx):
-        start_idx = idx * self.batch_size
-        end_idx = min(start_idx + self.batch_size, self.length)
+        start_idx = idx * self.batch_size if self.batch_size else idx
+        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
                 with h5py.File(self.file_path, 'r') as f:
@@ -157,9 +172,17 @@ class MultiMethylDataset(Dataset):
                             # adjust this line when the region option is removed
                             
                             raise ValueError('Dataset does not contain "specifier". Consider running with return_specifiers=False') from e
+
+                        if self.batch_size is None:
+                            specifiers = specifiers[0]
                             
                 for transform in self.transforms:
                     input_data, target, mask = transform(input_data, target, mask)
+
+                if self.batch_size is None:
+                    input_data = input_data.squeeze(0)
+                    target = target.squeeze(0)
+                    mask = mask.squeeze(0) if mask is not None else mask
         
                 if self.return_specifiers:
                     return input_data, target, mask, specifiers
@@ -205,7 +228,7 @@ class EmbeddingsDataset(Dataset):
     def __init__(
         self, 
         file_path, 
-        batch_size=64, 
+        batch_size=None, 
         transforms=(), 
         return_specifiers=False,
         max_retries=100, 
@@ -235,23 +258,30 @@ class EmbeddingsDataset(Dataset):
             self.length = len(f['embeddings'])
         
     def __len__(self):
-        return (self.length + self.batch_size -1) // self.batch_size
+        if self.batch_size is not None:
+            return (self.length + self.batch_size -1) // self.batch_size
+        else:
+            return self.length
 
     def __getitem__(self, idx):
-        start_idx = idx * self.batch_size
-        end_idx = min(start_idx + self.batch_size, self.length)
+        start_idx = idx * self.batch_size if self.batch_size else idx
+        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
                 with h5py.File(self.file_path, 'r') as f:
-                    embeddings = f['embeddings'][start_idx:end_idx,:,:]
+                    embeddings = torch.tensor(f['embeddings'][start_idx:end_idx,:,:], dtype=torch.float32)
+                    if self.batch_size is None:
+                        embeddings = embeddings.squeeze(0)
                     if self.return_specifiers:
                         try:
                             specifiers = f['specifier'].asstr()[start_idx:end_idx]
                         except:
                             specifiers = np.array(['' for _ in range(embeddings.shape[0])])
-                        return torch.tensor(embeddings, dtype=torch.float32), None, None, specifiers
+                        if self.batch_size is None:
+                            specifiers = specifiers[0]
+                        return embeddings, None, None, specifiers
                     else:
-                        return torch.tensor(embeddings, dtype=torch.float32), None, None
+                        return embeddings, None, None
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
@@ -276,8 +306,8 @@ class MultiDataset(Dataset):
     def __init__(
         self, 
         file_path, 
-        dataset_classes, 
-        batch_size=64, 
+        dataset_classes=(MultiMethylDataset,EmbeddingsDataset), 
+        batch_size=None, 
         return_specifiers=False,
         transforms=(), 
         allow_unequal_lengths=True,
