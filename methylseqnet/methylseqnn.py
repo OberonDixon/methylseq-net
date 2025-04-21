@@ -26,47 +26,77 @@ gin.register(nn.Softplus)
 class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
+        # Core architecture
         layers,
-        pretrained_seq_model_generator=None,
-        pretrained_seq_model_weights=None,
-        train_stages={},
         seq_input_head=None,
         seq_output_head=None,
         model_merge_operation='multiply',
         merged_output_head=None,
         out_tracks=None,
-        regression=False,
+        
+        # Pretrained model handling       
+        pretrained_seq_model_generator=None,
+        pretrained_seq_model_weights=None,
+        concat_pretrained_embeddings_at={},
+
+        # Cropping / padding behavior
         pad_all_layers=False,
         crop_off_sequence=None,
         crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
-        concat_pretrained_embeddings_at={},
-        label_threshold_cts=5,
+        # Training schedule and stage-specific config
+        train_stages={},
         residual_activation_loss_weight=0,
+        seq_only_loss_weight=0,
         prediction_criterion=PoissonLoss,
+        seq_only_prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
+        label_threshold_cts=5,
+
+        # Optimizer config
         optimizer_class=AdamOptimizer,
         learning_rate=None,
         betas=None,
         momentum=None,
         pos_weight=None,
+
+        # Deprecated / legacy flags
+        regression=False,
         pow=False, # temporarily brought back for backward compatibility; does nothing
     ):
         """
         Args:
-            layers: a list of nn.Modules that run sequentially to form the seq+methyl model
-            ...
-            concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
+            Core architecture:
+             - layers: a list of nn.Modules that run sequentially to form the seq+methyl model
+            Pretrained model handling:
+             - pretrained_seq_model_generator: returns an nn.Module objects when called with the pretrained_seq_model_weights.
+                 Which generator is provided here will determine the pretrained model architecture.
+             - pretrained_seq_model_weights: specifier passed to pretrained_seq_model_generator to provide appropriate info
+                 for the pretrained_seq_model. Expect str or Path. This should specify the pretrained weights not the
+                 architecture.
+             - concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
                 Schema {layer_before_which_to_concat:relative_bin_size}; when relative bin size is >1 pooling will be
                 used to pool embeddings down to size and when relative bin size is <1 interpolation will be used to get
                 the embeddings up to size. In both cases, padding/cropping will be used to match up with the shape[-1]
                 dimension of x after scaling.
+            Cropping / padding behavior:
+             - pad_all_layers
+             - crop_off_sequence
+             - crop_off_final
+            Training schedule and stage-specific config:
+             - train_stages: a dictionary providing at minimum a model `mode` and `epochs` count for a stage. May also provide
+                 `grad_dict` to specify model submodules to train for this stage and `loss_dict` to specify loss function 
+                 components.
+           Optimizer config:
+
+           Deprecated / legacy flags:
         """
         super().__init__()
         if out_tracks is None:
             raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
+        if not layers and not pretrained_seq_model_generator:
+            raise ValueError("MethylSeqNN requires a defined methylseq model (self.layers) or a defined pretrained sequence model.")
         
         self.train_stages = train_stages
-        # print(self.train_stages)
         self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
         self.peak_subset_threshold = 0
         self.pad_all_layers = pad_all_layers
@@ -112,8 +142,12 @@ class MethylSeqNN(L.LightningModule):
 
         self.hooked_activations = {}
         self.residual_activation_loss_weight = residual_activation_loss_weight
+        self.seq_only_loss_weight = seq_only_loss_weight
         if self.residual_activation_loss_weight!=0:
             self.layers[-1].register_forward_hook(self._capture_activations_hook)
+        if self.seq_only_loss_weight!=0:
+            self.seq_output_head[-1].register_forward_hook(self._capture_activations_hook)
+            
         
         self.regression = regression
         self.label_threshold_cts = label_threshold_cts
@@ -125,6 +159,7 @@ class MethylSeqNN(L.LightningModule):
         self.io_mappings_str = ''
 
         self.prediction_criterion = prediction_criterion()
+        self.seq_only_prediction_criterion = seq_only_prediction_criterion()
         self.activation_criterion = activation_criterion()
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
@@ -350,16 +385,30 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[mask & active_pos_mask]
         else:
             outputs = outputs[active_pos_mask]
-            targets = targets[active_pos_mask]
-        if mask.any():
+            targets = targets[active_pos_mask]  
+        if mask is None or mask.any():
             loss = self.prediction_criterion(outputs, targets)
+            self.log("train_prediction_loss",loss)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
+            residual_activations_loss = self.activation_criterion(residual_activations)
+            loss = loss + self.residual_activation_loss_weight * residual_activations_loss
+            self.log("train_residual_activations_loss",residual_activations_loss)
+        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
+            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
+            if mask is not None:
+                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
+            else:
+                seq_only_predictions = seq_only_predictions[active_pos_mask]
+            if mask is None or mask.any():
+                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
+                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
+                self.log("train_seq_only_prediction_loss",seq_only_prediction_loss)          
         self.log("train_loss", loss)
+        self.hooked_activations.clear()
         return loss  
 
     def validation_step(self, batch, batch_idx):
@@ -381,15 +430,29 @@ class MethylSeqNN(L.LightningModule):
         else:
             outputs = outputs[active_pos_mask]
             targets = targets[active_pos_mask]
-        if mask.any():
+        if mask is None or mask.any():
             loss = self.prediction_criterion(outputs, targets)
+            self.log("val_prediction_loss",loss)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
+            residual_activations_loss = self.activation_criterion(residual_activations)
+            loss = loss + self.residual_activation_loss_weight * residual_activations_loss
+            self.log("val_residual_activations_loss",residual_activations_loss)
+        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
+            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
+            if mask is not None:
+                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
+            else:
+                seq_only_predictions = seq_only_predictions[active_pos_mask]
+            if mask is None or mask.any():
+                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
+                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
+                self.log("val_seq_only_prediction_loss",seq_only_prediction_loss)
         self.log("val_loss", loss)
+        self.hooked_activations.clear()
         return loss
         
     def test_step(self, batch, batch_idx):
@@ -401,7 +464,7 @@ class MethylSeqNN(L.LightningModule):
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
-            self.log("test_sites",fraction_true)
+            # self.log("test_sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
         if mask is not None:
@@ -411,7 +474,7 @@ class MethylSeqNN(L.LightningModule):
         else:
             outputs = outputs[active_pos_mask]
             targets = targets[active_pos_mask]
-        if mask.any():
+        if mask is None or mask.any():
             loss = self.prediction_criterion(outputs, targets)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
@@ -419,11 +482,22 @@ class MethylSeqNN(L.LightningModule):
         if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
+        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
+            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
+            if mask is not None:
+                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
+            else:
+                seq_only_predictions = seq_only_predictions[active_pos_mask]
+            if mask is None or mask.any():
+                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
+                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
+        self.hooked_activations.clear()
         return loss
 
     def predict_step(self, batch, batch_idx):
         inputs, targets, mask = batch
         outputs = self(inputs)
+        self.hooked_activations.clear()
         return outputs
     
     def configure_optimizers(self):

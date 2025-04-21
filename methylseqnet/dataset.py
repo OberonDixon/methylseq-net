@@ -300,6 +300,73 @@ class EmbeddingsDataset(Dataset):
         if os.path.exists(self.file_path):
             os.remove(self.file_path)
 
+class SingleH5Dataset(Dataset):
+    def __init__(
+        self,
+        file_path,
+        dataset_name,
+        batch_size=None,
+        max_retries=100, 
+        retry_delay=2,
+        transforms=(),
+        return_specifiers=False,
+    ):
+        if len(transforms)>0:
+            raise NotImplementedError("Transforms not implemented.")
+        
+        self.file_paths = file_path if isinstance(file_path, list) else [file_path]       
+        self.dataset_name = dataset_name
+        self.max_retries = 100
+        self.retry_delay = 2
+
+        # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
+        self.file_path = create_virtual_h5_with_attributes(self.file_paths)
+        
+        with h5py.File(self.file_path, 'r') as f:
+            # Determine the length of the dataset
+            self.length = len(f[self.dataset_name])
+            
+    def __len__(self):
+        return self.length
+        
+    def __getitem__(self, idx):
+        for attempt in range(self.max_retries):
+            try:
+                with h5py.File(self.file_path, 'r') as f:        
+                    return torch.tensor(f[self.dataset_name][idx], dtype=torch.float32)
+            except OSError as e:
+                if attempt<self.max_retries-1:
+                    print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
+                    time.sleep(self.retry_delay)
+                else:
+                    print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
+                    raise  # Re-raise the last caught exception
+
+    def get_config(self):
+        with h5py.File(self.file_path, 'r') as f:
+            gin_config_str = f.attrs['gin_config']
+            return gin_config_str
+
+    def get_io_mappings_str(self):
+        with h5py.File(self.file_path,'r') as f:
+            try:
+                io_mappings_str = f.attrs['io_mappings']
+            except:
+                raise Exception(f"Could not find io_mappings in file for {self.file_path}")
+            return io_mappings_str
+
+    def get_io_mappings_df(self):
+        try:
+            io_mappings_str = self.get_io_mappings_str()
+            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
+        except:
+            return pd.DataFrame() 
+
+    def __del__(self):
+        # Cleanup the temporary file when the object is destroyed
+        if os.path.exists(self.file_path):
+            os.remove(self.file_path)
+            
 @gin.register
 @gin.configurable
 class MultiDataset(Dataset):
@@ -312,6 +379,7 @@ class MultiDataset(Dataset):
         transforms=(), 
         allow_unequal_lengths=True,
         validate_specifiers=True,
+        kwargs_tuple=({},{}),
     ):
         if not isinstance(file_path,tuple):
             raise TypeError("MultiDataset file_path must be passed as a tuple of file paths corresponding to the dataset_classes.")
@@ -323,8 +391,9 @@ class MultiDataset(Dataset):
                 batch_size=batch_size,
                 transforms=transforms,
                 return_specifiers=True,
+                **kwargs_for_class,
             )
-            for dataset_class, file_path_for_class in zip(dataset_classes, file_path)
+            for dataset_class, file_path_for_class, kwargs_for_class in zip(dataset_classes, file_path, kwargs_tuple)
         )
         self.return_specifiers = return_specifiers
         lengths = [len(dataset) for dataset in self.datasets]
@@ -350,9 +419,15 @@ class MultiDataset(Dataset):
             return _pack(inputs), _pack(targets), _pack(masks)
 
     def get_io_mappings_str(self):
+        io_mappings_strs = []
         for dataset in self.datasets:
             if hasattr(dataset, "get_io_mappings_str") and callable(getattr(dataset, "get_io_mappings_str")):
-                return dataset.get_io_mappings_str()
+                try:
+                    io_mappings_strs.append(dataset.get_io_mappings_str())
+                except:
+                    pass
+        if len(io_mappings_strs)>0:
+            return max(io_mappings_strs, key=len)
         raise AttributeError("None of the MultiDataset dataset members can return an io_mappings_str.")
 
     def get_io_mappings_df(self):
