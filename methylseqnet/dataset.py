@@ -70,14 +70,14 @@ class CustomH5Dataset(Dataset):
                                 raise ValueError(
                                     'Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False'
                                 ) from e
-                        if batch_size is None:
+                        if self.batch_size is None:
                             specifiers = specifiers[0]
                             
                 
                 for transform in self.transforms:
                     input_data, target, mask = transform(input_data, target, mask)
         
-                if batch_size is None:
+                if self.batch_size is None:
                     input_data = input_data.squeeze(0)
                     target = target.squeeze(0)
                     mask = mask.squeeze(0) if mask is not None else mask
