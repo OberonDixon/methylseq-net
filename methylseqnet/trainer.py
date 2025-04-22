@@ -34,7 +34,7 @@ class MethylSeqDataModule(LightningDataModule):
         predict_dataset_file=None,
         batch_size=32, 
         transforms=[], 
-        dataset_class=CustomH5Dataset,
+        dataset_class=MethylSeqDataset,
         pow=False, # temporarily restored for backwards compatibility; does nothing
         num_workers=4,
     ):

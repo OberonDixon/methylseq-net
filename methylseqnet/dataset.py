@@ -15,7 +15,7 @@ import inspect
 
 @gin.register
 @gin.configurable
-class CustomH5Dataset(Dataset):
+class MethylSeqDataset(Dataset):
     def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
         self.file_path = file_path
         self.batch_size = batch_size

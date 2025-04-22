@@ -7,7 +7,7 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
-from methylseqnet.dataset import CustomH5Dataset,MultiMethylDataset,EmbeddingsDataset,MultiDataset
+from methylseqnet.dataset import MethylSeqDataset,MultiMethylDataset,EmbeddingsDataset,MultiDataset
 from methylseqnet.callbacks import HDF5PredictionWriter
 from methylseqnet.trainer import MethylSeqDataModule
 from tqdm.auto import tqdm
@@ -43,6 +43,13 @@ def run_dataset_save_h5(
                 predict_dataset_file = dataset_path,
                 batch_size = 1,
                 dataset_class = MultiDataset,
+                num_workers = num_workers,
+            )
+        case 'methylseq':
+            data_module = MethylSeqDataModule(
+                predict_dataset_file = dataset_path,
+                batch_size = 1,
+                dataset_class = MethylSeqDataset,
                 num_workers = num_workers,
             )
     
@@ -94,7 +101,7 @@ def run_whole_dataset(
     
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
 
-    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
     
     trainer = Trainer(accelerator='gpu',**kwargs)
@@ -131,7 +138,7 @@ def run_whole_dataset_specify_dtype(
     
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path).to(device)
 
-    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
 
     layers = list(model.layers)
