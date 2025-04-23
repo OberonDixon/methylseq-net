@@ -1,7 +1,8 @@
 import h5py
 import os
 import numpy as np
-from lightning.pytorch.callbacks import BasePredictionWriter
+from lightning.pytorch.callbacks import BasePredictionWriter, Callback
+import torch
 
 class HDF5PredictionWriter(BasePredictionWriter):
     def __init__(self, output_dir, write_interval="batch"):
@@ -44,3 +45,31 @@ class HDF5PredictionWriter(BasePredictionWriter):
             except Exception:
                 pass
         self.file_handles.clear()
+
+class GPUMemoryLogger(Callback):
+    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if torch.cuda.is_available():
+            peak_mem = torch.cuda.max_memory_allocated() / 1e6  # MB
+            pl_module.log("train/gpu_peak_MB", peak_mem, prog_bar=False)
+
+    def on_validation_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if torch.cuda.is_available():
+            peak_mem = torch.cuda.max_memory_allocated() / 1e6
+            pl_module.log("val/gpu_peak_MB", peak_mem, prog_bar=False)
+
+    def on_test_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+        if torch.cuda.is_available():
+            torch.cuda.reset_peak_memory_stats()
+
+    def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if torch.cuda.is_available():
+            peak_mem = torch.cuda.max_memory_allocated() / 1e6
+            pl_module.log("test/gpu_peak_MB", peak_mem, prog_bar=False)

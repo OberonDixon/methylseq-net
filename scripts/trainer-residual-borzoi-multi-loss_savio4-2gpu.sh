@@ -11,7 +11,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=8-9 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=10-11 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 #SBATCH --exclude=n0386.savio4
 # exclude node 386 temporarily because it has a hardware issue
 # Command(s) to run:
@@ -27,6 +27,8 @@ CONFIG_FILES=(
     "../configs/residual/multi-loss/borzoi_residual-methylseq-basenji_co-train-20.gin"
     "../configs/residual/multi-loss/borzoi_residual-methylseq-basset_co-train-20-seq-loss-concat-final.gin"
     "../configs/residual/multi-loss/borzoi_residual-methylseq-basenji_co-train-20-seq-loss-concat-final.gin"
+    "../configs/residual/multi-loss/borzoi_residual-methylseq-basset_co-train-20-seq-loss-concat-final-mx+b.gin"
+    "../configs/residual/multi-loss/borzoi_residual-methylseq-basenji_co-train-20-seq-loss-concat-final-mx+b.gin"
 )
 
 # Get the config file for this array task

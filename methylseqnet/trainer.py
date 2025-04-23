@@ -12,6 +12,7 @@ from datetime import datetime as dt
 from pathlib import Path
 import argparse
 from methylseqnet.dataset import *
+from callbacks import GPUMemoryLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -201,7 +202,7 @@ def main(
     # Best validation checkpoint, tracked separately
     best_val_checkpoint = ModelCheckpoint(
         dirpath=model_dir/'checkpoints',
-        monitor='val_loss',                   # Metric to track for "best" checkpoint
+        monitor='val/loss',                   # Metric to track for "best" checkpoint
         mode='min',                           # Minimize validation loss (or 'max' if you're maximizing a metric)
         save_top_k=1,                         # Save the best checkpoint only
         filename='best-checkpoint',           # Name for the best checkpoint
@@ -246,7 +247,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = [temp_checkpoint,best_val_checkpoint],
+                    callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()],
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -265,7 +266,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             epochs_elapsed+=stage_dict["epochs"]
     else:
         trainer = Trainer(
-            callbacks = [temp_checkpoint,best_val_checkpoint],
+            callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()],
             default_root_dir=model_dir,
             logger=logger,
             accelerator='auto', 

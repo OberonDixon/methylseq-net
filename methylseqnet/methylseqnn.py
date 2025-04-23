@@ -187,7 +187,9 @@ class MethylSeqNN(L.LightningModule):
         )
         operations = { # the different operations that can be used to combine pretrained and residual models
             'multiply': torch.mul,  # Element-wise multiplication
-            'add': torch.add        # Element-wise addition
+            'add': torch.add,       # Element-wise addition
+            # Element-wise mx+b where m is first n channels, b is second n channels, n is x.shape[1]
+            'mx+b': lambda mb, x: nn.functional.softplus(mb[:, :x.shape[1],:]) * x + mb[:, x.shape[1]:,:],
         }
         
         if self.mode not in valid_modes:
@@ -376,7 +378,7 @@ class MethylSeqNN(L.LightningModule):
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
-            self.log("train_sites",fraction_true)
+            self.log("train/sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
         if mask is not None:
@@ -388,7 +390,7 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[active_pos_mask]  
         if mask is None or mask.any():
             loss = self.prediction_criterion(outputs, targets)
-            self.log("train_prediction_loss",loss)
+            self.log("train/prediction_loss",loss)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
@@ -396,7 +398,7 @@ class MethylSeqNN(L.LightningModule):
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             residual_activations_loss = self.activation_criterion(residual_activations)
             loss = loss + self.residual_activation_loss_weight * residual_activations_loss
-            self.log("train_residual_activations_loss",residual_activations_loss)
+            self.log("train/residual_activations_loss",residual_activations_loss)
         if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
             seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
             if mask is not None:
@@ -406,8 +408,8 @@ class MethylSeqNN(L.LightningModule):
             if mask is None or mask.any():
                 seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
                 loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
-                self.log("train_seq_only_prediction_loss",seq_only_prediction_loss)          
-        self.log("train_loss", loss)
+                self.log("train/seq_only_prediction_loss",seq_only_prediction_loss)          
+        self.log("train/loss", loss)
         self.hooked_activations.clear()
         return loss  
 
@@ -420,7 +422,7 @@ class MethylSeqNN(L.LightningModule):
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
-            self.log("val_sites",fraction_true)
+            self.log("val/sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
         if mask is not None:
@@ -432,7 +434,7 @@ class MethylSeqNN(L.LightningModule):
             targets = targets[active_pos_mask]
         if mask is None or mask.any():
             loss = self.prediction_criterion(outputs, targets)
-            self.log("val_prediction_loss",loss)
+            self.log("val/prediction_loss",loss)
         else:
             print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
             loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
@@ -440,7 +442,7 @@ class MethylSeqNN(L.LightningModule):
             residual_activations = self.hooked_activations[id(self.layers[-1])]
             residual_activations_loss = self.activation_criterion(residual_activations)
             loss = loss + self.residual_activation_loss_weight * residual_activations_loss
-            self.log("val_residual_activations_loss",residual_activations_loss)
+            self.log("val/residual_activations_loss",residual_activations_loss)
         if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
             seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
             if mask is not None:
@@ -450,8 +452,8 @@ class MethylSeqNN(L.LightningModule):
             if mask is None or mask.any():
                 seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
                 loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
-                self.log("val_seq_only_prediction_loss",seq_only_prediction_loss)
-        self.log("val_loss", loss)
+                self.log("val/seq_only_prediction_loss",seq_only_prediction_loss)
+        self.log("val/loss", loss)
         self.hooked_activations.clear()
         return loss
         
