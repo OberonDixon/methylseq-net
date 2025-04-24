@@ -185,12 +185,16 @@ class MethylSeqNN(L.LightningModule):
             'residual-w/-pretrained-embeddings', # run full residual model combined with pretrained output head from cached embeddings.
             'residual-only-w/-pretrained-embeddings', # run only residual model, with cached embeddings available for concatenation
         )
-        operations = { # the different operations that can be used to combine pretrained and residual models
+        operations = { # the different operations that can be used to combine pretrained and residual models. take in (res,x)
             'multiply': torch.mul,  # Element-wise multiplication
             'log_multiply': lambda res, x: torch.exp(torch.log(x + 1e-5) + res), # Element-wise multiplication on a log scale
+            'tanh_log_multiply': lambda res, x: x * torch.exp(4.0 * torch.tanh(res/4.0)),
             'add': torch.add,       # Element-wise addition
-            # Element-wise mx+b where m is first n channels, b is second n channels, n is x.shape[1]
-            'mx+b': lambda mb, x: nn.functional.softplus(mb[:, :x.shape[1],:]) * x + mb[:, x.shape[1]:,:],
+            # Element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
+            'mx+b': lambda mb, x: (
+                nn.functional.softplus(mb[:, :x.shape[1],:]) * 
+                nn.functional.softplus(x + mb[:, x.shape[1]:,:])
+            ),
         }
         
         if self.mode not in valid_modes:

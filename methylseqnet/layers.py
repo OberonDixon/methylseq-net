@@ -268,7 +268,19 @@ class ConvDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, pool_size=1, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
+    def __init__(
+        self, 
+        in_channels, 
+        filters, 
+        pool_size=1, 
+        kernel_size=1, 
+        shared_head=False, 
+        stride=1, 
+        weight_decay=0, 
+        pad=False,
+        init_weight=None,
+        init_bias=None,
+    ):
         super(ConvFinal, self).__init__()
         self.kernel_size = kernel_size
         self.filters = filters
@@ -281,7 +293,12 @@ class ConvFinal(nn.Module):
             self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # only one filter
         else:
             self.conv = nn.Conv1d(in_channels, filters, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # multiple different output head filters
-
+        if init_weight is not None:
+            with torch.no_grad():
+                self.conv.weight.fill_(init_weight)
+        if init_bias is not None:
+            with torch.no_grad():
+                self.conv.bias.fill_(init_bias)
     def forward(self, x):
         x = self.conv(x)
         if self.shared_head:
