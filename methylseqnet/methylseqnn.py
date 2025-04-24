@@ -187,6 +187,7 @@ class MethylSeqNN(L.LightningModule):
         )
         operations = { # the different operations that can be used to combine pretrained and residual models
             'multiply': torch.mul,  # Element-wise multiplication
+            'log_multiply': lambda res, x: torch.exp(torch.log(x + 1e-5) + res), # Element-wise multiplication on a log scale
             'add': torch.add,       # Element-wise addition
             # Element-wise mx+b where m is first n channels, b is second n channels, n is x.shape[1]
             'mx+b': lambda mb, x: nn.functional.softplus(mb[:, :x.shape[1],:]) * x + mb[:, x.shape[1]:,:],

@@ -11,8 +11,9 @@ import gin
 from datetime import datetime as dt
 from pathlib import Path
 import argparse
+from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from callbacks import GPUMemoryLogger
+from methylseqnet.callbacks import GPUMemoryLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml

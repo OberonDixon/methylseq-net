@@ -3,6 +3,19 @@ import torch.nn as nn
 import gin
 
 @gin.register
+@gin.configurable
+class ClampedReLU(nn.Module):
+    def __init__(self, min_val=1e-4, max_val=None):
+        super().__init__()
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def forward(self, x):
+        if self.max_val is not None:
+            return torch.clamp(x, min=self.min_val, max=self.max_val)
+        return torch.clamp(x, min=self.min_val)
+
+@gin.register
 class DecadeActivation(nn.Module):
     def __init__(self):
         super(DecadeActivation, self).__init__()
