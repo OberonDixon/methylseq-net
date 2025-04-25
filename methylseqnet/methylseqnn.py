@@ -239,7 +239,7 @@ class MethylSeqNN(L.LightningModule):
                 x = x_seq
         
         # this block runs if the residual model layers are populated and if the model is in a mode that runs the residual model
-        if self.layers and self.mode in ('full-model','residual-only','residual-w/-pretrained-embeddings'):
+        if self.layers and self.mode in ('full-model','residual-only','residual-w/-pretrained-embeddings','residual-only-w/-pretrained-embeddings'):
             if multimethyl_input:
                 input_to_outputs_dict = defaultdict(list)
                 for _,io_mappings_row in self.get_io_mappings_df().iterrows():
@@ -295,7 +295,7 @@ class MethylSeqNN(L.LightningModule):
                     x_methylseq_allchannels = x_methylseq[:,:,self.crop_off_final:-self.crop_off_final]
                 else:
                     x_methylseq_allchannels = x_methylseq
-            if not self.pretrained_seq_model or self.mode=='residual-only':
+            if not self.pretrained_seq_model or self.mode in ('residual-only','residual-only-w/-pretrained-embeddings'):
                 x = x_methylseq_allchannels
                 
         # this block runs if both pretrained and residual models are defined and if the full model is running
