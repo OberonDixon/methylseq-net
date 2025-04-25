@@ -213,7 +213,8 @@ class MethylSeqNN(L.LightningModule):
                 return x_res
             # run only the pretrained model, including its output head. Outputs still predict true labels.    
             case 'pretrained-only':
-                x_seq, _ = self._pretrained_embedder_forward(x)
+                embeddings = self._pretrained_embedder_forward(x)
+                x_seq = self._pretrained_head_forward(embeddings)
                 x_seq = self._merged_output_forward(x_seq)
                 return x_seq
             # run only the pretrained model output head based on cached embeddings dataset.
