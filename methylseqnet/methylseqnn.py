@@ -197,6 +197,7 @@ class MethylSeqNN(L.LightningModule):
         match self.mode:
             # run both the pretrained and residual models, including their outputs heads. Full prediction.
             case 'full-model':
+                self._check_x_attributes(x)
                 embeddings = self._pretrained_embedder_forward(x)
                 x_seq = self._pretrained_head_forward(embeddings)
                 x_res = self._residual_forward(x, embeddings)
@@ -205,6 +206,7 @@ class MethylSeqNN(L.LightningModule):
                 return x
             # run only the residual model; outputs may not reflect true labels    
             case 'residual-only':
+                self._check_x_attributes(x)
                 if self.concat_pretrained_embeddings_at:
                     embeddings = self._pretrained_embedder_forward(x)
                     x_res = self._residual_forward(x, embeddings)
@@ -213,19 +215,21 @@ class MethylSeqNN(L.LightningModule):
                 return x_res
             # run only the pretrained model, including its output head. Outputs still predict true labels.    
             case 'pretrained-only':
+                self._check_x_attributes(x)
                 embeddings = self._pretrained_embedder_forward(x)
                 x_seq = self._pretrained_head_forward(embeddings)
                 x_seq = self._merged_output_forward(x_seq)
                 return x_seq
             # run only the pretrained model output head based on cached embeddings dataset.
             case 'pretrained-embeddings-only':
-                _, embeddings = x
+                _, embeddings = self._split_multidataset_input(x)
                 x_seq = self._pretrained_head_forward(embeddings)
                 x_seq = self._merged_output_forward(x_seq)
                 return x_seq
             # run full residual model combined with pretrained output head from cached embeddings.
             case 'residual-w/-pretrained-embeddings':
-                x, embeddings = x 
+                x, embeddings = self._split_multidataset_input(x)
+                self._check_x_attributes(x)
                 x_seq = self._pretrained_head_forward(embeddings)
                 x_res = self._residual_forward(x, embeddings)
                 x = self._merge_submodels(x_res, x_seq)
@@ -233,11 +237,12 @@ class MethylSeqNN(L.LightningModule):
                 return x
             # run only residual model, with cached embeddings available for concatenation
             case 'residual-only-w/-pretrained-embeddings':
-                x, embeddings = x
+                x, embeddings = self._split_multidataset_input(x)
+                self._check_x_attributes(x)
                 x_res = self._residual_forward(x, embeddings)
                 return x_res
             case _:
-                raise ValueError(f"Invalid mode {self.mode}. Check documentation for valid settings for self.mode.")
+                raise ValueError(f"Invalid MethylSeqNN.mode='{self.mode}'. Check documentation for valid modes.")
     
     def training_step(self,batch,batch_idx):
         inputs, targets, mask = batch
@@ -553,9 +558,26 @@ class MethylSeqNN(L.LightningModule):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
         return io_mappings_df
 
-    def _pretrained_embedder_forward(self, x):
+    def _split_multidataset_input(self, x, split_mode='(methylseq_input,embeddings)'):
+        match split_mode:
+            case '(methylseq_input,embeddings)':
+                try:
+                    x, embeddings = x
+                    return x, embeddings
+                except Exception as e:
+                    raise ValueError(f"MethylSeqNN.mode='{self.mode}' mode forward(x) requires x be a tuple containing (methylseq_input, embeddings)") from e 
+            case _:
+                raise NotImplementedError(f'{split_mode} splitting not implemented.')
+    
+    def _check_x_attributes(self, x):
+        if isinstance(x,tuple):
+            raise ValueError(f"MethylSeqNN.mode='{self.mode}' does not support MultiDataset tuple inputs; use a forward mode designed for your dataset class.")
+        if x.dim!=3:
+            raise ValueError("MethylSeqNN.forward requires a methylseq_input (first or only element of x) with three dimensions: (N,C,L).")
         if x.shape[1]<7:
-            raise ValueError(f"Forward passes for MethylSeqNN require that x have 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}")
+            raise ValueError(f"Forward passes for MethylSeqNN require that methylseq_input have (first or only element of x) 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}") 
+    
+    def _pretrained_embedder_forward(self, x):
         x_seq = x[:,0:7,:]
         if self.seq_input_head:
             for layer in self.seq_input_head:
@@ -602,17 +624,17 @@ class MethylSeqNN(L.LightningModule):
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_pseudobatch[start:end]
                 x_methylseq_allchannels[:, channels, :] = x_cell_type[:, channels, :]
+            return x_methylseq_allchannels
         elif x.shape[1]==7:
             if self.crop_off_sequence:
                 x_methylseq = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]
             else:
                 x_methylseq = x
             
-            x_methylseq_allchannels = self._residual_layers_forward(x_methylseq,embeddings)     
-        else:
-            raise ValueError(f"Forward passes for MethylSeqNN require that x have 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}")
+            x_methylseq_allchannels = self._residual_layers_forward(x_methylseq,embeddings)  
+            return x_methylseq_allchannels
 
-        return x_methylseq_allchannels
+        
 
     def _merge_submodels(self, x_res, x_seq):
         if self.layers and self.pretrained_seq_model:
