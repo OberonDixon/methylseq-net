@@ -2,16 +2,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import gin
+import warnings
+
+gin.external_configurable(nn.AvgPool1d, module='torch.nn')
+gin.external_configurable(nn.MaxPool1d, module='torch.nn')
 
 @gin.configurable
 @gin.register
 class EncodingAdjuster(nn.Module):
     """
+    OBSOLETE: this class is obsolete. Use transforms.py::EncodingSelector instead.
     EncodingAdjuster / EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
     different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
     """
     def __init__(self, encoding_str):
-        super(EncodingAdjuster,self).__init__()
+        super().__init__()
+        warnings.warn(
+            "The EncodingAdjuster class in layers.py is deprecated and will be removed in a future release. "
+            "Please use transforms.py::EncodingSelector instead.",
+            UserWarning,
+            stacklevel=2
+        )
         self.encoding_str = encoding_str
         if self.encoding_str in ['seq+methyl_binary-seq','seq+methyl_ACGTm-sum-to-1','seq+methyl_binarize-methyl']:
             self.channels = 7
@@ -22,6 +33,8 @@ class EncodingAdjuster(nn.Module):
         elif self.encoding_str in ['seq-only']:
             self.channels = 4
         elif self.encoding_str in ['methyl-only']:
+            self.channels = 3
+        elif self.encoding_str in ['smoothed-methyl-only']:
             self.channels = 1
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
@@ -34,10 +47,13 @@ class EncodingAdjuster(nn.Module):
         elif self.encoding_str == 'seq+methyl_no-mask':
             x =  x[:,0:6,:]
         elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x = x.clone()
             x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
         elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x = x.clone()
             x[:,4:6,:] = (x[:,4:6,:]>0.5)
         elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x = x.clone()
             x[:,4,:] = x[:,4,:] + x[:,5,:]
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq+smoothed-methyl':
@@ -48,12 +64,24 @@ class EncodingAdjuster(nn.Module):
             smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
             mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
             smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x = x.clone()
             x[:,4,:] = smoothed
             x = x[:,0:5,:]
         elif self.encoding_str == 'seq-only':
             x = x[:,0:4,:]
         elif self.encoding_str == 'methyl-only':
-            x = x[:,4:6,:]
+            x = x[:,4:7,:]
+        elif self.encoding_str == 'smoothed-methyl-only':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            padding = (129 - 1) // 2
+            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
+            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
+            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
+            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
+            x = x.clone()
+            x[:,4,:] = smoothed
+            x = x[:,4:5,:]
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
@@ -63,7 +91,13 @@ class EncodingAdjuster(nn.Module):
 @gin.register
 class MethylationDropout(nn.Module):
     def __init__(self, in_channels, dropout=0.2, chunk_size=1, inverted=False):
-        super(MethylationDropout, self).__init__()
+        super().__init__()
+        warnings.warn(
+            "The MethylationDropout class in layers.py is deprecated and will be removed in a future release. "
+            "Please use transforms.py::CpGSparsifier instead.",
+            UserWarning,
+            stacklevel=2
+        )
         self.in_channels=in_channels
         self.dropout=dropout
         self.chunk_size=chunk_size
@@ -84,8 +118,8 @@ class MethylationDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1):
-        super(ConvDNA, self).__init__()
+    def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1, pool_class=nn.MaxPool1d):
+        super().__init__()
         self.in_channels=in_channels
         self.kernel_size=kernel_size
         self.pool_size=pool_size
@@ -96,7 +130,7 @@ class ConvDNA(nn.Module):
             padding = (kernel_size-1)//2 if pad else 0, 
             stride=stride
         )
-        self.pool = nn.MaxPool1d(pool_size)
+        self.pool = pool_class(pool_size)
         self.weight_decay = weight_decay
         self.stride=stride
 
@@ -110,7 +144,7 @@ class ConvDNA(nn.Module):
 @gin.register
 class ConvTower(nn.Module):
     def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay=0, pad=False):
-        super(ConvTower, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.repeat = repeat
@@ -139,7 +173,7 @@ class ConvTower(nn.Module):
 @gin.register
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0, pad=False):
-        super(ConvBlock, self).__init__()
+        super().__init__()
         self.kernel_size=kernel_size
         self.dilation=dilation
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=(kernel_size -1) // 2 if pad else 0)
@@ -163,7 +197,7 @@ class DilatedResidual(nn.Module):
             dropout=0.3, 
             pad=False,
             ):
-        super(DilatedResidual, self).__init__()
+        super().__init__()
         self.layers = nn.ModuleList()
         self.filters = filters
         self.kernel_size = kernel_size
@@ -212,7 +246,7 @@ class DilatedResidual(nn.Module):
                 crop = (residual.size(2) - x.size(2)) // 2
                 residual = residual[:, :, crop:crop + x.size(2)]
             # Add residual connection
-            x += residual
+            x = x + residual
 
         return x
 
@@ -220,7 +254,7 @@ class DilatedResidual(nn.Module):
 @gin.register
 class ConvDropout(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dropout, weight_decay=0, pad=False):
-        super(ConvDropout, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, padding = (kernel_size -1)//2 if pad else 0)
         self.dropout = nn.Dropout(dropout)
@@ -234,10 +268,24 @@ class ConvDropout(nn.Module):
 @gin.configurable
 @gin.register
 class ConvFinal(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size=1, shared_head=False, stride=1, weight_decay=0, pad=False):
-        super(ConvFinal, self).__init__()
+    def __init__(
+        self, 
+        in_channels, 
+        filters, 
+        pool_size=1, 
+        kernel_size=1, 
+        shared_head=False, 
+        stride=1, 
+        weight_decay=0, 
+        pad=False,
+        init_weight=None,
+        init_bias=None,
+    ):
+        super().__init__()
         self.kernel_size = kernel_size
         self.filters = filters
+        self.pool_size = pool_size
+        self.pool = nn.AvgPool1d(pool_size)
         self.stride = stride
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         self.weight_decay = weight_decay
@@ -245,11 +293,17 @@ class ConvFinal(nn.Module):
             self.conv = nn.Conv1d(in_channels, 1, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # only one filter
         else:
             self.conv = nn.Conv1d(in_channels, filters, kernel_size, stride=stride, padding=(kernel_size-1)//2 if pad else 0) # multiple different output head filters
-
+        if init_weight is not None:
+            with torch.no_grad():
+                self.conv.weight.fill_(init_weight)
+        if init_bias is not None:
+            with torch.no_grad():
+                self.conv.bias.fill_(init_bias)
     def forward(self, x):
         x = self.conv(x)
         if self.shared_head:
             x = x.repeat(1, self.filters, 1) # duplicate output value across all tracks
+        x = self.pool(x)
         return x
 
 ################################################################################################################

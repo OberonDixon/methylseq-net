@@ -1,35 +1,35 @@
 import torch
 import torch.nn as nn
+import gin
 
-# TODO: delete un-needed code
-
-class CustomPoissonNLLLossLogTransformed(nn.Module):
+@gin.register
+class LogL1Loss(nn.Module):
     def __init__(self):
-        super(CustomPoissonNLLLossLogTransformed,self).__init__()
-        self.poisson = nn.PoissonNLLLoss(log_input=False)
-    def forward(self, predicted_counts, target_counts):
-        # Reverse the log(counts + 1) transform
-        # predicted_counts = torch.clamp(
-        #     torch.pow(10, predicted_log_counts) - 1,
-        #     min=1e-3,
-        # )
-        # target_counts = torch.clamp(
-        #     (torch.pow(10, target_log_counts) - 1)/2,
-        #     min=1e-3,
-        #     max=10
-        # )
+        super().__init__()
+    def forward(self,activations):
+        return torch.clamp(activations, min=1e-8).log().abs().mean()
 
-        return self.poisson(predicted_counts,target_counts)
+@gin.register
+class LogL2Loss(nn.Module):
+    def __init__(self):
+        super().__init__()
+    def forward(self,activations):
+        return (torch.clamp(activations, min=1e-8).log()**2).mean()
 
-        # print(
-        #     'target min',
-        #     float(torch.min(target_counts)),
-        #     'target max',
-        #     float(torch.max(target_counts)),
-        #     'loss',
-        #     float(loss),
-        # )
-        # weights = target_log_counts + 0.01
-        # squared_diff = (predicted_log_counts - target_log_counts) ** 2
-        # weighted_squared_diff = weights * squared_diff
-        # return torch.mean(weighted_squared_diff)
+@gin.register
+@gin.configurable
+class PoissonLoss(nn.Module):
+    def __init__(self,log_input=False,**kwargs):
+        super().__init__()
+        self.poisson = nn.PoissonNLLLoss(log_input=log_input,**kwargs)
+    def forward(self,predictions,targets):
+        return self.poisson(predictions,targets)
+
+@gin.register
+@gin.configurable
+class BCELoss(nn.Module):
+    def __init__(self,pos_weight=100,**kwargs):
+        super().__init__()
+        self.bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    def forward(self,predictions,targets):
+        return self.bce(predictions,targets)

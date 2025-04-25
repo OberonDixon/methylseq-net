@@ -1,6 +1,6 @@
 import gin, pyBigWig, pysam
 from Bio import SeqIO
-# import dimelo
+import dimelo
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
@@ -32,7 +32,7 @@ class SampleGenerator:
 
 class MultitaskIOHandler:
     """
-    A MultitaskIOHandler class provides an interface to load build input, label, and mask tensors for a 
+    A MultitaskIOHandler class provides an interface to load data and build input, label, and mask tensors for a 
     specified set of genomic region samples. It must process the input sequence/cpg and the labels into
     appropriate shapes and write them using a DatasetWriter instance. process_batch handles loading
     through to writing to the dataset file, and must be compatible with parallelization.
@@ -59,6 +59,38 @@ class MultitaskIOHandler:
         gc_fractions = gc_matrix.sum(axis=1) / self.label_bin_size
         
         return gc_fractions  
+
+class MultimethylMultitaskIOHandler:
+    """
+    A MultimethylMultitaskIOHandler class provides an interface to load data and build sequence, methyl, label,
+    and mask tensors for a specified set of genomic region samples. The main difference from a MultitaskIOHandler
+    is that MultimethylMultitaskIOHandler saves a single sample per genomic region, with both many methyl tracks
+    and many label tracks corresponding to the io_mappings_list. Unlike MultitaskIOHandler, the mask will typically
+    not mask out most tasks for a given sample, but can do so if appropriate. Instead, the forward pass of the 
+    methylseq model will run once for each methylation track, and the tasks will be concatenated into an output tensor.
+    """
+    def __init__(self, num_tracks=1, label_bin_size=128, **kwargs):
+        self.num_tracks = num_tracks
+        self.label_bin_size = label_bin_size
+        self.io_mappings_list = []
+    def process_batch(self,sample_list):
+        raise NotImplementedError("Subclass must implement this method.")
+    def seq_to_gc_content(
+        self,
+        sequence,
+    ):
+        """
+        Returns an array of gc content fractions using the binning of the labels
+        """
+        sequence_array = np.array(list(sequence.lower()))
+        gc_mask = (sequence_array == 'g') | (sequence_array == 'c')
+        gc_counts = gc_mask.astype(int)
+        num_bins = len(sequence) // self.label_bin_size
+        trimmed_gc_counts = gc_counts[:num_bins * self.label_bin_size]
+        gc_matrix = trimmed_gc_counts.reshape((num_bins, self.label_bin_size))
+        gc_fractions = gc_matrix.sum(axis=1) / self.label_bin_size
+        
+        return gc_fractions     
 
 class SequenceHandler:
     """
@@ -114,8 +146,16 @@ class RegionBedParser(SampleGenerator):
     """
     This subclass handles creating the task dict from a bed file defining regions by split.
     """
-    def __init__(self,regions_bed: str | Path):
+    def __init__(
+        self,
+        regions_bed: str | Path,
+        seq_length: str | None = None
+    ):
+        """
+        if seq_length is not provided, the regions bed lengths are used unmodified. If provided, they are padded.
+        """
         self.regions_bed = regions_bed
+        self.seq_length = seq_length
     def create_samples(self):
         """
         This function exists to parse out the regions_bed file into lists for region
@@ -132,8 +172,70 @@ class RegionBedParser(SampleGenerator):
                 chrom = fields[0]
                 start = int(fields[1])
                 end = int(fields[2])
+                # handle the case where the bed file isn't actually the entire sequence length we want
+                if self.seq_length is not None and (end - start) < self.seq_length:
+                    diff = self.seq_length - (end - start)
+                    left_pad = diff // 2
+                    right_pad = diff - left_pad
+                    start -= left_pad
+                    end += right_pad
                 split = fields[3].strip()
                 region_list_by_split[split].append({'source':chrom,'start':start,'end':end,}) 
+        return region_list_by_split
+
+@gin.register
+@gin.configurable
+class ChromosomeChunker(SampleGenerator):
+    """
+    This subclass handles creating the task dict from a dictionary of chromosome lists by split.
+    """
+    def __init__(
+        self,
+        chromosomes_dict: dict,
+        fasta_file: str,
+        seq_length: int,
+        seq_overlap: int = 0
+    ):
+        """
+        at least one chromosome in the chromosome dict, a valid fasta file with the chromosomes all in it, and a chunk 
+        seq_length are required. seq_overlap is optional, and will overlap each chromosome subset by the specified number of bp.
+        """
+        if not isinstance(seq_length,int) or seq_length<1:
+            raise ValueError(f"seq_length must be an integer >=1. seq_length={seq_length} is invalid.")
+        if not isinstance(seq_overlap,int) or seq_overlap<0:
+            raise ValueError(f"seq_overlap must be an integer and >=0. seq_overlap={seq_overlap} is invalid.")
+        if seq_overlap > seq_length:
+            raise ValueError(f"seq_overlap {seq_overlap} is greater than seq_length {seq_length}.")
+        self.chromosomes_dict = chromosomes_dict
+        self.fasta_file = fasta_file
+        self.seq_length = seq_length
+        self.seq_overlap = seq_overlap
+    def create_samples(self):
+        """
+        This function exists to parse out the chromosomes_dict into lists for region
+        batch creation.
+        
+        The region_list_by_split dict will contain a list of region_dict for each
+        data split, i.e. the keys of the chromosomes_dict, as each of these categories will ultimately be
+        written to a separate dataset file.
+        """
+        region_list_by_split = defaultdict(list)
+        with pysam.FastaFile(self.fasta_file) as fasta:
+            stride = self.seq_length - self.seq_overlap
+            for split,chromosomes in self.chromosomes_dict.items():
+                if isinstance(chromosomes,list):
+                    for chromosome in chromosomes:
+                        if chromosome not in fasta.references:
+                            raise ValueError(f"Chromosome '{chromosome}' not found in FASTA file {self.fasta_file}.")
+                        chrom_length = fasta.get_reference_length(chromosome)
+                        for chunk_start in range(0,chrom_length - self.seq_length + 1, stride):
+                            region_list_by_split[split].append({
+                                'source':chromosome,
+                                'start':chunk_start,
+                                'end':chunk_start + self.seq_length,
+                            })
+                else:
+                    raise ValueError(f"chromosomes_dict values must be of type list rather than {type(chromosomes)}")
         return region_list_by_split
 
 @gin.register
@@ -201,10 +303,15 @@ class SingleFastaHandler(SequenceHandler):
             # check that pysam can open the fasta file
             _ = pysam.FastaFile(ref_genome)
             self.ref_genome = ref_genome
+            fastafile = pysam.FastaFile(self.ref_genome)
+            self.chrom_lengths_dict = {ref: fastafile.lengths[i] for i, ref in enumerate(fastafile.references)}
         else:
             raise OSError(f"{ref_genome} does not exist.")
     def load_sequences(self,source,start,end,fastafile):
-        return fastafile.fetch(source,start,end)
+        start_pad = 0 - min(start,0)
+        chrom_length = self.chrom_lengths_dict[source]
+        end_pad = max(end,chrom_length) - chrom_length
+        return start_pad*"N" + fastafile.fetch(source,max(start,0),min(end,chrom_length)) + end_pad*"N"
     def load_sequence_batch(self,sample_list):
         fastafile = pysam.FastaFile(self.ref_genome)
         return [self.load_sequences(**sample,fastafile=fastafile) for sample in sample_list]
@@ -281,7 +388,11 @@ class MultiBigWigCpGHandler(CpGHandler):
         num_bws = len(bws)
         aggregated_valid_cpgs = np.zeros(end - start)
         for bw in bws:
-            raw_values = np.array(bw.values(source,start,end))
+            start_pad = 0 - min(start,0)
+            try:
+                raw_values = np.array(start_pad*[0] + bw.values(source,max(start,0),end))
+            except:
+                raise RuntimeError(f"Error in CpG bigwig loading for {source}:{start}-{end}")
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
             valid_mask = ~np.isnan(raw_values)
@@ -308,6 +419,87 @@ class MultiBigWigCpGHandler(CpGHandler):
             bw.close()
         return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
 
+@gin.register
+@gin.configurable
+class MultiBedMethylModHandler(CpGHandler):
+    """
+    This subclass handles methylation data from one or more bedmethyl files, combining the files by the 
+    specified operation and binarizing by a threshold if binarize=True
+    """
+    def __init__(
+            self,
+            bedmethyl_files: list,
+            motif: str='CG,0',
+            combine_operation='mean',
+            binarize=False,
+            threshold=0.5):    
+        import dimelo
+        if not isinstance(bedmethyl_files,list):
+            raise ValueError("bedmethyl_files input is not a list.")
+        for bedmethyl_file in bedmethyl_files:   
+            if not os.path.isfile(bedmethyl_file):
+                raise OSError(f"{bedmethyl_file} does not exist.")
+        self.bedmethyl_files = bedmethyl_files
+        self.motif = motif
+        self.combine_operation = combine_operation
+        self.binarize = binarize
+        self.threshold = threshold    
+        
+    def load_cpg(self,source,start,end):
+        """
+        This cpg loader is actually for any mod type specifier by motif
+        """
+        cpg_fractions_list = []
+        aggregated_valid_cpgs = np.zeros(end - start)
+        for bedmethyl_file in self.bedmethyl_files:
+            start_pad = 0 - min(start,0)
+            try:
+                modified_base_counts,valid_base_counts = dimelo.load_processed.pileup_vectors_from_bedmethyl(
+                    bedmethyl_file=bedmethyl_file,
+                    motif=self.motif,
+                    regions=f'{source}:{max(start,0)}-{end}',
+                    cores=1,
+                    quiet=True,
+                )
+                nans_everywhere = np.full_like(
+                    modified_base_counts, np.nan, dtype=float
+                )
+                raw_values = np.array(
+                    start_pad*[np.nan] + list(
+                        np.divide(
+                            modified_base_counts,
+                            valid_base_counts,
+                            out=nans_everywhere,
+                            where=valid_base_counts != 0,
+                        )
+                    )
+                )
+            except:
+                raise RuntimeError(f"Error in CpG bedmethyl loading for {source}:{start}-{end}")
+            valid_mask = ~np.isnan(raw_values)
+            normalized_mask = valid_mask.astype(int) / len(self.bedmethyl_files)       
+            # Add the normalized mask to the aggregated_valid_cpgs
+            aggregated_valid_cpgs += normalized_mask
+            # set nan (not a CpG) to zero
+            cpg_fractions_list.append(np.nan_to_num(raw_values,nan=0.0))
+        if self.combine_operation=='mean':
+            # Stack the arrays along a new axis (0) and compute the mean along this axis
+            stacked_values = np.stack(cpg_fractions_list, axis=0)
+            aggregated_fractions = np.mean(stacked_values, axis=0)
+        else:
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.binarize:
+            return aggregated_fractions>self.threshold,aggregated_valid_cpgs
+        else:
+            return (aggregated_fractions,aggregated_valid_cpgs)      
+   
+    def load_cpg_batch(self,sample_list):
+        """
+        This cpg loader is actually for any mod type specifier by motif
+        """
+        cpgs = [self.load_cpg(**sample) for sample in sample_list]
+        return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
+    
 @gin.register
 @gin.configurable
 class SyntheticCpGHandler(CpGHandler):
@@ -338,8 +530,8 @@ class MultiBigWigLabelHandler(LabelHandler):
     def __init__(
             self,
             bigwig_files: list,
-            # trim_off_ends: int,
             label_bin_size: int,
+            trim_off_ends: int = 0,
             combine_operation='mean',
             normalize_counts=False,
             normalize_gc=False,
@@ -356,7 +548,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.binarize = binarize
         self.threshold = threshold     
-        # self.trim_off_ends = trim_off_ends
+        self.trim_off_ends = trim_off_ends
         self.label_bin_size = label_bin_size 
         self.counts_normalization = 0
         self.scale=scale
@@ -383,8 +575,8 @@ class MultiBigWigLabelHandler(LabelHandler):
         if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
             raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") 
         for bw in bws:
-            raw_values = bw.values(source,start,end)
-            # raw_values = bw.values(source,start+self.trim_off_ends,end-self.trim_off_ends)
+            start_pad = 0 - min(start,0)
+            raw_values = start_pad*[0] + bw.values(source,max(start+self.trim_off_ends,0),end-self.trim_off_ends)
             # set nan to zero
             values_list.append(np.nan_to_num(raw_values,nan=0.0))
         if self.combine_operation=='mean':
@@ -460,7 +652,8 @@ class MultiBedGzLabelHandler(LabelHandler):
                 
     def counts_vector_from_bedgz(self,bedgz_file,chrom,start,end):
         counts_vector = np.zeros(end-start)
-        for row in pysam.TabixFile(str(bedgz_file)).fetch(chrom,start,end):
+        start_pad = 0 - min(start,0)
+        for row in pysam.TabixFile(str(bedgz_file)).fetch(chrom,max(start,0),end):
             tabix_fields = row.split("\t")
             genomic_coord = int(tabix_fields[1])
             counts = int(tabix_fields[4])
@@ -539,9 +732,12 @@ class MultiBigWigCpGLabelHandler(LabelHandler):
         valid_rows = valid_cpgs_reshaped.sum(axis=1) > 0  # Identify rows with valid CpG values
     
         bin_means = np.full(valid_cpgs_reshaped.shape[0], self.no_cpgs_value)  # Initialize with default value
-        bin_means[valid_rows] = np.nanmean(
-            np.where(valid_cpgs_reshaped[valid_rows] > 0, fractions_reshaped[valid_rows], np.nan),
-            axis=1
+        valid_sums = valid_mods_reshaped.sum(axis=1)
+        bin_means = np.divide(
+            fractions_reshaped.sum(axis=1),
+            valid_sums,
+            out=bin_means,
+            where=valid_sums > 0
         )
         
         if self.binarize:
@@ -552,7 +748,58 @@ class MultiBigWigCpGLabelHandler(LabelHandler):
     def load_labels_batch(self,sample_list):
         return [self.load_labels(**sample) for sample in sample_list]
         
+@gin.register
+@gin.configurable
+class MultiBedMethylLabelHandler(LabelHandler):
+    """
+    This LabelHandler uses the MultiBedMethylModHandler to load appropriate modification track information, then repurposes it
+    to create label vectors for a sequence-to-mod-fraction model. 
+    """
+    def __init__(
+        self,
+        bedmethyl_files: list,
+        label_bin_size: int,
+        motif: str = 'A,0',
+        combine_operation='mean',
+        binarize=False,
+        threshold=0.5,
+        no_mods_value=0.0,
+    ):
+        self.label_bin_size = label_bin_size
+        self.no_mods_value = no_mods_value
+        self.binarize = binarize
+        self.threshold = threshold
+        self.methyl_handler = MultiBedMethylModHandler(
+            bedmethyl_files=bedmethyl_files,
+            motif=motif,
+            combine_operation=combine_operation,
+            binarize=binarize,
+            threshold=threshold,
+        )
+    def load_labels(self,source,start,end):
+        if (end - start)%self.label_bin_size != 0:
+            raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.")
+        aggregated_fractions,aggregated_valid_mods = self.methyl_handler.load_cpg(source,start,end)
+
+        # Reshape into bins and calculate mean for valid CpG sites
+        fractions_reshaped = aggregated_fractions.reshape(-1, self.label_bin_size)
+        valid_mods_reshaped = aggregated_valid_mods.reshape(-1, self.label_bin_size)
     
+        bin_means = np.full(valid_mods_reshaped.shape[0], self.no_mods_value)  # Initialize with default value
+        bin_means = np.divide(
+            fractions_reshaped.sum(axis=1),
+            valid_mods_reshaped.sum(axis=1),
+            out=bin_means,
+            where=valid_mods_reshaped.sum(axis=1) > 0,
+        )
+        
+        if self.binarize:
+            return bin_means>self.threshold
+        else:
+            return bin_means
+
+    def load_labels_batch(self,sample_list):
+        return [self.load_labels(**sample) for sample in sample_list]    
         
 
 ################################################################################################################
@@ -567,6 +814,8 @@ class MethylAtacAtlases(MultitaskIOHandler):
 
     It relies on a match_file tab-separated values table. Currently it is a bit hardcoded to look at .hg38.bigwig methylation
     files and Adult .bw ATAC-seq files, but the intent is to increase its flexibility in the future.
+
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
     """
     def __init__(
             self,
@@ -780,6 +1029,9 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MethylAtacCageAtlases(MultitaskIOHandler):
+    """
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
+    """
     def __init__(
             self,
             ref_genome,
@@ -1256,6 +1508,364 @@ class SeqToMethylAtlas(MultitaskIOHandler):
                 indices_list,
                 sample_specifier_list,
                 onehot_dna_list,
+                label_list,
+                mask_list,
+            )
+
+@gin.register
+@gin.configurable
+class BedMethylIO(MultitaskIOHandler):
+    """
+    This IOHandler provides a single input CpG track and a specified number of output label tracks
+    based on bedmethyl files with mod counts and read counts provided.
+
+    It assumed you know how many tasks you have, and provides the values from the one bedmethyl label
+    handler to all those tasks.
+    """
+    def __init__(
+            self,
+            ref_genome,
+            methylation_files,
+            target_files,
+            target_motif,
+            label_bin_size,
+            label_num_bins,
+            num_tracks,
+    ):
+        self.label_num_bins = label_num_bins
+        self.label_bin_size = label_bin_size
+        self.num_tracks = num_tracks
+
+        self.sequence_handler = SingleFastaHandler(
+            ref_genome=ref_genome,
+        )
+        self.cpg_handler = MultiBedMethylModHandler(
+            bedmethyl_files = methylation_files,
+            motif = 'CG,0',
+        )
+        self.label_handler = MultiBedMethylLabelHandler(
+            bedmethyl_files = target_files,
+            motif = target_motif,
+            label_bin_size = label_bin_size,
+        )
+        
+        self.io_mappings_list = [] 
+    
+    def process_batch(
+        self,
+        indices_list,
+        sample_list,
+        dataset_writer,
+        lock,
+    ):
+        sequence_list = self.sequence_handler.load_sequence_batch(sample_list)
+
+        methylation_fractions_list,valid_cpgs_list = self.cpg_handler.load_cpg_batch(sample_list)
+
+        label_columns = self.label_handler.load_labels_batch(sample_list)
+        label_list = [np.tile(labels[:,None], (1,self.num_tracks)) for labels in label_columns]
+        mask_list = [np.full((self.label_num_bins,self.num_tracks),True) for _ in label_columns]
+            
+        # Add to the relevant building-up lists
+        sample_specifier_list=[
+            f"{sample['source']}:{sample['start']}-{sample['end']}|all_tasks" 
+            for sample in sample_list 
+            for _ in range(len(sequence_list)//len(sample_list))
+        ]
+        
+        onehot_dna_list=[one_hot_encode_dna(
+            dna_strand=sequence,
+            cpg_methylation=cpg,
+            valid_cpgs=valid_cpgs) for 
+                          sequence,cpg,valid_cpgs in zip(
+                              sequence_list,
+                              methylation_fractions_list,
+                              valid_cpgs_list
+                          )
+                         ]
+        with lock: # we need the lock so allow parallel threads to all write to the same output file
+            dataset_writer.write_chunk(
+                indices_list,
+                sample_specifier_list,
+                onehot_dna_list,
+                label_list,
+                mask_list,
+            )
+
+################################################################################################################
+####                           MultimethylMultitaskIOHandler implementations                                ####
+################################################################################################################
+
+@gin.register
+@gin.configurable
+class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
+    """
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
+    """
+    def __init__(
+            self,
+            ref_genome,
+            methylation_directory,
+            atac_directory,
+            cage_directory,
+            match_file,       
+            label_bin_size,
+            label_num_bins,
+            atac_scaling: float=2,
+            cage_scaling: float=128,
+            atac_clip: float=32,
+            cage_clip: float=384,
+            merge_labels: bool=True,
+            max_chunks_in_mem: int=100,
+            normalize_label_counts: bool=False,
+            normalize_label_gc: bool=False,
+            binarize_cpg: bool=False,
+            binarize_labels: bool=False,
+            threshold_cpg: float | None=None,
+            threshold_labels: float | None=None,
+    ):
+        self.merge_labels = merge_labels
+        self.max_chunks_in_mem = max_chunks_in_mem
+        self.label_num_bins = label_num_bins
+        self.label_bin_size = label_bin_size
+        self.binarize_labels = binarize_labels
+
+        self.labels_specifier_list = [
+            # List of dicts defined as follows:
+            #  'index':integer index for label in labels array
+            #  'input_handler':InputHandler instance
+            #  'label_handler':LabelHandler instance
+        ]
+
+        methylation_files = [f for f in os.listdir(methylation_directory) if f.endswith('.hg38.bigwig')]
+        atac_files = [f for f in os.listdir(atac_directory) if f.endswith('.bw') and 'Fetal' not in f]
+        cage_files = [f for f in os.listdir(cage_directory) if f.endswith('.sorted.bed.gz')]
+        
+        celltype_index = 0
+        label_channel_index = 0
+
+        self.io_mappings_list = []
+
+        with open(match_file) as f:
+            for index,line in tqdm(enumerate(f),desc='Identifying and setting scaling for input files'):
+                if index>0: #first line is the headers
+                    fields = line.split('\t')
+                    methylation_names = fields[0].strip('"\'').split(',')
+                    atac_names = fields[1].strip('"\'').split(',')
+                    try:
+                        atac_scale = float(fields[3])
+                        atac_clip = float(fields[4])
+                    except:
+                        atac_scale = 1
+                        atac_clip = 1024
+                    cage_names = fields[6].strip('"\'').split(',')
+                    try:
+                        cage_scale = float(fields[8])
+                        cage_clip = float(fields[9])
+                    except:
+                        cage_scale = 1
+                        cage_clip = 1024
+                    
+                    methylation_celltype_files = []
+                    atac_celltype_files = []
+                    cage_celltype_files = []
+                    
+                    for methylation_name in methylation_names:
+                        if methylation_name!='':
+                            methylation_celltype_files+=[(Path(methylation_directory) / f) for f in methylation_files if methylation_name in f]  
+                    
+                    for atac_name in atac_names:
+                        if atac_name!='':
+                            atac_name_20 = atac_name.replace(' ','%20')
+                            atac_celltype_files += [(Path(atac_directory) / f) for f in atac_files if atac_name_20 in f]
+
+                    for cage_name in cage_names:
+                        if cage_name!='':
+                            cage_celltype_files += [(Path(cage_directory) / f) for f in cage_files if cage_name in f]
+                        
+                    if len(methylation_celltype_files)>0 and (len(atac_celltype_files)>0 or len(cage_celltype_files)>0):
+                        # We have a cell type match; add to the label specifier list
+                        sequence_handler = SingleFastaHandler(
+                            ref_genome=ref_genome,
+                        )
+                        cpg_handler = MultiBigWigCpGHandler(
+                            bigwig_files = methylation_celltype_files,
+                            binarize = binarize_cpg,
+                            threshold = threshold_cpg,
+                        )
+                        label_channel_indices = []
+                        label_handlers = []
+                        if self.merge_labels:
+                            if len(atac_celltype_files)>0:
+                                label_handlers.append(MultiBigWigLabelHandler(
+                                    bigwig_files = atac_celltype_files,
+                                    label_bin_size=label_bin_size,
+                                    normalize_counts=normalize_label_counts,
+                                    normalize_gc=normalize_label_gc,
+                                    binarize=binarize_labels,
+                                    threshold=threshold_labels,
+                                    scale=atac_scale,
+                                    clip=atac_clip,
+                                    )
+                                )
+                                label_channel_indices.append(label_channel_index)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':atac_names,
+                                })
+                                label_channel_index+=1
+                            if len(cage_celltype_files)>0:
+                                label_handlers.append(MultiBedGzLabelHandler(
+                                    bedgz_files = cage_celltype_files,
+                                    label_bin_size = label_bin_size,
+                                    normalize_counts=normalize_label_counts,
+                                    normalize_gc=normalize_label_gc,
+                                    binarize=binarize_labels,
+                                    threshold=threshold_labels,
+                                    scale=cage_scale,
+                                    clip=cage_clip,
+                                    )
+                                )
+                                label_channel_indices.append(label_channel_index)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'CAGE-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':cage_names,
+                                })
+                                label_channel_index+=1
+                        else:
+                            for atac_celltype_file in atac_celltype_files:
+                                label_handlers.append(MultiBigWigLabelHandler(
+                                    bigwig_files = [atac_celltype_file],
+                                    label_bin_size=label_bin_size,
+                                    normalize_counts=normalize_label_counts,
+                                    normalize_gc=normalize_label_gc,
+                                    binarize=binarize_labels,
+                                    threshold=threshold_labels,
+                                    scale=atac_scale,
+                                    clip=atac_clip,
+                                    )
+                                )
+                                label_channel_indices.append(label_channel_index)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':Path(atac_celltype_file).stem,
+                                })
+                                label_channel_index+=1       
+                            for cage_celltype_file in cage_celltype_files:
+                                label_handlers.append(MultiBedGzLabelHandler(
+                                    bedgz_files = [cage_celltype_file],
+                                    label_bin_size = label_bin_size,
+                                    normalize_counts=normalize_label_counts,
+                                    normalize_gc=normalize_label_gc,
+                                    binarize=binarize_labels,
+                                    threshold=threshold_labels,
+                                    scale=cage_scale,
+                                    clip=cage_clip,
+                                    )
+                                )
+                                label_channel_indices.append(label_channel_index)
+                                self.io_mappings_list.append({
+                                    'channel':label_channel_index,
+                                    'cell_type':celltype_index,
+                                    'data_type':'ATAC-seq',
+                                    'genome':sequence_handler.ref_genome,
+                                    'methylation_files':methylation_names,
+                                    'label_files':Path(cage_celltype_file).stem,
+                                })                                
+                                label_channel_index+=1
+                                
+                        self.labels_specifier_list.append(
+                            {
+                                'celltype_index':celltype_index,
+                                'indices':label_channel_indices,
+                                'sequence_handler':sequence_handler,
+                                'cpg_handler':cpg_handler,
+                                'label_handlers':label_handlers,
+                            }
+                        ) 
+                        celltype_index += 1 
+        self.num_tracks = label_channel_index    
+        self.cell_types = celltype_index
+
+    def process_batch(
+        self,
+        indices_list,
+        sample_list,
+        dataset_writer,
+        lock,
+    ):
+        sample_specifier_list = [f"{sample['source']}:{sample['start']}-{sample['end']}|tasks{list(range(self.num_tracks))}" 
+                                         for sample in sample_list]
+        onehot_dna_list = [np.zeros((sample['end']-sample['start'],4)) for sample in sample_list]
+        methylation_info_list = [np.zeros((sample['end']-sample['start'],3*self.cell_types)) for sample in sample_list]
+        label_list = [np.zeros((self.label_num_bins,self.num_tracks),dtype=bool if self.binarize_labels else float) for _ in sample_list]
+        mask_list = [np.full((self.label_num_bins,self.num_tracks),False) for _ in sample_list]
+        
+        for label_idx,label_specifier_dict in enumerate(self.labels_specifier_list):
+            # Load and parse out sequences (returned as dict with sequences per sample)
+            sequence_list = label_specifier_dict['sequence_handler'].load_sequence_batch(sample_list)
+            gc_content_list = [self.seq_to_gc_content(sequence) for sequence in sequence_list]
+
+            # We assume that all samples actually have the same DNA sequence for this IO handler
+            if label_idx==0:
+                dna_encodings_list = [one_hot_encode_dna(dna_strand=sequence) for sequence in sequence_list]
+                for idx,sample_dna_encoding in enumerate(dna_encodings_list):
+                    onehot_dna_list[idx] = sample_dna_encoding[:,0:4]
+                    
+            # Load and parse out cpgs (returned as dict with meth fraction,valid CG sites per sample)
+            methylation_fractions_list,valid_cpgs_list = label_specifier_dict['cpg_handler'].load_cpg_batch(sample_list)
+            for idx,sample_valid_cpg_encoding in enumerate(valid_cpgs_list):
+                methylation_info_list[idx][:,3*label_specifier_dict['celltype_index']+2] = sample_valid_cpg_encoding
+
+            cpg_encodings_list = [
+                one_hot_encode_dna(dna_strand=sequence,cpg_methylation=cpg) 
+                for sequence,cpg in zip(
+                    sequence_list,
+                    methylation_fractions_list
+                )
+            ]
+            for idx,sample_cpg_encodings in enumerate(cpg_encodings_list):
+                methylation_info_list[idx][:,3*label_specifier_dict['celltype_index']:3*(label_specifier_dict['celltype_index']+1)-1] = sample_cpg_encodings[:,4:6]
+
+            for channel,label_handler in zip(
+                label_specifier_dict['indices'],
+                label_specifier_dict['label_handlers'],
+            ):
+                # load up the label columns for the specified channel
+                label_columns_list = label_handler.load_labels_batch(
+                    sample_list,
+                    gc_content_list
+                )
+                # Process label arrays to account for the masked multitask structure
+                for label_array,label_column in zip(label_list,label_columns_list):
+                    label_array[:,channel]=label_column    
+                # Generate corresponding masks
+                for mask_array in mask_list:
+                    mask_array[:,channel] = True
+
+        # print([np.sum(onehot,axis=0) for onehot in onehot_dna_list])
+        # print([np.sum(info,axis=0) for info in methylation_info_list])
+        # print([np.sum(label,axis=00) for label in label_list])
+        # print([np.sum(mask,axis=0) for mask in mask_list])
+        
+        with lock: # we need the lock so allow parallel threads to all write to the same output file
+            dataset_writer.write_chunk(
+                indices_list,
+                sample_specifier_list,
+                onehot_dna_list,
+                methylation_info_list,
                 label_list,
                 mask_list,
             )

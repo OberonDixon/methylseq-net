@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import gin
 from abc import ABC, abstractmethod
 import random
+from methylseqnet import tensor_ops
 
 # TODO: move over CpGSparsifier, EncodingSelector. Rename SmoothMethylation too. Keep old versions for now; obsolete at a later point
 
@@ -35,7 +36,8 @@ class LayerTransform(nn.Module):
     These transforms are applied within the pytorch model, as part of the computational graph and on the GPU. Use
     for more computationally heavy-lift tasks or tasks that only impact inputs.
     """
-
+    def __init__(self):
+        super().__init__()
     def forward(self):
         raise NotImplementedError("Subclasses must implement this method")
 
@@ -158,7 +160,105 @@ class SequenceJitter(LoaderTransform):
 
 @gin.configurable
 @gin.register
-class CpGSparsifier(nn.Module):
+class TrimOffEnds1d(LayerTransform):
+    """
+    TrimOffEnds1d will trim off the beginning and end of x along the sequence-length dimension and leave channels/sample untouched
+    """
+    def __init__(self,off_each_end):
+        super().__init__()
+        self.off_each_end=off_each_end
+    def forward(self,x):
+        if self.off_each_end: # if self.off_each_end if 0, None, or otherwise undefined, don't trim
+            return x[:,:,self.off_each_end:-self.off_each_end]
+        else:
+            return x
+
+@gin.configurable
+@gin.register
+class EncodingSelector(LayerTransform):
+    """
+    EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
+    different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
+
+    TODO: change to match:case statement
+    """
+    def __init__(self, encoding_str, window_size = 129):
+        super().__init__()
+        self.encoding_str = encoding_str
+        self.window_size = window_size
+        if self.encoding_str in [
+            'seq+methyl_binary-seq',
+            'seq+methyl_ACGTm-sum-to-1',
+            'seq+methyl_binarize-methyl',
+            'seq+interp-methyl+cpg-density',
+        ]:
+            self.channels = 7
+        elif self.encoding_str in ['seq+methyl_no-mask','seq+interp-methyl']:
+            self.channels = 6
+        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask','seq+smoothed-methyl']:
+            self.channels = 5
+        elif self.encoding_str in ['seq-only']:
+            self.channels = 4
+        elif self.encoding_str in ['stranded-methyl-with-mask']:
+            self.channels = 3
+        elif self.encoding_str in ['smoothed-methyl-only','interp-methyl-only']:
+            self.channels = 1
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+    def forward(self, x):
+        # the structure of the one-hot sequence coming in is [sample,(A,C,G,T,meth_fraction_fwd,meth_fraction_rev,valid_cpg),position]
+
+        if self.encoding_str == 'seq+methyl_binary-seq':
+            x = x
+        elif self.encoding_str == 'seq+methyl_no-mask':
+            x =  x[:,0:6,:]
+        elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
+            x = x.clone()
+            x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
+        elif self.encoding_str == 'seq+methyl_binarize-methyl':
+            x = x.clone()
+            x[:,4:6,:] = (x[:,4:6,:]>0.5)
+        elif self.encoding_str == 'seq+interp-methyl+cpg-density':
+            x = x.clone()
+            x[:,4:6,:] = tensor_ops.interpolate_stranded_methylation(x)
+            cpg_mask = x[:, 6, :] > 0
+            x[:,6,:] = tensor_ops.tensor_rolling_average(cpg_mask,self.window_size)
+        elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
+            x = x.clone()
+            x[:,4,:] = x[:,4,:] + x[:,5,:]
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq+smoothed-methyl':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            smoothed = tensor_ops.mask_normalized_rolling_average(input=methylation,mask=mask,window_size=self.window_size)
+            x = x.clone()
+            x[:,4,:] = smoothed
+            x = x[:,0:5,:]
+        elif self.encoding_str == 'seq-only':
+            x = x[:,0:4,:]
+        elif self.encoding_str == 'stranded-methyl-with-mask':
+            x = x[:,4:7,:]
+        elif self.encoding_str == 'smoothed-methyl-only':
+            mask = x[:,6,:]>0
+            methylation = x[:,4,:]+x[:,5,:]
+            smoothed = tensor_ops.mask_normalized_rolling_average(input=methylation,mask=mask,window_size=self.window_size)
+            x = x.clone()
+            x[:,4,:] = smoothed
+            x = x[:,4:5,:]
+        elif self.encoding_str == 'interp-methyl-only':
+            x = x.clone()
+            # for some reason tensor_ops.interpolate_collapsed_methylation isn't putting the tensor on the right device
+            x[:,4:5,:] = tensor_ops.interpolate_collapsed_methylation(x)
+            x = x[:,4:5,:]
+        else:
+            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
+
+        return x
+
+@gin.configurable
+@gin.register
+class CpGSparsifier(LayerTransform):
     """
     Randomly add sparsity to the CpG methylation input tracks, if available. By default this is only done at training
     time.
@@ -179,7 +279,7 @@ class CpGSparsifier(nn.Module):
         chunk_size=8, 
         training_only=True,
     ):
-        super(CpGSparsifier, self).__init__()
+        super().__init__()
         self.in_channels=in_channels
         self.remove_fracs=remove_fracs
         self.chunk_size=chunk_size
@@ -207,7 +307,7 @@ class SmoothMethylationTransform(nn.Module):
         Args:
             window_size (int): Size of the smoothing window. Should be odd to ensure a symmetric window.
         """
-        super(SmoothMethylationTransform,self).__init__()
+        super().__init__()
         self.window_size = window_size
 
     def smooth(self, methylation, mask):

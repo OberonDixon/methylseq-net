@@ -7,7 +7,9 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
-from methylseqnet.dataset import CustomH5Dataset
+from methylseqnet.dataset import MethylSeqDataset,MultiMethylDataset,EmbeddingsDataset,MultiDataset
+from methylseqnet.callbacks import HDF5PredictionWriter
+from methylseqnet.trainer import MethylSeqDataModule
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 import gin
@@ -21,6 +23,52 @@ from io import StringIO
 import ast
 import re
 from multiprocessing import Pool
+
+def run_dataset_save_h5(
+    model_path: str | Path,
+    dataset_path: str | Path | tuple[str,Path],
+    mode: str,
+    dataset_type: str,
+    output_path: str | Path,
+    gpus: int = 1,
+    num_workers: int = 4,
+):
+    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model.eval()
+    model.mode=mode
+    
+    match dataset_type:
+        case 'multimethyl-and-embeddings':
+            data_module = MethylSeqDataModule(
+                predict_dataset_file = dataset_path,
+                batch_size = 1,
+                dataset_class = MultiDataset,
+                num_workers = num_workers,
+            )
+        case 'methylseq':
+            data_module = MethylSeqDataModule(
+                predict_dataset_file = dataset_path,
+                batch_size = 1,
+                dataset_class = MethylSeqDataset,
+                num_workers = num_workers,
+            )
+    
+    data_module.setup(stage="predict")
+    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch")
+
+    trainer = Trainer(
+        accelerator="auto",
+        devices=gpus,
+        strategy="auto",
+        callbacks=[pred_writer],
+        logger=False,
+    )
+
+    trainer.predict(
+        model=model,
+        dataloaders=data_module,
+        return_predictions=False,
+    )
 
 def run_whole_dataset(
     model_path: str | Path,
@@ -53,7 +101,7 @@ def run_whole_dataset(
     
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
 
-    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
     
     trainer = Trainer(accelerator='gpu',**kwargs)
@@ -90,7 +138,7 @@ def run_whole_dataset_specify_dtype(
     
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path).to(device)
 
-    dataset = CustomH5Dataset(dataset_path,batch_size=batch_size)
+    dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
 
     layers = list(model.layers)
@@ -208,11 +256,12 @@ def write_channel_wrapper(args):
     return write_channel(*args)
 
 def run_whole_genome_write_methylation(
-    model_path,
+    model,
     ref_genome,
     output_directory,
     chunk_size=131072,
     early_stop=None,
+    trim_off_targets=None,
 ):
     import pysam
 
@@ -220,12 +269,12 @@ def run_whole_genome_write_methylation(
         os.makedirs(output_directory)
         
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.to(device)
     
     bin_size = model.total_stride
     targets_size = chunk_size//bin_size
-    trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
+    if trim_off_targets is None:
+        trim_off_targets = 2*model.crop_off_final + (not model.pad_all_layers)*(targets_size-((chunk_size-model.receptive_field+model.total_stride)//model.total_stride))
 
     io_mappings_df = model.get_io_mappings_df()
     output_file_paths_dict = {}
