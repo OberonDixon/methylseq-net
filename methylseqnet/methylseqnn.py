@@ -193,7 +193,6 @@ class MethylSeqNN(L.LightningModule):
             - residual-w/-pretrained-embeddings: run full residual model combined with pretrained output head from cached embeddings.
             - residual-only-w/-pretrained-embeddings: run only residual model, with cached embeddings available for concatenation.
         """
-
         match self.mode:
             # run both the pretrained and residual models, including their outputs heads. Full prediction.
             case 'full-model':
