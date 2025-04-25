@@ -8,6 +8,9 @@ from tqdm.auto import tqdm
 @gin.register
 @gin.configurable
 class DatasetWriter:
+    """
+    Write a dataset wherein each sample is only for one cell type and its associated tasks
+    """
     def __init__(
         self,
         seq_length: int,
@@ -169,6 +172,9 @@ class DatasetWriter:
 @gin.register
 @gin.configurable
 class MultiMethylWriter:
+    """
+    Writes a dataset containing sequence and methylation information for all cell types/states in a single sample
+    """
     def __init__(
         self,
         seq_length: int,
@@ -353,6 +359,9 @@ class MultiMethylWriter:
 @gin.register
 @gin.configurable
 class SeqEmbeddingsWriter:
+    """
+    Writes a dataset containing pretrained model embeddings
+    """
     def __init__(
         self, 
         embeddings_shape, 

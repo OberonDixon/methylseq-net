@@ -814,6 +814,8 @@ class MethylAtacAtlases(MultitaskIOHandler):
 
     It relies on a match_file tab-separated values table. Currently it is a bit hardcoded to look at .hg38.bigwig methylation
     files and Adult .bw ATAC-seq files, but the intent is to increase its flexibility in the future.
+
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
     """
     def __init__(
             self,
@@ -1027,6 +1029,9 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MethylAtacCageAtlases(MultitaskIOHandler):
+    """
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
+    """
     def __init__(
             self,
             ref_genome,
@@ -1594,6 +1599,9 @@ class BedMethylIO(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
+    """
+    TODO: consider an option to preserve a fixed task structure rather than rebuilding each time
+    """
     def __init__(
             self,
             ref_genome,

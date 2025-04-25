@@ -165,7 +165,7 @@ class TrimOffEnds1d(LayerTransform):
     TrimOffEnds1d will trim off the beginning and end of x along the sequence-length dimension and leave channels/sample untouched
     """
     def __init__(self,off_each_end):
-        super(TrimOffEnds1d,self).__init__()
+        super().__init__()
         self.off_each_end=off_each_end
     def forward(self,x):
         if self.off_each_end: # if self.off_each_end if 0, None, or otherwise undefined, don't trim
@@ -179,9 +179,11 @@ class EncodingSelector(LayerTransform):
     """
     EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
     different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
+
+    TODO: change to match:case statement
     """
     def __init__(self, encoding_str, window_size = 129):
-        super(EncodingSelector,self).__init__()
+        super().__init__()
         self.encoding_str = encoding_str
         self.window_size = window_size
         if self.encoding_str in [
@@ -277,7 +279,7 @@ class CpGSparsifier(LayerTransform):
         chunk_size=8, 
         training_only=True,
     ):
-        super(CpGSparsifier, self).__init__()
+        super().__init__()
         self.in_channels=in_channels
         self.remove_fracs=remove_fracs
         self.chunk_size=chunk_size
@@ -305,7 +307,7 @@ class SmoothMethylationTransform(nn.Module):
         Args:
             window_size (int): Size of the smoothing window. Should be odd to ensure a symmetric window.
         """
-        super(SmoothMethylationTransform,self).__init__()
+        super().__init__()
         self.window_size = window_size
 
     def smooth(self, methylation, mask):

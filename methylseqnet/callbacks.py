@@ -13,8 +13,11 @@ class HDF5PredictionWriter(BasePredictionWriter):
         self.pred_counter = 0
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
+        # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
         rank = trainer.global_rank
-        path = os.path.join(self.output_dir, f"predictions_rank{rank}.h5")
+        if rank!=0:
+            raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
+        path = os.path.join(self.output_dir, f"predictions.h5")
 
         if path not in self.file_handles:
             self.file_handles[path] = h5py.File(path, "w")

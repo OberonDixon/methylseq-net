@@ -249,12 +249,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        # option to only train on sites with peaks over threshold in some cell types
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
             self.log("train/sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
+        # mask out tasks that aren't relevant to sample
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask & active_pos_mask]
@@ -293,12 +295,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        # option to only train on sites with peaks over threshold in some cell types
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
             self.log("val/sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
+        # mask out tasks that aren't relevant to sample
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask & active_pos_mask]
@@ -337,12 +341,14 @@ class MethylSeqNN(L.LightningModule):
         targets = self.trim_targets(inputs,targets)
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()
+        # option to only train on sites with peaks over threshold in some cell types
         if self.peak_subset_threshold:
             active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
             fraction_true = active_pos_mask.float().mean().item()
             # self.log("test_sites",fraction_true)
         else:
             active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
+        # mask out tasks that aren't relevant to sample
         if mask is not None:
             mask = self.trim_targets(inputs,mask)
             outputs = outputs[mask & active_pos_mask]

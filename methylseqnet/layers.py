@@ -16,7 +16,7 @@ class EncodingAdjuster(nn.Module):
     different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
     """
     def __init__(self, encoding_str):
-        super(EncodingAdjuster,self).__init__()
+        super().__init__()
         warnings.warn(
             "The EncodingAdjuster class in layers.py is deprecated and will be removed in a future release. "
             "Please use transforms.py::EncodingSelector instead.",
@@ -91,7 +91,7 @@ class EncodingAdjuster(nn.Module):
 @gin.register
 class MethylationDropout(nn.Module):
     def __init__(self, in_channels, dropout=0.2, chunk_size=1, inverted=False):
-        super(MethylationDropout, self).__init__()
+        super().__init__()
         warnings.warn(
             "The MethylationDropout class in layers.py is deprecated and will be removed in a future release. "
             "Please use transforms.py::CpGSparsifier instead.",
@@ -119,7 +119,7 @@ class MethylationDropout(nn.Module):
 @gin.register
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1, pool_class=nn.MaxPool1d):
-        super(ConvDNA, self).__init__()
+        super().__init__()
         self.in_channels=in_channels
         self.kernel_size=kernel_size
         self.pool_size=pool_size
@@ -144,7 +144,7 @@ class ConvDNA(nn.Module):
 @gin.register
 class ConvTower(nn.Module):
     def __init__(self, in_channels, filters_init, filters_end, divisible_by, kernel_size, pool_size, repeat, weight_decay=0, pad=False):
-        super(ConvTower, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.pool_size = pool_size
         self.repeat = repeat
@@ -173,7 +173,7 @@ class ConvTower(nn.Module):
 @gin.register
 class ConvBlock(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0, pad=False):
-        super(ConvBlock, self).__init__()
+        super().__init__()
         self.kernel_size=kernel_size
         self.dilation=dilation
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=(kernel_size -1) // 2 if pad else 0)
@@ -197,7 +197,7 @@ class DilatedResidual(nn.Module):
             dropout=0.3, 
             pad=False,
             ):
-        super(DilatedResidual, self).__init__()
+        super().__init__()
         self.layers = nn.ModuleList()
         self.filters = filters
         self.kernel_size = kernel_size
@@ -254,7 +254,7 @@ class DilatedResidual(nn.Module):
 @gin.register
 class ConvDropout(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, dropout, weight_decay=0, pad=False):
-        super(ConvDropout, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, padding = (kernel_size -1)//2 if pad else 0)
         self.dropout = nn.Dropout(dropout)
@@ -281,7 +281,7 @@ class ConvFinal(nn.Module):
         init_weight=None,
         init_bias=None,
     ):
-        super(ConvFinal, self).__init__()
+        super().__init__()
         self.kernel_size = kernel_size
         self.filters = filters
         self.pool_size = pool_size
