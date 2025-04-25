@@ -571,8 +571,8 @@ class MethylSeqNN(L.LightningModule):
     def _check_x_attributes(self, x):
         if isinstance(x,tuple):
             raise ValueError(f"MethylSeqNN.mode='{self.mode}' does not support MultiDataset tuple inputs; use a forward mode designed for your dataset class.")
-        if x.dim!=3:
-            raise ValueError("MethylSeqNN.forward requires a methylseq_input (first or only element of x) with three dimensions: (N,C,L).")
+        if x.dim()!=3:
+            raise ValueError(f"MethylSeqNN.forward requires a methylseq_input (first or only element of x) with three dimensions: (N,C,L). Found {x.dim()}")
         if x.shape[1]<7:
             raise ValueError(f"Forward passes for MethylSeqNN require that methylseq_input have (first or only element of x) 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}") 
     
