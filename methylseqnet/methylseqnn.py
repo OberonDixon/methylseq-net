@@ -377,10 +377,10 @@ class MethylSeqNN(L.LightningModule):
         return loss
 
     def predict_step(self, batch, batch_idx):
-        inputs, targets, mask = batch
+        inputs, targets, mask, specifiers = batch
         outputs = self(inputs)
         self.hooked_activations.clear()
-        return outputs
+        return {"predictions":outputs, "specifiers":specifiers}
     
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay

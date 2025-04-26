@@ -68,6 +68,7 @@ class MethylSeqDataModule(LightningDataModule):
                 self.predict_dataset = self.dataset_class(
                     self.predict_dataset_file,
                     batch_size=None,
+                    return_specifiers=True,
                 )
 
     def train_dataloader(self):
@@ -84,6 +85,16 @@ class MethylSeqDataModule(LightningDataModule):
         if self.predict_dataset_file is None:
             raise ValueError("Prediction dataset is not set. Provide `predict_dataset_file`.")
         return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
+
+    def get_io_mappings_str(self):
+        if hasattr(self,"train_dataset"):
+            return self.train_dataset.get_io_mappings_str()
+        elif hasattr(self,"val_dataset"):
+            return self.val_dataset.get_io_mappings_str()
+        elif hasattr(self,"predict_dataset"):
+            return self.predict_dataset.get_io_mappings_str()
+        else:
+            return ''
 
 # def print_random_seed_and_trainer_info(trainer, model):
 #     # Print the random seed being used (if set)

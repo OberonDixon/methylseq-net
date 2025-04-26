@@ -5,9 +5,15 @@ from lightning.pytorch.callbacks import BasePredictionWriter, Callback
 import torch
 
 class HDF5PredictionWriter(BasePredictionWriter):
-    def __init__(self, output_dir, write_interval="batch"):
+    def __init__(
+        self, 
+        output_dir, 
+        write_interval="batch",
+        io_mappings_str="",
+    ):
         super().__init__(write_interval)
         self.output_dir = output_dir
+        self.io_mappings_str=io_mappings_str
         os.makedirs(output_dir, exist_ok=True)
         self.file_handles = {}
         self.pred_counter = 0
@@ -19,21 +25,31 @@ class HDF5PredictionWriter(BasePredictionWriter):
             raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
         path = os.path.join(self.output_dir, f"predictions.h5")
 
+        predictions = prediction["predictions"]
+        specifiers = prediction["specifiers"]
+        pred_shape = predictions.shape[1:]
+        
         if path not in self.file_handles:
             self.file_handles[path] = h5py.File(path, "w")
-            self.file_handles[path].create_dataset("predictions", shape=(0, *prediction.shape[1:]), maxshape=(None, *prediction.shape[1:]), chunks=True)
+            self.file_handles[path].create_dataset("predictions", shape=(0, *pred_shape), maxshape=(None, *pred_shape), chunks=True)
             self.file_handles[path].create_dataset("indices", shape=(0,), maxshape=(None,), dtype="i8", chunks=True)
+            self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
+            self.file_handles[path].attrs['io_mappings'] = self.io_mappings_str
 
         f = self.file_handles[path]
-        n = prediction.shape[0]
+        batch_indices = np.array(batch_indices)
+        predictions_np = predictions.detach().cpu().numpy()
         curr_size = f["predictions"].shape[0]
 
         # Resize datasets
-        f["predictions"].resize(curr_size + n, axis=0)
-        f["predictions"][curr_size:curr_size + n] = prediction.detach().cpu().numpy()
+        f["predictions"].resize(max(curr_size,max(batch_indices)+1), axis=0)
+        f["predictions"][batch_indices] = predictions_np
 
-        f["indices"].resize(curr_size + n, axis=0)
-        f["indices"][curr_size:curr_size + n] = np.array(batch_indices)
+        f["indices"].resize(max(curr_size,max(batch_indices)+1), axis=0)
+        f["indices"][batch_indices] = batch_indices
+
+        f["specifier"].resize(max(curr_size,max(batch_indices)+1), axis=0)
+        f["specifier"][batch_indices] = specifiers
 
     def on_predict_end(self, trainer, pl_module):
         self._close_all()

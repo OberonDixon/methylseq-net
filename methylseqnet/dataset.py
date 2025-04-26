@@ -318,6 +318,8 @@ class SingleH5Dataset(Dataset):
         self.dataset_name = dataset_name
         self.max_retries = 100
         self.retry_delay = 2
+        self.batch_size = batch_size
+        self.return_specifiers = return_specifiers
 
         # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
         self.file_path = create_virtual_h5_with_attributes(self.file_paths)
@@ -327,13 +329,30 @@ class SingleH5Dataset(Dataset):
             self.length = len(f[self.dataset_name])
             
     def __len__(self):
-        return self.length
+        if self.batch_size is not None:
+            return (self.length + self.batch_size -1) // self.batch_size
+        else:
+            return self.length
         
     def __getitem__(self, idx):
+        start_idx = idx * self.batch_size if self.batch_size else idx
+        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
-                with h5py.File(self.file_path, 'r') as f:        
-                    return torch.tensor(f[self.dataset_name][idx], dtype=torch.float32)
+                with h5py.File(self.file_path, 'r') as f: 
+                    data = torch.tensor(f[self.dataset_name][idx], dtype=torch.float32)
+                    if self.batch_size is None:
+                        data = data.squeeze(0)
+                    if self.return_specifiers:
+                        # try:
+                        specifiers = f['specifier'].asstr()[start_idx:end_idx]
+                        # except:
+                        #     specifiers = np.array(['' for _ in range(data.shape[0])])
+                        if self.batch_size is None:
+                            specifiers = specifiers[0]
+                        return data, None, None, specifiers
+                    else:
+                        return data
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)

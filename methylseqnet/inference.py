@@ -54,7 +54,7 @@ def run_dataset_save_h5(
             )
     
     data_module.setup(stage="predict")
-    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch")
+    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch",io_mappings_str=data_module.get_io_mappings_str())
 
     trainer = Trainer(
         accelerator="auto",
