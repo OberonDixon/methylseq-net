@@ -47,6 +47,116 @@ class LayerTransform(nn.Module):
 
 @gin.register
 @gin.configurable
+class CenteredSyntheticCpG(LoaderTransform):
+    def __init__(self, window_size, center_cpg_frac, background_cpg_frac=None):
+        """
+        Apply a synthetic methylation landscape with one methylation fraction in a centered window 
+        in the middle of the input sequence and another fraction along the rest of the sequence. 
+
+        Returned input tensor will provide info for all CpG sites within the center window and 
+        also in the background if background_cpg_frac is not None.
+
+        Args:
+            window_size: the size of the window, in bp, that will get center_cpg_frac. window_size//2 in each
+                direction from seq_len//2
+            center_cpg_frac: a fraction between 0 and 1 for how methylated CpGs in the window will be
+            background_cpg_frac: fraction between 0 and 1 OR None. If None, background methylation landscape is
+                left unchanged. If float, landscape at all background CpGs set to background_cpg_frac.
+        """
+        self.window_size = window_size
+        self.center_cpg_frac = center_cpg_frac
+        self.background_cpg_frac = background_cpg_frac
+    def __call__(self, input, target, mask):
+        """
+        Args:
+            input (torch.Tensor): Input tensor of shape (num_samples, num_channels, seq_length) or
+                unbatched tensor (num_channels, seq_length)
+            target (torch.Tensor): Target tensor of shape (sample, task_idx, position) or
+                unbatched tensor (num_channels, seq_length)
+            mask (torch.Tensor): Mask tensor of shape (sample, task_idx, position) or
+                unbatched tensor (num_channels, seq_length)
+        Returns:
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Transformed input, target, and mask.
+        """
+        input = input.clone()
+
+        if input.dim()==3:
+            for i in range(input.shape[0]):  # loop over samples
+                input[i] = self._apply_synthetic(input[i])
+        elif input.dim()==2:
+            input = self._apply_synthetic(input)
+
+        return input, target, mask
+
+    def _apply_synthetic(self,seq):
+        seq_len = seq.shape[-1]
+        center = seq_len // 2
+        half_window = self.window_size // 2
+        window_start = max(center - half_window, 0)
+        window_end = min(center + half_window, seq_len)
+
+        # First apply center_cpg_frac to center window
+        self._apply_synthetic_to_window(seq, (window_start, window_end), self.center_cpg_frac)
+
+        # Then apply background_cpg_frac outside window if specified
+        if self.background_cpg_frac is not None:
+            if window_start > 0:
+                self._apply_synthetic_to_window(seq, (0, window_start), self.background_cpg_frac)
+            if window_end < seq_len:
+                self._apply_synthetic_to_window(seq, (window_end, seq_len), self.background_cpg_frac)
+
+        return seq
+        
+    def _apply_synthetic_to_window(self, seq, window, frac):
+        """
+        Apply a methylation fraction to input tensor seq, all methylation channels, within window (start,end)
+        Args:
+            seq (torch.Tensor): (num_channels, seq_length)
+            window (Tuple[int,int]): (start, end) indices
+            frac (float): fraction between 0 and 1
+        """
+        start, end = window
+        channels = seq.shape[0]
+        seq_len = seq.shape[-1]
+
+        if (channels - 4) % 3 != 0:
+            raise ValueError(
+                f"Unexpected number of channels ({channels}); expected 4 + 3*N channels "
+                "with ACGT first, followed by (mC, mG, CpG_indicator) triplets."
+            )
+
+        C_channel = 1
+        G_channel = 2
+    
+        padded_start = max(start - 1, 0)
+        padded_end = min(end + 1, seq_len)
+    
+        is_C_full = seq[C_channel, padded_start:padded_end] > 0.5
+        is_G_full = seq[G_channel, padded_start:padded_end] > 0.5
+    
+        cpg_sites_full = is_C_full[:-1] & is_G_full[1:]
+    
+        cpg_mask_full = torch.zeros(padded_end - padded_start, dtype=torch.bool, device=seq.device)
+        cpg_mask_full[:-1] |= cpg_sites_full  # mark 'C' position
+        cpg_mask_full[1:]  |= cpg_sites_full  # mark 'G' position
+    
+        offset = start - padded_start  # offset to align window inside padded
+        cpg_mask = cpg_mask_full[offset:offset + (end - start)]
+        is_C = is_C_full[offset:offset + (end - start)]
+        is_G = is_G_full[offset:offset + (end - start)]
+    
+        for base_channel in range(6, channels, 3):
+            mC_channel = base_channel - 2
+            mG_channel = base_channel - 1
+            CpG_channel = base_channel
+    
+            seq[CpG_channel, start:end][cpg_mask] = 1.0
+    
+            seq[mC_channel, start:end][cpg_mask & is_C] = frac
+            seq[mG_channel, start:end][cpg_mask & is_G] = frac
+        
+@gin.register
+@gin.configurable
 class ReverseComplement(LoaderTransform):
     def __init__(self, probability=0.5, batch_wise=True):
         """
