@@ -11,7 +11,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=10-10 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=11-12 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 #SBATCH --exclude=n0386.savio4
 # exclude node 386 temporarily because it has a hardware issue
 # Command(s) to run:
@@ -28,6 +28,8 @@ CONFIG_FILES=(
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-final-cotrain38.gin"
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset-cotrain38.gin"
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-penult-cotrain38.gin"
+    "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basenji_concat-emb-twice.gin"
+    "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-twice.gin"
 )
 
 START_CHECKPOINT="slurm23966228task0"

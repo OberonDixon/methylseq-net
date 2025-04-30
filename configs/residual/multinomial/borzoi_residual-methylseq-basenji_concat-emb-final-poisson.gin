@@ -46,6 +46,8 @@ seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 methylseq_model/methylseqnet.layers.ConvFinal.in_channels=3456 #1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
+methylseq_model/methylseqnet.layers.ConvFinal.init_weight=0
+methylseq_model/methylseqnet.layers.ConvFinal.init_bias=0.542
 
 methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
