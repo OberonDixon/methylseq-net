@@ -43,6 +43,7 @@ class MethylSeqNN(L.LightningModule):
         pad_all_layers=False,
         crop_off_sequence=None,
         crop_off_final=None, # consider adjusted this name to be more clearly about how much is cropped off. Also, can't be zero??
+        
         # Training schedule and stage-specific config
         train_stages={},
         residual_activation_loss_weight=0,
@@ -244,143 +245,74 @@ class MethylSeqNN(L.LightningModule):
                 raise ValueError(f"Invalid MethylSeqNN.mode='{self.mode}'. Check documentation for valid modes.")
     
     def training_step(self,batch,batch_idx):
-        inputs, targets, mask = batch
-        outputs = self(inputs)  
-        targets = self.trim_targets(inputs,targets)
-        if not self.regression:
-            targets = (targets>self.label_threshold_cts).float()
-        # option to only train on sites with peaks over threshold in some cell types
-        if self.peak_subset_threshold:
-            active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
-            fraction_true = active_pos_mask.float().mean().item()
-            self.log("train/sites",fraction_true)
-        else:
-            active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
-        # mask out tasks that aren't relevant to sample
-        if mask is not None:
-            mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask & active_pos_mask]
-            targets = targets[mask & active_pos_mask]
-        else:
-            outputs = outputs[active_pos_mask]
-            targets = targets[active_pos_mask]  
-        if mask is None or mask.any():
-            loss = self.prediction_criterion(outputs, targets)
-            self.log("train/prediction_loss",loss)
-        else:
-            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
-        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
-            residual_activations = self.hooked_activations[id(self.layers[-1])]
-            residual_activations_loss = self.activation_criterion(residual_activations)
-            loss = loss + self.residual_activation_loss_weight * residual_activations_loss
-            self.log("train/residual_activations_loss",residual_activations_loss)
-        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
-            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
-            if mask is not None:
-                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
-            else:
-                seq_only_predictions = seq_only_predictions[active_pos_mask]
-            if mask is None or mask.any():
-                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
-                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
-                self.log("train/seq_only_prediction_loss",seq_only_prediction_loss)          
-        self.log("train/loss", loss)
-        self.hooked_activations.clear()
-        return loss  
+        return self._shared_step(batch,batch_idx,"train") 
 
     def validation_step(self, batch, batch_idx):
-        inputs, targets, mask = batch
-        outputs = self(inputs)  
-        targets = self.trim_targets(inputs,targets)
-        if not self.regression:
-            targets = (targets>self.label_threshold_cts).float()
-        # option to only train on sites with peaks over threshold in some cell types
-        if self.peak_subset_threshold:
-            active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
-            fraction_true = active_pos_mask.float().mean().item()
-            self.log("val/sites",fraction_true)
-        else:
-            active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
-        # mask out tasks that aren't relevant to sample
-        if mask is not None:
-            mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask & active_pos_mask]
-            targets = targets[mask & active_pos_mask]
-        else:
-            outputs = outputs[active_pos_mask]
-            targets = targets[active_pos_mask]
-        if mask is None or mask.any():
-            loss = self.prediction_criterion(outputs, targets)
-            self.log("val/prediction_loss",loss)
-        else:
-            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
-        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
-            residual_activations = self.hooked_activations[id(self.layers[-1])]
-            residual_activations_loss = self.activation_criterion(residual_activations)
-            loss = loss + self.residual_activation_loss_weight * residual_activations_loss
-            self.log("val/residual_activations_loss",residual_activations_loss)
-        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
-            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
-            if mask is not None:
-                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
-            else:
-                seq_only_predictions = seq_only_predictions[active_pos_mask]
-            if mask is None or mask.any():
-                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
-                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
-                self.log("val/seq_only_prediction_loss",seq_only_prediction_loss)
-        self.log("val/loss", loss)
-        self.hooked_activations.clear()
-        return loss
+        return self._shared_step(batch,batch_idx,"val")  
         
     def test_step(self, batch, batch_idx):
-        inputs, targets, mask = batch
-        outputs = self(inputs)
-        targets = self.trim_targets(inputs,targets)
-        if not self.regression:
-            targets = (targets>self.label_threshold_cts).float()
-        # option to only train on sites with peaks over threshold in some cell types
-        if self.peak_subset_threshold:
-            active_pos_mask = (targets > self.peak_subset_threshold).any(dim=1)
-            fraction_true = active_pos_mask.float().mean().item()
-            # self.log("test_sites",fraction_true)
-        else:
-            active_pos_mask = torch.full_like(targets, True, dtype=torch.bool)
-        # mask out tasks that aren't relevant to sample
-        if mask is not None:
-            mask = self.trim_targets(inputs,mask)
-            outputs = outputs[mask & active_pos_mask]
-            targets = targets[mask & active_pos_mask]
-        else:
-            outputs = outputs[active_pos_mask]
-            targets = targets[active_pos_mask]
-        if mask is None or mask.any():
-            loss = self.prediction_criterion(outputs, targets)
-        else:
-            print(f"Fully masked for batch {batch_idx}. No gradients to compute.")
-            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
-        if self.residual_activation_loss_weight!=0 and id(self.layers[-1]) in self.hooked_activations:
-            residual_activations = self.hooked_activations[id(self.layers[-1])]
-            loss = loss + self.residual_activation_loss_weight * self.activation_criterion(residual_activations)
-        if self.seq_only_loss_weight!=0 and id(self.seq_output_head[-1]) in self.hooked_activations:
-            seq_only_predictions = self.hooked_activations[id(self.seq_output_head[-1])]
-            if mask is not None:
-                seq_only_predictions = seq_only_predictions[mask & active_pos_mask]
-            else:
-                seq_only_predictions = seq_only_predictions[active_pos_mask]
-            if mask is None or mask.any():
-                seq_only_prediction_loss = self.seq_only_prediction_criterion(seq_only_predictions,targets)
-                loss = loss + self.seq_only_loss_weight * seq_only_prediction_loss
-        self.hooked_activations.clear()
-        return loss
+        return self._shared_step(batch,batch_idx,None)  
 
     def predict_step(self, batch, batch_idx):
         inputs, targets, mask, specifiers = batch
         outputs = self(inputs)
         self.hooked_activations.clear()
         return {"predictions":outputs, "specifiers":specifiers}
+
+    def _shared_step(self, batch, batch_idx, log_descriptor):
+        inputs, targets, mask = batch
+        outputs = self(inputs)  
+        targets = self.trim_targets(inputs,targets)
+        # mask out tasks that aren't relevant to sample
+        if mask is not None:
+            mask = self.trim_targets(inputs,mask) 
+            
+        if not self.regression:
+            targets = (targets>self.label_threshold_cts).float()
+            
+        # option to only train on sites with peaks over threshold in some cell types. If thresh is zero, keep all are active
+        active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1)
+        fraction_true = active_pos_mask.float().mean().item()
+        if log_descriptor:
+            self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
+        effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
+
+        loss = (
+            self._apply_masked_loss(
+                self.prediction_criterion,
+                    (outputs,targets),
+                    mask=effective_mask,
+                    weight=1,
+                    log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
+                )
+            + self._apply_masked_loss(
+                self.activation_criterion,
+                (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones(1),),
+                mask=None,
+                weight=self.residual_activation_loss_weight,
+                log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+            )
+            + self._apply_masked_loss(
+                self.seq_only_prediction_criterion,
+                (self.hooked_activations[id(self.seq_output_head[-1])],targets) if id(self.seq_output_head[-1]) in self.hooked_activations else (targets,targets),
+                mask=effective_mask,
+                weight=self.seq_only_loss_weight,
+                log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+            )
+        )
+        if log_descriptor:
+            self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
+        self.hooked_activations.clear()
+        return loss        
+
+    def _apply_masked_loss(self,loss_fn,args,mask=None,weight=1,log_name=None):
+        if weight==0 or (mask is not None and not mask.any()):
+            loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
+        else:
+            loss = loss_fn(*args,mask=mask)
+            if log_name:
+                self.log(log_name,loss,sync_dist=True)            
+        return weight*loss
     
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay
