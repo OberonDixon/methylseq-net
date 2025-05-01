@@ -1,5 +1,8 @@
 import importlib
 from collections import defaultdict
+import inspect
+import logging
+logger = logging.getLogger(__name__)
 
 import torch
 import torch.nn as nn
@@ -303,15 +306,15 @@ class MethylSeqNN(L.LightningModule):
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
         self.hooked_activations.clear()
-        return loss        
+        return loss     
 
     def _apply_masked_loss(self,loss_fn,args,mask=None,weight=1,log_name=None):
         if weight==0 or (mask is not None and not mask.any()):
             loss = sum(param.sum() * 0.0 for param in self.parameters() if param.requires_grad)
         else:
             loss = loss_fn(*args,mask=mask)
-            if log_name:
-                self.log(log_name,loss,sync_dist=True)            
+        if log_name:
+            self.log(log_name,loss,sync_dist=True)            
         return weight*loss
     
     def configure_optimizers(self):
@@ -370,12 +373,7 @@ class MethylSeqNN(L.LightningModule):
         if self.start_epoch > 0:
             # this lets us start at a specified epoch (relevant especially for epoch-based stage-wise training)
             self.trainer.fit_loop.epoch_progress.current.completed = self.start_epoch
-            self.trainer.fit_loop.epoch_progress.current.processed = self.start_epoch            
-    
-    def on_test_epoch_start(self):
-        self.test_targets_list = []
-        self.test_outputs_list = []
-        return         
+            self.trainer.fit_loop.epoch_progress.current.processed = self.start_epoch      
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["operative_config_str"] = gin.operative_config_str()

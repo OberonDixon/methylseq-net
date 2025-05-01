@@ -24,6 +24,7 @@ from lightning.pytorch.loggers import WandbLogger
 from lightning.pytorch import Trainer, seed_everything
 import signal
 import pprint
+import logging
 
 os.environ["SLURM_JOB_NAME"] = "interactive"
 
@@ -132,7 +133,8 @@ def main(
     gpus,
     batch_size,
     start_from_checkpoint,
-    debug_mode = False,
+    no_wandb = False,
+    no_checkpoints = False,
 ):
     """
     Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
@@ -195,7 +197,7 @@ def main(
         print(f"Starting training from scratch.")
         checkpoint_to_use = None    
         
-    if not debug_mode:
+    if not no_wandb:
         logger = WandbLogger(
             save_dir=model_dir,
             name=f"{Path(config).stem}_{unique_identifier}",
@@ -204,22 +206,26 @@ def main(
     else:
         logger = None
 
-    # Temporary checkpoint written every epoch
-    temp_checkpoint = ModelCheckpoint(
-        dirpath=model_dir/'checkpoints',
-        filename='temp-checkpoint',           # Fixed name for overwriting
-        save_top_k=1,                         # Keep only the latest checkpoint
-        save_on_train_epoch_end=True, 
-    )   
-    # Best validation checkpoint, tracked separately
-    best_val_checkpoint = ModelCheckpoint(
-        dirpath=model_dir/'checkpoints',
-        monitor='val/loss',                   # Metric to track for "best" checkpoint
-        mode='min',                           # Minimize validation loss (or 'max' if you're maximizing a metric)
-        save_top_k=1,                         # Save the best checkpoint only
-        filename='best-checkpoint',           # Name for the best checkpoint
-        save_last=False                       # Don't save a 'last' checkpoint
-    )
+    if not no_checkpoints:
+        # Temporary checkpoint written every epoch
+        temp_checkpoint = ModelCheckpoint(
+            dirpath=model_dir/'checkpoints',
+            filename='temp-checkpoint',           # Fixed name for overwriting
+            save_top_k=1,                         # Keep only the latest checkpoint
+            save_on_train_epoch_end=True, 
+        )   
+        # Best validation checkpoint, tracked separately
+        best_val_checkpoint = ModelCheckpoint(
+            dirpath=model_dir/'checkpoints',
+            monitor='val/loss',                   # Metric to track for "best" checkpoint
+            mode='min',                           # Minimize validation loss (or 'max' if you're maximizing a metric)
+            save_top_k=1,                         # Save the best checkpoint only
+            filename='best-checkpoint',           # Name for the best checkpoint
+            save_last=False                       # Don't save a 'last' checkpoint
+        )
+        callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()]
+    else:
+        callbacks = [GPUMemoryLogger()]
     
     if model.train_stages:
         epochs_elapsed = 0
@@ -259,7 +265,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()],
+                    callbacks = callbacks,
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -278,7 +284,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             epochs_elapsed+=stage_dict["epochs"]
     else:
         trainer = Trainer(
-            callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()],
+            callbacks = callbacks,
             default_root_dir=model_dir,
             logger=logger,
             accelerator='auto', 
@@ -300,6 +306,22 @@ if __name__ == '__main__':
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
-    parser.add_argument('--debug-mode', action='store_true', help='Run in debug mode: no logs, no checkpoints, no WandB.')
+    parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
+    parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
+    parser.add_argument(
+        "--logging-level",
+        type=str,
+        default="INFO",
+        choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "NOTSET"],
+        help="Set the logging level"
+    )
     args = parser.parse_args()
-    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint,args.debug_mode)
+
+    level = getattr(logging, args.logging_level.upper(), logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S"
+    )
+    
+    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint,args.no_wandb,args.no_checkpoints)

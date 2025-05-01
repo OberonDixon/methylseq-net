@@ -3,6 +3,8 @@ import torch.nn as nn
 import gin
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
+import logging
+logger = logging.getLogger(__name__)
 
 class MaskedLoss(nn.Module, ABC):
     def __init__(self):
@@ -51,6 +53,8 @@ class BCELoss(MaskedLoss):
         if mask is not None:
             return (loss * mask.float()).sum() / (mask.float().sum() + self.eps)
         else:
+            loss = loss.mean()
+            logging.debug(f"{self.__class__.__name__} running without a mask, calculated {loss.item()}")
             return loss.mean()
 
 @gin.register
@@ -90,6 +94,7 @@ class PoissonMultinomialLoss(MaskedLoss):
 
         if mask is None:
             mask = torch.ones_like(predictions, dtype=torch.bool)
+            logging.debug(f"{self.__class__.__name__} running without a mask; setting mask to all True.")
         mask_float = mask.float()
 
         # ---------- Poisson Term ----------
