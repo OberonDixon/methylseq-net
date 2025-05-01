@@ -43,7 +43,7 @@ seq_model/methylseqnet.layers.ConvFinal.shared_head=False
 seq_model/methylseqnet.layers.ConvFinal.filters=63
 seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 
-methylseq_model/methylseqnet.layers.ConvFinal.in_channels=3456 #1536
+methylseq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 methylseq_model/methylseqnet.layers.ConvFinal.init_weight=0
@@ -53,10 +53,17 @@ methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 methylseqnet.losses.PoissonMultinomialLoss.poisson_weight=1.0
-methylseqnet.losses.PoissonMultinomialLoss.multinomial_weight=0.05
+methylseqnet.losses.PoissonMultinomialLoss.multinomial_weight=0.01
 methylseqnet.losses.PoissonMultinomialLoss.spatial=True
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [@methylseq_model/EncodingSelector,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
+methylseqnet.methylseqnn.MethylSeqNN.layers = [
+    @methylseq_model/EncodingSelector,
+    @ConvDNA,@ConvTower,
+    @DilatedResidual,
+    @ConvBlock,
+    @methylseq_model/ConvFinal,
+    @Softplus,
+]
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
 methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingSelector]
@@ -81,6 +88,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'pretrained_seq_model':False,
                     'seq_input_head':False,
                     'seq_output_head':False,
+                    
                 },
                 'epochs':20
             },
@@ -90,9 +98,6 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
-methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={
-    -2:4,
-}
 methylseqnet.methylseqnn.MethylSeqNN.prediction_criterion=@PoissonMultinomialLoss
 
 methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)
