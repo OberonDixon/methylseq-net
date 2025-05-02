@@ -168,7 +168,7 @@ def main(
     # may be useful when trying different datasets, etc
     try:
         dataset = data_module.dataset_class(data_module.train_dataset_file)
-        model.io_mappings_str = dataset.get_io_mappings_str()
+        model.set_io_mappings(dataset.get_io_mappings_str())
     except AttributeError:
         print(f"No 'io_mappings' attribute found in {data_module.train_dataset_file}.")
     

@@ -489,9 +489,39 @@ class MethylSeqNN(L.LightningModule):
     
         return receptive_field,total_stride
 
+    def set_io_mappings(self,io_mappings_str):
+        self.io_mappings_str = io_mappings_str
+        subsets = self.get_loss_subsets_from_io_mappings()
+        self.apply_subsets_to_losses(subsets)
+    
     def get_io_mappings_df(self):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
         return io_mappings_df
+
+    def apply_subsets_to_losses(self, subsets: list[list[int]]):
+        """
+        Find all PoissonMultinomialLoss modules in the model and assign `subsets`
+        if `subsetted` is True.
+        """
+        for name, module in self.named_modules():
+            if module.__class__.__name__ == "PoissonMultinomialLoss":
+                if getattr(module, "subsetted", False):
+                    module.subsets = subsets
+                    logger.debug(f"Assigned subsets to PoissonMultinomialLoss module: {name}")
+                else:
+                    logger.debug(f"Skipped {name}: subsetted is False")
+    
+    def get_loss_subsets_from_io_mappings(self):
+        io_mappings_df = self.get_io_mappings_df()
+        subsets = []
+        for data_type in io_mappings_df["data_type"].unique():
+            channels = (
+                io_mappings_df.loc[io_mappings_df["data_type"] == data_type, "channel"]
+                .astype(int)  # ensure it's int not object
+                .tolist()
+            )
+            subsets.append(channels)
+        return subsets
 
     def _split_multidataset_input(self, x, split_mode='(methylseq_input,embeddings)'):
         match split_mode:

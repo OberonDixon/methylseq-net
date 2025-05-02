@@ -86,11 +86,6 @@ class PoissonMultinomialLoss(MaskedLoss):
         self.spatial = spatial
         self.subsetted = subsetted
         self.subsets = subsets
-        if self.subsetted and self.subsets is None:
-            raise ValueError(
-                f"{self.__class__.__name__} cannot be subsetted if subsets=None. "
-                "Please provide channel subsets upon which to perform taskwise multinomial loss."
-            )
 
     def forward(
         self,
@@ -101,7 +96,7 @@ class PoissonMultinomialLoss(MaskedLoss):
         if self.log_input:
             predictions = torch.exp(predictions)
 
-        B, T, L = predictions.shape
+        N, C, L = predictions.shape
 
         if mask is None:
             mask = torch.ones_like(predictions, dtype=torch.bool)
@@ -115,7 +110,7 @@ class PoissonMultinomialLoss(MaskedLoss):
                 targets * mask_float,
                 log_input=False,
                 reduction='none',
-            )  # (B, L)
+            )  # (N, L)
             poisson_term = (poisson_loss * mask_float).sum() / (mask_float.sum() + self.eps)
 
         else:
@@ -129,16 +124,23 @@ class PoissonMultinomialLoss(MaskedLoss):
                 reduction='none',
             )  # (N, C)
 
-            valid_sample_tracks = (mask_float.sum(dim=2) > 0).float()  # (B,)
+            valid_sample_tracks = (mask_float.sum(dim=2) > 0).float()  # (N,)
             poisson_term = (poisson_loss * valid_sample_tracks).sum() / (valid_sample_tracks.sum() + self.eps)
 
         logging.debug(f"{self.__class__.__name__} poisson_term {poisson_term}; will be weighted by {self.poisson_weight}.")
 
         # ---------- Multinomial Term ----------
         if self.subsetted:
-            subsets = self.subsets
+            if self.subsets:
+                subsets = self.subsets
+            else:
+                raise ValueError(
+                    f"{self.__class__.__name__} cannot be subsetted if subsets=None. "
+                    "Please provide channel subsets upon which to perform taskwise multinomial loss."
+                )
         else:
-            subsets = [list(range(T))]
+            subsets = [list(range(C))]
+            
         multinomial_terms = []
 
         for subset in subsets:
