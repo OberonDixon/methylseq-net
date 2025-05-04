@@ -11,14 +11,15 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-5 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=0-6 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 # Command(s) to run:
 # Define an array of config files
 CONFIG_FILES=(
-    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.gin"
+    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.01.gin"
+    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.05.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi-zero-weight.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenj-poisson.gin"
-    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi-nonspatial.gin"
+    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.05-nonspatial.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji_concat-emb-final-multi.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji_concat-emb-final-poisson.gin"
 )
