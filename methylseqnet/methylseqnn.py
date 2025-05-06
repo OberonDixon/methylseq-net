@@ -543,13 +543,16 @@ class MethylSeqNN(L.LightningModule):
             raise ValueError(f"Forward passes for MethylSeqNN require that methylseq_input have (first or only element of x) 7 or more channels; if using only DNA onehot you must pad up to 7 with zeros. Found shape was {x.shape[1]}") 
     
     def _pretrained_embedder_forward(self, x):
-        x_seq = x[:,0:7,:]
-        if self.seq_input_head:
-            for layer in self.seq_input_head:
-                x_seq = layer(x_seq)
-        embeddings = self.pretrained_seq_model(x_seq)     
+        if self.pretrained_seq_model:
+            x_seq = x[:,0:7,:]
+            if self.seq_input_head:
+                for layer in self.seq_input_head:
+                    x_seq = layer(x_seq)
+            embeddings = self.pretrained_seq_model(x_seq)     
 
-        return embeddings
+            return embeddings
+        else:
+            return None
 
     def _pretrained_head_forward(self, x):
         if self.seq_output_head:
