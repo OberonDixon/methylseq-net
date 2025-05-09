@@ -18,7 +18,7 @@ CONFIG_FILES=(
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.01.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.05.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi-zero-weight.gin"
-    "../configs/residual/multinomial/borzoi_residual-methylseq-basenj-poisson.gin"
+    "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-poisson.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji-multi.05-nonspatial.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji_concat-emb-final-multi.gin"
     "../configs/residual/multinomial/borzoi_residual-methylseq-basenji_concat-emb-final-poisson.gin"

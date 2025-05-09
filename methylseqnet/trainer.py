@@ -174,7 +174,6 @@ def main(
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
-    best_checkpoint_path = model_dir/'checkpoints'/'best-checkpoint.ckpt'
     start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
     
     start_checkpoint_epoch = 0
@@ -205,27 +204,6 @@ def main(
         )
     else:
         logger = None
-
-    if not no_checkpoints:
-        # Temporary checkpoint written every epoch
-        temp_checkpoint = ModelCheckpoint(
-            dirpath=model_dir/'checkpoints',
-            filename='temp-checkpoint',           # Fixed name for overwriting
-            save_top_k=1,                         # Keep only the latest checkpoint
-            save_on_train_epoch_end=True, 
-        )   
-        # Best validation checkpoint, tracked separately
-        best_val_checkpoint = ModelCheckpoint(
-            dirpath=model_dir/'checkpoints',
-            monitor='val/loss',                   # Metric to track for "best" checkpoint
-            mode='min',                           # Minimize validation loss (or 'max' if you're maximizing a metric)
-            save_top_k=1,                         # Save the best checkpoint only
-            filename='best-checkpoint',           # Name for the best checkpoint
-            save_last=False                       # Don't save a 'last' checkpoint
-        )
-        callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()]
-    else:
-        callbacks = [GPUMemoryLogger()]
     
     if model.train_stages:
         epochs_elapsed = 0
@@ -265,7 +243,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = callbacks,
+                    callbacks = create_callbacks(model_dir, no_checkpoints, stage_name),
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -279,12 +257,13 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     ckpt_path=checkpoint_to_use
                 )
                 # once a training stage is complete, the next one should start from the best checkpoint from that stage
+                best_checkpoint_path = model_dir/'checkpoints'/f'best-checkpoint-{stage_name}.ckpt'
                 checkpoint_to_use = best_checkpoint_path
                 
             epochs_elapsed+=stage_dict["epochs"]
     else:
         trainer = Trainer(
-            callbacks = callbacks,
+            callbacks = create_callbacks(model_dir, no_checkpoints, None),
             default_root_dir=model_dir,
             logger=logger,
             accelerator='auto', 
@@ -297,6 +276,30 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             datamodule=data_module,
             ckpt_path=checkpoint_to_use
         )
+
+def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
+    if not no_checkpoints:
+        suffix = f"-{stage_name}" if stage_name is not None else ""
+        # Temporary checkpoint written every epoch
+        temp_checkpoint = ModelCheckpoint(
+            dirpath=model_dir/'checkpoints',
+            filename='temp-checkpoint',           # Fixed name for overwriting
+            save_top_k=1,                         # Keep only the latest checkpoint
+            save_on_train_epoch_end=True, 
+        )   
+        # Best validation checkpoint, tracked separately
+        best_val_checkpoint = ModelCheckpoint(
+            dirpath=model_dir/'checkpoints',
+            monitor='val/loss',                   # Metric to track for "best" checkpoint
+            mode='min',                           # Minimize validation loss (or 'max' if you're maximizing a metric)
+            save_top_k=1,                         # Save the best checkpoint only
+            filename='best-checkpoint'+suffix,           # Name for the best checkpoint
+            save_last=False                       # Don't save a 'last' checkpoint
+        )
+        callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()]
+    else:
+        callbacks = [GPUMemoryLogger()]
+    return callbacks
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
