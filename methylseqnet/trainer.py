@@ -296,6 +296,9 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
             filename='best-checkpoint'+suffix,           # Name for the best checkpoint
             save_last=False                       # Don't save a 'last' checkpoint
         )
+        # Manually reset best score to infinity so it always starts fresh per stage
+        best_val_checkpoint.best_model_score = torch.tensor(float("inf"))
+        best_val_checkpoint.best_model_path = ""
         callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()]
     else:
         callbacks = [GPUMemoryLogger()]
