@@ -132,7 +132,8 @@ def main(
     unique_identifier,
     gpus,
     batch_size,
-    start_from_checkpoint,
+    samples_per_step = -1,
+    start_from_checkpoint = None,
     no_wandb = False,
     no_checkpoints = False,
 ):
@@ -145,9 +146,11 @@ def main(
         unique_identifier: the unique name for the folder in which the model's checkpoints will live
         gpus: how many gpus lightning gets to use, 'auto' will use all available
         batch_size: override the batch size that is in the gin config file; useful for e.g. running a config on different hardware without changing it
+        samples_per_step: how many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally
         start_from_checkpoint: the unique identifier for a model that you want to start from. This is assumed to be in the same output_dir. 
             best-checkpoint will be used; this can't be overridden right now.
-        debug_mode: if True, no logs e.g. WandB
+        no_wandb: if True, do not save WandB logs
+        no_checkpoints: if True, do not save model checkpoints
     
     TODO: refactor logic for resume from requeue vs starting from a possibly-differently-configured checkpoint to increase clarity and who handles what
     """
@@ -161,6 +164,16 @@ def main(
         data_module = MethylSeqDataModule(batch_size=batch_size)
     else:
         data_module = MethylSeqDataModule()
+        batch_size = data_module.batch_size
+    
+    # determine accumulate_grad_batches based on samples_per_step
+    batch_by_gpus = batch_size * (torch.cuda.device_count() if gpus=='auto' else int(gpus))
+    if samples_per_step > 0:
+        if samples_per_step % batch_by_gpus != 0:
+            raise ValueError(f"samples_per_step ({samples_per_step}) must be a multiple of batch_size * num_gpus ({batch_by_gpus}).")
+        accumulate_grad_batches = samples_per_step // (batch_size * (torch.cuda.device_count() if gpus=='auto' else int(gpus)))
+    else:
+        accumulate_grad_batches = 1
 
     # Try to retrieve the io_mappings string from the train dataset, silently skipping if missing
     # The value here lies in the fact that the task structure is dynamically created from the
@@ -250,6 +263,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     devices=gpus, 
                     max_epochs=target_epoch,
                     strategy="ddp_find_unused_parameters_true",
+                    accumulate_grad_batches=accumulate_grad_batches,
                 )  
                 trainer.fit(
                     model,
@@ -270,6 +284,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             devices=gpus, 
             max_epochs=100,
             strategy="ddp_find_unused_parameters_true",
+            accumulate_grad_batches=accumulate_grad_batches,
         )    
         trainer.fit(
             model,
@@ -311,6 +326,7 @@ if __name__ == '__main__':
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
+    parser.add_argument('--samples_per_step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
@@ -330,4 +346,13 @@ if __name__ == '__main__':
         datefmt="%Y-%m-%d %H:%M:%S"
     )
     
-    main(args.config,args.output_dir,args.unique_identifier,args.gpus,args.batch_size,args.start_from_checkpoint,args.no_wandb,args.no_checkpoints)
+    main(
+        config=args.config,
+        output_dir=args.output_dir,
+        unique_identifier=args.unique_identifier,
+        gpus=args.gpus,
+        batch_size=args.batch_size,
+        start_from_checkpoint=args.start_from_checkpoint,
+        no_wandb=args.no_wandb,
+        no_checkpoints=args.no_checkpoints,
+        )
