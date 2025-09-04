@@ -287,6 +287,60 @@ class DirectoryIndexer(SampleGenerator):
         
         return samples_by_split
 
+@gin.register
+@gin.configurable
+class FastaIndexer(DirectoryIndexer):
+    """
+    This subclass handles creating the task dict for all records within all fasta files within a directory. 
+    All will be put into the same split, which can be provided on initialization.
+
+    The intended use case as of this writing is to list fasta files in a directory or a nested
+    set of directories, so one can create a dataset that contains all the sequences therein, annotated
+    with the paths to the files. If recursive=True, all folders within the directory will also
+    be searched.
+    """
+    def __init__(
+        self,
+        directory,
+        subsequence_start=None,
+        subsequence_end=None,
+        split='pred',
+        recursive=False,
+    ):
+        super().__init__(
+            directory=directory,
+            suffix='fasta',
+            subsequence_start=subsequence_start,
+            subsequence_end=subsequence_end,
+            split=split,
+            recursive=recursive,
+            )
+
+    def create_samples(self):
+        """
+        This function will generate the samples dict, with all samples listed under the split key provided
+        at initialization
+        """
+        samples_by_split = defaultdict(list)
+        
+        if self.recursive:
+            files = list(self.directory.rglob(f'*.{self.suffix}'))
+        else:
+            files = list(self.directory.glob(f'*.{self.suffix}'))
+        
+        for file_path in files:
+            with open(file_path) as f:
+                records_ct = sum(1 for line in f if line.startswith(">"))
+                for record_idx in range(records_ct):
+                    file_dict = {
+                        'source': f"{str(file_path)}:{record_idx}",
+                        'start': self.start,
+                        'end': self.end,
+                    }
+                    samples_by_split[self.split].append(file_dict)
+        
+        return samples_by_split
+
 ################################################################################################################
 ####                                 SequenceHandler implementations                                        ####
 ################################################################################################################
