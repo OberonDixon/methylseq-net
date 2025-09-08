@@ -13,7 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from methylseqnet.callbacks import GPUMemoryLogger
+from methylseqnet.callbacks import GPUMemoryLogger, HaplotypedPredLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -293,6 +293,19 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
         )
 
 def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
+    gpu_memory_logger = GPUMemoryLogger()
+    haplotyped_pred_logger = HaplotypedPredLogger(
+        hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
+        hp2_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
+        hp1_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
+        hp2_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
+        ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
+        regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
+        crop_for_accessibility = 163840,
+        label_bin_size = 128,
+        log_stats = True,
+        upload_plots = True,       
+    )
     if not no_checkpoints:
         suffix = f"-{stage_name}" if stage_name is not None else ""
         # Temporary checkpoint written every epoch
@@ -314,9 +327,9 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
         # Manually reset best score to infinity so it always starts fresh per stage
         best_val_checkpoint.best_model_score = torch.tensor(float("inf"))
         best_val_checkpoint.best_model_path = ""
-        callbacks = [temp_checkpoint,best_val_checkpoint,GPUMemoryLogger()]
+        callbacks = [temp_checkpoint, best_val_checkpoint, gpu_memory_logger, haplotyped_pred_logger]
     else:
-        callbacks = [GPUMemoryLogger()]
+        callbacks = [gpu_memory_logger, haplotyped_pred_logger]
     return callbacks
 
 if __name__ == '__main__':

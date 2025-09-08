@@ -1,8 +1,16 @@
 import h5py
 import os
+
 import numpy as np
+import matplotlib.pyplot as plt
+import pysam
 from lightning.pytorch.callbacks import BasePredictionWriter, Callback
+from scipy.stats import pearsonr, spearmanr
 import torch
+import wandb
+
+from dimelo import load_processed
+from methylseqnet import dna_io
 
 class HDF5PredictionWriter(BasePredictionWriter):
     def __init__(
@@ -92,3 +100,202 @@ class GPUMemoryLogger(Callback):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             pl_module.log("test/gpu_peak_MB", peak_mem, prog_bar=False)
+
+class HaplotypedPredLogger(Callback):
+    def __init__(
+        self,
+        hp1_cpg_bedgz: str,
+        hp2_cpg_bedgz: str,
+        hp1_accessibility_bedgz: str,
+        hp2_accessibility_bedgz: str,
+        ref_genome_fasta : str,
+        regions: list[tuple[str, int, int]],
+        model_outputs_slice: slice = slice(None),
+        crop_for_accessibility: int = 163840,
+        label_bin_size: int = 128,
+        log_stats: bool = True,
+        upload_plots: bool = False,
+        ):
+        super().__init__()
+        self.hp1_cpg_bedgz = hp1_cpg_bedgz
+        self.hp2_cpg_bedgz = hp2_cpg_bedgz
+        self.hp1_accessibility_bedgz = hp1_accessibility_bedgz
+        self.hp2_accessibility_bedgz = hp2_accessibility_bedgz
+        self.genome = pysam.FastaFile(ref_genome_fasta)
+        self.regions = regions
+        self.model_outputs_slice = model_outputs_slice
+        self.crop_for_accessibility = crop_for_accessibility
+        self.label_bin_size = label_bin_size
+        self.log_stats = log_stats
+        self.upload_plots = upload_plots
+        if not (os.path.exists(hp1_cpg_bedgz) and os.path.exists(hp2_cpg_bedgz) and os.path.exists(ref_genome_fasta)):
+            raise ValueError("One of the provided haplotype-specific cpg bed files or reference genome fasta does not exist.")
+        if (hp1_accessibility_bedgz is not None) != (hp2_accessibility_bedgz is not None):
+            raise ValueError("Either both or neither haplotype-specific accessibility bed files must be provided.")
+        if (hp1_accessibility_bedgz is not None) and (not (os.path.exists(hp1_accessibility_bedgz) and os.path.exists(hp2_accessibility_bedgz))):
+            raise ValueError("One of the provided haplotype-specific accessibility bed files does not exist.")
+
+    def on_validation_epoch_end(self, trainer, pl_module) -> None:
+        if trainer.is_global_zero:
+            # Get the wandb Run (works when WandbLogger is enabled)
+            run = getattr(getattr(trainer, "logger", None), "experiment", None)
+            epoch = getattr(trainer, "current_epoch", -1)
+            if run is not None:
+                images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
+                for chromosome, start, end in self.regions:
+                    hp1_target, hp2_target, hp1_pred, hp2_pred = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
+                    if self.upload_plots:
+                        fig, axes = plt.subplots(4,1,figsize=(20,10), sharex=True)
+                        fig.suptitle(f"{chromosome}:{start}-{end}, epoch={epoch}")
+                        axes[0].plot(hp1_pred, label="Haplo 1 Prediction", color='blue')
+                        axes[0].plot(hp2_pred, label="Haplo 2 Prediction", color='orange')
+                        axes[0].set_ylabel("Haplo 1/2 Prediction")
+                        axes[1].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green')
+                        axes[1].set_ylabel("Haplo 1 minus Haplo 2 Prediction")
+                        if hp1_target is not None:
+                            axes[2].plot(hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                            axes[2].plot(hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                            axes[2].set_ylabel("Haplo 1/2 Target")
+                            axes[3].plot(hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                            axes[3].set_ylabel("Haplo 1 minus Haplo 2 Target")
+                        images.append(wandb.Image(fig, caption=f"epoch={epoch}"))
+                        plt.close(fig)
+                    if self.log_stats and (hp1_target is not None):
+                        hp1_pearsons.append(pearsonr(hp1_target, hp1_pred)[0])
+                        hp2_pearsons.append(pearsonr(hp2_target, hp2_pred)[0])
+                        differential_pearsons.append(pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0])
+                if self.upload_plots:
+                    run.log({"haplo_preds": images, "epoch": epoch}, commit=True)
+                    print(f"Uploaded haplotype-specific prediction plots.")
+                if self.log_stats and (hp1_target is not None):
+                    run.log({
+                        "haplo1_pearson": np.mean(hp1_pearsons),
+                        "haplo2_pearson": np.mean(hp2_pearsons),
+                        "haplo_differential_pearson": np.mean(differential_pearsons),
+                        "epoch": epoch,
+                    }, commit=True)
+                    print(f"Logged haplotype-specific prediction stats: haplo1_pearson={np.mean(hp1_pearsons):.4f}, haplo2_pearson={np.mean(hp2_pearsons):.4f}, haplo_differential_pearson={np.mean(differential_pearsons):.4f}")
+            else:
+                print("Wandb run not found, cannot upload.")
+
+    def _compute_haplo_pred_stats(
+        self,
+        pl_module,
+        chromosome: str,
+        start: int,
+        end: int,
+    ):
+        device = pl_module.device
+        hp1_input = self._construct_input_tensor(
+            pileup_file=self.hp1_cpg_bedgz,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        )
+        hp2_input = self._construct_input_tensor(
+            pileup_file=self.hp2_cpg_bedgz,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        )
+        hp1_target = self._construct_target_tensor(
+            pileup_file=self.hp1_accessibility_bedgz,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        ).squeeze().cpu().numpy() if self.hp1_accessibility_bedgz is not None else None
+        hp2_target = self._construct_target_tensor(
+            pileup_file=self.hp2_accessibility_bedgz,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        ).squeeze().cpu().numpy() if self.hp2_accessibility_bedgz is not None else None
+        with torch.no_grad():
+            training_mode = pl_module.mode
+            pl_module.eval()
+            pl_module.mode = 'full-model'
+            hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            pl_module.mode = training_mode
+        return hp1_target, hp2_target, hp1_pred, hp2_pred
+
+
+    def _construct_input_tensor(
+        self,
+        pileup_file,
+        chromosome,
+        start,
+        end,
+        device,
+    ) -> torch.Tensor:
+        cpg_ratio, non_zero_mask = self._load_methyl_ratio_from_bedgz(
+            pileup_file=pileup_file,
+            motif="CG,0",
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            bin_size=1,
+            crop=0,
+        )
+        return torch.permute(
+            torch.tensor(
+                dna_io.one_hot_encode_dna(
+                    dna_strand=self.genome.fetch(chromosome,start,end), 
+                    cpg_methylation=cpg_ratio, 
+                    valid_cpgs=non_zero_mask,
+                ),
+                dtype=torch.float32,
+                device=device,
+            ).unsqueeze(0),
+            (0,2,1),
+        )
+
+    def _construct_target_tensor(
+        self,
+        pileup_file,
+        chromosome,
+        start,
+        end,
+        device,
+    ) -> torch.Tensor:
+        accessibility_ratio, non_zero_mask = self._load_methyl_ratio_from_bedgz(
+            pileup_file=pileup_file,
+            motif="A,0",
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            bin_size=self.label_bin_size,
+            crop=self.crop_for_accessibility,
+        )
+        return torch.tensor(
+            accessibility_ratio,
+            dtype=torch.float32,
+            device=device,
+        ).unsqueeze(0).unsqueeze(0)
+
+    def _load_methyl_ratio_from_bedgz(
+        self,
+        pileup_file,
+        motif,
+        chromosome,
+        start,
+        end,
+        bin_size=1,
+        crop=0,
+    ) -> np.ndarray:
+        mod_vector, val_vector = load_processed.pileup_vectors_from_bedmethyl(
+            bedmethyl_file = pileup_file,
+            motif = motif,
+            regions = f'{chromosome}:{start+crop}-{end-crop}',
+            quiet=True,
+        )
+        mod_vector_binned = mod_vector.reshape(-1, bin_size).sum(axis=1)
+        val_vector_binned = val_vector.reshape(-1, bin_size).sum(axis=1)
+        non_zero_mask = val_vector_binned != 0
+        methylated_ratio = np.zeros_like(mod_vector_binned, dtype=float)
+        methylated_ratio[non_zero_mask] = mod_vector_binned[non_zero_mask] / val_vector_binned[non_zero_mask]
+        return methylated_ratio, non_zero_mask

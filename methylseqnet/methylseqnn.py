@@ -275,7 +275,7 @@ class MethylSeqNN(L.LightningModule):
             
         # option to only train on sites with peaks over threshold in some cell types. If thresh is zero, keep all are active
         active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1)
-        fraction_true = active_pos_mask.float().mean().item()
+        fraction_true = active_pos_mask.float().mean()
         if log_descriptor:
             self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
         effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
@@ -290,7 +290,7 @@ class MethylSeqNN(L.LightningModule):
                 )
             + self._apply_masked_loss(
                 self.activation_criterion,
-                (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones(1),),
+                (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones_like(outputs),),
                 mask=None,
                 weight=self.residual_activation_loss_weight,
                 log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
@@ -701,3 +701,15 @@ class MethylSeqNN(L.LightningModule):
         # Store the output of the module
         # Use id(module) or module.__class__.__name__ to distinguish them
         self.hooked_activations[id(module)] = outputs
+
+    # def log(self, name, value, *args, **kwargs):
+    #     if kwargs.get("sync_dist", False):
+    #         if not torch.is_tensor(value) or value.device.type != "cuda":
+    #             print(f"⚠️ sync_dist CPU/non-tensor metric → {name}: type={type(value)} "
+    #                 f"device={(None if not torch.is_tensor(value) else value.device)}")
+    #             # auto-fix so you can keep running:
+    #             if not torch.is_tensor(value):
+    #                 value = torch.tensor(value, dtype=torch.float32, device=next(self.parameters()).device)
+    #             else:
+    #                 value = value.to(next(self.parameters()).device)
+    #     return super().log(name, value, *args, **kwargs)
