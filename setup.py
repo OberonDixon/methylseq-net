@@ -19,7 +19,7 @@ setup(
         "lightning", 
         "h5py",
         "pyBigWig",
-        "wandb",
+        "wandb>=0.21",
         "borzoi-pytorch",
     ],
 )

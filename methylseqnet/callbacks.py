@@ -145,8 +145,9 @@ class HaplotypedPredLogger(Callback):
                 for chromosome, start, end in self.regions:
                     hp1_target, hp2_target, hp1_pred, hp2_pred = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
                     if self.upload_plots:
+                        region_str = f"{chromosome}:{start}-{end}"
                         fig, axes = plt.subplots(4,1,figsize=(20,10), sharex=True)
-                        fig.suptitle(f"{chromosome}:{start}-{end}, epoch={epoch}")
+                        fig.suptitle(f"{region_str}, epoch={epoch}")
                         axes[0].plot(hp1_pred, label="Haplo 1 Prediction", color='blue')
                         axes[0].plot(hp2_pred, label="Haplo 2 Prediction", color='orange')
                         axes[0].set_ylabel("Haplo 1/2 Prediction")
@@ -158,23 +159,21 @@ class HaplotypedPredLogger(Callback):
                             axes[2].set_ylabel("Haplo 1/2 Target")
                             axes[3].plot(hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
                             axes[3].set_ylabel("Haplo 1 minus Haplo 2 Target")
-                        images.append(wandb.Image(fig, caption=f"epoch={epoch}"))
+                        fig.canvas.draw()  # guarantee the figure is rendered NOW
+                        w, h = fig.canvas.get_width_height()
+                        run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
                         plt.close(fig)
                     if self.log_stats and (hp1_target is not None):
                         hp1_pearsons.append(pearsonr(hp1_target, hp1_pred)[0])
                         hp2_pearsons.append(pearsonr(hp2_target, hp2_pred)[0])
                         differential_pearsons.append(pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0])
-                if self.upload_plots:
-                    run.log({"haplo_preds": images, "epoch": epoch}, commit=True)
-                    print(f"Uploaded haplotype-specific prediction plots.")
                 if self.log_stats and (hp1_target is not None):
                     run.log({
-                        "haplo1_pearson": np.mean(hp1_pearsons),
-                        "haplo2_pearson": np.mean(hp2_pearsons),
-                        "haplo_differential_pearson": np.mean(differential_pearsons),
+                        "haplo/haplo1_pearson": np.mean(hp1_pearsons),
+                        "haplo/haplo2_pearson": np.mean(hp2_pearsons),
+                        "haplo/haplo_differential_pearson": np.mean(differential_pearsons),
                         "epoch": epoch,
-                    }, commit=True)
-                    print(f"Logged haplotype-specific prediction stats: haplo1_pearson={np.mean(hp1_pearsons):.4f}, haplo2_pearson={np.mean(hp2_pearsons):.4f}, haplo_differential_pearson={np.mean(differential_pearsons):.4f}")
+                    })
             else:
                 print("Wandb run not found, cannot upload.")
 
