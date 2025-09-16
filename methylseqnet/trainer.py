@@ -13,7 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from methylseqnet.callbacks import GPUMemoryLogger, HaplotypedPredLogger
+from methylseqnet.callbacks import GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -294,6 +294,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
 
 def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
     gpu_memory_logger = GPUMemoryLogger()
+    validation_metrics_logger = ValidationMetricsLogger()
     haplotyped_pred_logger = HaplotypedPredLogger(
         hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
         hp2_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
@@ -327,9 +328,9 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
         # Manually reset best score to infinity so it always starts fresh per stage
         best_val_checkpoint.best_model_score = torch.tensor(float("inf"))
         best_val_checkpoint.best_model_path = ""
-        callbacks = [temp_checkpoint, best_val_checkpoint, gpu_memory_logger, haplotyped_pred_logger]
+        callbacks = [temp_checkpoint, best_val_checkpoint, gpu_memory_logger, haplotyped_pred_logger, validation_metrics_logger]
     else:
-        callbacks = [gpu_memory_logger, haplotyped_pred_logger]
+        callbacks = [gpu_memory_logger, haplotyped_pred_logger, validation_metrics_logger]
     return callbacks
 
 if __name__ == '__main__':

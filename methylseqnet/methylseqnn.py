@@ -179,6 +179,9 @@ class MethylSeqNN(L.LightningModule):
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
+        self.predictions_list = []
+        self.targets_list = []
+
     def forward(self, x):
         """
         MethylSeqNN forward supports two types of inputs:

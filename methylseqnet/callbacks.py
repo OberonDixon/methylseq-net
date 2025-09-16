@@ -31,10 +31,7 @@ class BaseHDF5Writer(ABC):
             os.makedirs(output_dir, exist_ok=True)
 
     def append_batch_to_h5(self, trainer, pl_module, predictions, specifiers, batch_indices, batch):
-        inputs = batch[0]
-        targets = batch[1]
-        # TODO: make this work in the case where inputs contains embeddings for pretrained
-        targets = pl_module.trim_targets(inputs,targets)
+        inputs, targets = self._input_target_from_batch(batch, pl_module)
         # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
         rank = trainer.global_rank
         if rank!=0:
@@ -59,6 +56,10 @@ class BaseHDF5Writer(ABC):
         targets_np = targets.detach().cpu().numpy()
         curr_size = f["predictions"].shape[0]
 
+        if batch_indices is None:
+            batch_indices = np.arange(self.pred_counter, self.pred_counter + predictions_np.shape[0])
+            self.pred_counter += predictions_np.shape[0]
+
         # Resize datasets
         f["predictions"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["predictions"][batch_indices] = predictions_np
@@ -71,6 +72,13 @@ class BaseHDF5Writer(ABC):
 
         f["specifier"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["specifier"][batch_indices] = specifiers
+
+    def _input_target_from_batch(self, batch, pl_module):
+        inputs = batch[0]
+        targets = batch[1]
+        # TODO: make this work in the case where inputs contains embeddings for pretrained
+        targets = pl_module.trim_targets(inputs,targets)
+        return inputs, targets
 
     def __del__(self):
         self._close_all()
@@ -121,19 +129,29 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if self.in_memory:
-            pass
-            # append to in-memory structure
+            _, targets = self._input_target_from_batch(batch, pl_module)
+            predictions = outputs["predictions"]
+            pl_module.predictions_list.append(predictions.detach().cpu())
+            pl_module.targets_list.append(targets.detach().cpu())
         else:
-            pass
-            # call self.append_batch_to_h5
+            self.append_batch_to_h5(trainer, pl_module, outputs["predictions"], ["" for _ in outputs["predictions"]], None, batch)
 
     def on_validation_epoch_end(self, trainer, pl_module):
         if self.in_memory:
+            # first concatenate everything into tensors to operate upon
+            predictions = torch.cat(pl_module.predictions_list, dim=0)
+            targets = torch.cat(pl_module.targets_list, dim=0)
             # compute metrics from in-memory structure
-            pass
+            print(predictions.shape, targets.shape)
+
+            # empty the lists for next epoch
+            pl_module.predictions_list = []
+            pl_module.targets_list = []
         else:
-            # computer metrics from h5 files
-            pass
+            # first close all of the file handles to flush everything to disk
+            self._close_all()
+            # then load from the h5 file(s) and compute metrics
+            raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
 
 
 class GPUMemoryLogger(Callback):
