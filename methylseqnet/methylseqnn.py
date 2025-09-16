@@ -306,7 +306,10 @@ class MethylSeqNN(L.LightningModule):
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
         self.hooked_activations.clear()
-        return loss     
+        return {
+            "loss":loss,
+            "predictions":outputs,
+        }
 
     def _apply_masked_loss(self,loss_fn,args,mask=None,weight=1,log_name=None):
         if weight==0 or (mask is not None and not mask.any()):

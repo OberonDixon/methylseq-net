@@ -203,7 +203,7 @@ class HaplotypedPredLogger(Callback):
             # Get the wandb Run (works when WandbLogger is enabled)
             run = getattr(getattr(trainer, "logger", None), "experiment", None)
             epoch = getattr(trainer, "current_epoch", -1)
-            if run is not None:
+            if run is not None and hasattr(run, "log"):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
                     hp1_target, hp2_target, hp1_pred, hp2_pred = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
