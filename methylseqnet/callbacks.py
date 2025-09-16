@@ -24,30 +24,13 @@ class BaseHDF5Writer(ABC):
         self.file_handles = {}
         self.pred_counter = 0
         if output_dir is None:
-            self.output_dir = tempfile.mkdtemp()
+            self._temp_dir_obj = tempfile.TemporaryDirectory()
+            self.output_dir = self._temp_dir_obj.name
         else:
             self.output_dir = output_dir
             os.makedirs(output_dir, exist_ok=True)
 
-    def append_batch_to_h5(self, output, batch_indices, batch):
-        pass
-
-
-class HDF5PredictionWriter(BasePredictionWriter):
-    def __init__(
-        self, 
-        output_dir, 
-        write_interval="batch",
-        io_mappings_str="",
-    ):
-        super().__init__(write_interval)
-        self.output_dir = output_dir
-        self.io_mappings_str=io_mappings_str
-        os.makedirs(output_dir, exist_ok=True)
-        self.file_handles = {}
-        self.pred_counter = 0
-
-    def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
+    def append_batch_to_h5(self, trainer, pl_module, predictions, specifiers, batch_indices, batch):
         inputs = batch[0]
         targets = batch[1]
         # TODO: make this work in the case where inputs contains embeddings for pretrained
@@ -58,8 +41,6 @@ class HDF5PredictionWriter(BasePredictionWriter):
             raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
         path = os.path.join(self.output_dir, f"predictions.h5")
 
-        predictions = prediction["predictions"]
-        specifiers = prediction["specifiers"]
         pred_shape = predictions.shape[1:]
         targets_shape = targets.shape[1:]
         assert pred_shape == targets_shape, f"Predictions shape {pred_shape} does not match targets shape {targets_shape}"
@@ -91,11 +72,13 @@ class HDF5PredictionWriter(BasePredictionWriter):
         f["specifier"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["specifier"][batch_indices] = specifiers
 
-    def on_predict_end(self, trainer, pl_module):
-        self._close_all()
-
     def __del__(self):
         self._close_all()
+        if hasattr(self, '_temp_dir_obj') and self._temp_dir_obj:
+            try:
+                self._temp_dir_obj.cleanup()
+            except Exception:
+                pass
 
     def _close_all(self):
         for f in self.file_handles.values():
@@ -104,6 +87,23 @@ class HDF5PredictionWriter(BasePredictionWriter):
             except Exception:
                 pass
         self.file_handles.clear()
+
+
+class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
+    def __init__(
+        self, 
+        output_dir, 
+        write_interval="batch",
+        io_mappings_str="",
+    ):
+        BasePredictionWriter.__init__(self,write_interval)
+        BaseHDF5Writer.__init__(self,output_dir,io_mappings_str)
+
+    def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
+        self.append_batch_to_h5(trainer, pl_module, prediction["predictions"], prediction["specifiers"], batch_indices, batch)
+
+    def on_predict_end(self, trainer, pl_module):
+        self._close_all()
 
 class GPUMemoryLogger(Callback):
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
