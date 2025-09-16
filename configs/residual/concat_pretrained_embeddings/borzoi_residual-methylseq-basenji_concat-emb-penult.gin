@@ -39,7 +39,7 @@ first_concat/methylseqnet.layers.ConvBlock.kernel_size=1
 first_concat/methylseqnet.layers.ConvBlock.dilation=1
 
 penult/methylseqnet.layers.ConvBlock.in_channels=100
-penult/methylseqnet.layers.ConvBlock.filters=100
+penult/methylseqnet.layers.ConvBlock.filters=1536
 penult/methylseqnet.layers.ConvBlock.kernel_size=5
 penult/methylseqnet.layers.ConvBlock.dilation=1
 
@@ -48,7 +48,7 @@ seq_model/methylseqnet.layers.ConvFinal.shared_head=False
 seq_model/methylseqnet.layers.ConvFinal.filters=63
 seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 
-methylseq_model/methylseqnet.layers.ConvFinal.in_channels=2020 #1536
+methylseq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 methylseq_model/methylseqnet.layers.ConvFinal.init_weight=0
