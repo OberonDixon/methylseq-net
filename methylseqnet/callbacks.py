@@ -148,10 +148,10 @@ class HaplotypedPredLogger(Callback):
                         region_str = f"{chromosome}:{start}-{end}"
                         fig, axes = plt.subplots(4,1,figsize=(20,10), sharex=True)
                         fig.suptitle(f"{region_str}, epoch={epoch}")
-                        axes[0].plot(hp1_pred, label="Haplo 1 Prediction", color='blue')
-                        axes[0].plot(hp2_pred, label="Haplo 2 Prediction", color='orange')
+                        axes[0].plot(hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                        axes[0].plot(hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
                         axes[0].set_ylabel("Haplo 1/2 Prediction")
-                        axes[1].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green')
+                        axes[1].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
                         axes[1].set_ylabel("Haplo 1 minus Haplo 2 Prediction")
                         if hp1_target is not None:
                             axes[2].plot(hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)

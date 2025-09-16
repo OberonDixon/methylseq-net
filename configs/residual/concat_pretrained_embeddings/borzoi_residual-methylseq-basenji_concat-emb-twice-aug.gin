@@ -82,7 +82,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_input_head':False,
                     'seq_output_head':True,
                 },
-                'epochs':38,
+                'epochs':10,
             },
             'train-residual-only':{
                 'mode':'full-model',

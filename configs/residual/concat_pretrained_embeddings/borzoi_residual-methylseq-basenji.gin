@@ -59,7 +59,7 @@ methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-probe-only':{
-                'mode':'pretrained-only',
+                'mode':'pretrained-embeddings-only',
                 'grad_dict':{
                     'layers':False,
                     'pretrained_seq_model':False,
@@ -69,7 +69,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':10,
             },
             'train-residual-only':{
-                'mode':'full-model',
+                'mode':'residual-w/-pretrained-embeddings',
                 'grad_dict':{
                     'layers':True,
                     'pretrained_seq_model':False,
@@ -84,21 +84,19 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
-methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={
-    -2:4,
-}
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold2.h5",
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold3.h5",
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold4.h5",
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold5.h5",
-"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold6.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
+methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)
+
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=(
+        "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
+        "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold0.h5",
+)
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=(
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5",
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold1.h5",
+)
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
-methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.trainer.MethylSeqDataModule.transforms=()
+methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiDataset
