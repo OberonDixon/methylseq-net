@@ -14,6 +14,25 @@ import wandb
 from dimelo import load_processed
 from methylseqnet import dna_io
 
+class BaseHDF5Writer(ABC):
+    def __init__(
+        self,
+        output_dir=None,
+        io_mappings_str="",
+    ):
+        self.io_mappings_str = io_mappings_str
+        self.file_handles = {}
+        self.pred_counter = 0
+        if output_dir is None:
+            self.output_dir = tempfile.mkdtemp()
+        else:
+            self.output_dir = output_dir
+            os.makedirs(output_dir, exist_ok=True)
+
+    def append_batch_to_h5(self, output, batch_indices, batch):
+        pass
+
+
 class HDF5PredictionWriter(BasePredictionWriter):
     def __init__(
         self, 
@@ -29,6 +48,7 @@ class HDF5PredictionWriter(BasePredictionWriter):
         self.pred_counter = 0
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
+        targets = pl_module.trim_targets(batch[1])
         # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
         rank = trainer.global_rank
         if rank!=0:
@@ -38,10 +58,13 @@ class HDF5PredictionWriter(BasePredictionWriter):
         predictions = prediction["predictions"]
         specifiers = prediction["specifiers"]
         pred_shape = predictions.shape[1:]
+        targets_shape = targets.shape[1:]
+        assert pred_shape == targets_shape, f"Predictions shape {pred_shape} does not match targets shape {targets_shape}"
         
         if path not in self.file_handles:
             self.file_handles[path] = h5py.File(path, "w")
             self.file_handles[path].create_dataset("predictions", shape=(0, *pred_shape), maxshape=(None, *pred_shape), chunks=True)
+            self.file_handles[path].create_dataset("tracks", shape=(0, *targets_shape), maxshape=(None, *targets_shape), chunks=True)
             self.file_handles[path].create_dataset("indices", shape=(0,), maxshape=(None,), dtype="i8", chunks=True)
             self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
             self.file_handles[path].attrs['io_mappings'] = self.io_mappings_str
@@ -49,11 +72,17 @@ class HDF5PredictionWriter(BasePredictionWriter):
         f = self.file_handles[path]
         batch_indices = np.array(batch_indices)
         predictions_np = predictions.detach().cpu().numpy()
+        targets_np = targets.detach().cpu().numpy()
         curr_size = f["predictions"].shape[0]
+
+        print(predictions_np.shape, targets_np.shape)
 
         # Resize datasets
         f["predictions"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["predictions"][batch_indices] = predictions_np
+
+        f["tracks"].resize(max(curr_size,max(batch_indices)+1), axis=0)
+        f["tracks"][batch_indices] = targets_np
 
         f["indices"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["indices"][batch_indices] = batch_indices

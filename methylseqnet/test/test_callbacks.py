@@ -30,13 +30,12 @@ def test_hdf5_prediction_writer():
         mock_trainer = Mock()
         mock_trainer.global_rank = 0  # Simulate rank 0
         mock_pl_module = Mock()
+        mock_pl_module.trim_targets = lambda x: x  # Identity function for trimming
         
-        # Create dummy prediction data
-        batch_size = 4
         pred_shape = (10, 3)  # Example prediction shape
         
         # Batch 1 data
-        predictions_1 = torch.randn(batch_size, *pred_shape)
+        predictions_1 = torch.randn(4, *pred_shape)
         specifiers_1 = [f"sample_{i}" for i in range(4)]
         batch_indices_1 = [0, 1, 2, 3]
         
@@ -44,6 +43,8 @@ def test_hdf5_prediction_writer():
             "predictions": predictions_1,
             "specifiers": specifiers_1
         }
+
+        mock_batch_1 = (Mock(), torch.randn(4, *pred_shape), Mock(), Mock())
         
         # Batch 2 data (simulate non-contiguous indices)
         predictions_2 = torch.randn(3, *pred_shape)
@@ -54,9 +55,8 @@ def test_hdf5_prediction_writer():
             "predictions": predictions_2,
             "specifiers": specifiers_2
         }
-        
-        # Mock batch data (not used in the callback but required for signature)
-        mock_batch = Mock()
+
+        mock_batch_2 = (Mock(), torch.randn(3, *pred_shape), Mock(), Mock())
         
         # Test writing first batch
         writer.write_on_batch_end(
@@ -64,7 +64,7 @@ def test_hdf5_prediction_writer():
             pl_module=mock_pl_module,
             prediction=prediction_1,
             batch_indices=batch_indices_1,
-            batch=mock_batch,
+            batch=mock_batch_1,
             batch_idx=0,
             dataloader_idx=0
         )
@@ -75,7 +75,7 @@ def test_hdf5_prediction_writer():
             pl_module=mock_pl_module,
             prediction=prediction_2,
             batch_indices=batch_indices_2,
-            batch=mock_batch,
+            batch=mock_batch_2,
             batch_idx=1,
             dataloader_idx=0
         )
@@ -134,7 +134,7 @@ def test_hdf5_prediction_writer():
                 pl_module=mock_pl_module,
                 prediction=prediction_1,
                 batch_indices=batch_indices_1,
-                batch=mock_batch,
+                batch=mock_batch_1,
                 batch_idx=0,
                 dataloader_idx=0
             )
@@ -150,8 +150,10 @@ def test_hdf5_prediction_writer_file_cleanup():
         mock_trainer = Mock()
         mock_trainer.global_rank = 0
         mock_pl_module = Mock()
+        mock_pl_module.trim_targets = lambda x: x  # Identity function for trimming
         
         predictions = torch.randn(2, 5, 3)
+        pred_shape = predictions.shape[1:]
         specifiers = ["sample_0", "sample_1"]
         batch_indices = [0, 1]
         
@@ -159,6 +161,8 @@ def test_hdf5_prediction_writer_file_cleanup():
             "predictions": predictions,
             "specifiers": specifiers
         }
+
+        mock_batch = (Mock(), torch.randn(2, *pred_shape), Mock(), Mock())
         
         # Write some data to create file handles
         writer.write_on_batch_end(
@@ -166,7 +170,7 @@ def test_hdf5_prediction_writer_file_cleanup():
             pl_module=mock_pl_module,
             prediction=prediction,
             batch_indices=batch_indices,
-            batch=Mock(),
+            batch=mock_batch,
             batch_idx=0,
             dataloader_idx=0
         )
