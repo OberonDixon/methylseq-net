@@ -3,6 +3,7 @@ import os
 from abc import ABC, abstractmethod
 import tempfile
 from collections import defaultdict
+from io import StringIO
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,6 +12,7 @@ from lightning.pytorch.callbacks import BasePredictionWriter, Callback
 from scipy.stats import pearsonr, spearmanr
 import torch
 import wandb
+import pandas as pd
 
 from dimelo import load_processed
 from methylseqnet import dna_io
@@ -20,9 +22,7 @@ class BaseHDF5Writer(ABC):
     def __init__(
         self,
         output_dir=None,
-        io_mappings_str="",
     ):
-        self.io_mappings_str = io_mappings_str
         self.file_handles = {}
         self.pred_counter = 0
         if output_dir is None:
@@ -50,7 +50,7 @@ class BaseHDF5Writer(ABC):
             self.file_handles[path].create_dataset("tracks", shape=(0, *targets_shape), maxshape=(None, *targets_shape), chunks=True)
             self.file_handles[path].create_dataset("indices", shape=(0,), maxshape=(None,), dtype="i8", chunks=True)
             self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
-            self.file_handles[path].attrs['io_mappings'] = self.io_mappings_str
+            self.file_handles[path].attrs['io_mappings'] = getattr(pl_module, 'io_mappings_str', '')
 
         f = self.file_handles[path]
         batch_indices = np.array(batch_indices)
@@ -104,10 +104,9 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
         self, 
         output_dir, 
         write_interval="batch",
-        io_mappings_str="",
     ):
         BasePredictionWriter.__init__(self,write_interval)
-        BaseHDF5Writer.__init__(self,output_dir,io_mappings_str)
+        BaseHDF5Writer.__init__(self,output_dir)
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
         self.append_batch_to_h5(trainer, pl_module, prediction["predictions"], prediction["specifiers"], batch_indices, batch)
@@ -118,7 +117,6 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
 class ValidationMetricsLogger(Callback, BaseHDF5Writer):
     def __init__(
         self,
-        io_mappings_str="",
         split_by_target_type=True,
         metrics=[PearsonAcrossPositions(), PearsonAcrossTasks()],
         in_memory=True,
@@ -127,7 +125,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
     ):
         Callback.__init__(self)
         self.in_memory = in_memory
-        BaseHDF5Writer.__init__(self, output_dir=None, io_mappings_str=io_mappings_str)
+        BaseHDF5Writer.__init__(self, output_dir=None)
         self.split_by_target_type = split_by_target_type
         self.metrics = metrics
         self.metrics_per_sample = metrics_per_sample
@@ -135,9 +133,21 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         if not self.metrics_across_dataset and not self.in_memory:
             raise ValueError("if metrics_across_dataset is False, nothing gets saved between batches, so in_memory must be True.")
 
-        self.metric_values_dict = defaultdict(list)
+        self.metric_values_dict = defaultdict(lambda: defaultdict(list))
         self.targets_list = []
         self.predictions_list = []
+
+        
+
+    def _get_channels_dict(self, pl_module):
+        channels_dict = {}
+        io_mappings_df = pl_module.get_io_mappings_df()
+        for data_type in io_mappings_df['data_type'].unique():
+            channels = io_mappings_df[io_mappings_df['data_type']==data_type]['channel'].tolist()
+            channels_dict[data_type] = channels
+        if len(channels_dict) == 0 and self.split_by_target_type:
+            raise ValueError("split_by_target_type is True but no data types found in io_mappings.")
+        return channels_dict
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
@@ -145,12 +155,21 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         batch_size = predictions.shape[0]
         if self.metrics_per_sample:
             for i in range(batch_size):
-                sample_predictions = predictions[i].detach().cpu()
-                sample_targets = targets[i].detach().cpu()
-                for metric in self.metrics:
-                    metric_name = metric.__class__.__name__
-                    metric_value = metric(sample_targets, sample_predictions)
-                    self.metric_values_dict[metric_name].append(metric_value.item())
+                if self.split_by_target_type:
+                    for data_type, channels in self._get_channels_dict(pl_module).items():
+                        sample_predictions = predictions[i,channels,:].detach().cpu()
+                        sample_targets = targets[i,channels,:].detach().cpu()
+                        for metric in self.metrics:
+                            metric_name = metric.__class__.__name__
+                            metric_value = metric(sample_targets, sample_predictions)
+                            self.metric_values_dict[metric_name][data_type].append(metric_value.item())
+                else:
+                    sample_predictions = predictions[i,:,:].detach().cpu()
+                    sample_targets = targets[i,:,:].detach().cpu()
+                    for metric in self.metrics:
+                        metric_name = metric.__class__.__name__
+                        metric_value = metric(sample_targets, sample_predictions)
+                        self.metric_values_dict[metric_name]['all'].append(metric_value.item())
         if self.metrics_across_dataset:
             if self.in_memory:
                 self.predictions_list.append(predictions.detach().cpu())
@@ -162,22 +181,27 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         if self.metrics_per_sample:
             for metric in self.metrics:
                 metric_name = metric.__class__.__name__
-                metric_values = self.metric_values_dict[metric_name]
-                # log the mean
-                if len(metric_values) > 0:
-                    mean_metric_value = np.mean(metric_values)
-                    pl_module.log(f"val/{metric_name}_mean_per_sample", mean_metric_value, prog_bar=True, sync_dist=True)
-                self.metric_values_dict[metric_name] = []  # reset for next epoch
+                for data_type, metric_values in self.metric_values_dict[metric_name].items():
+                    # log the mean
+                    if len(metric_values) > 0:
+                        mean_metric_value = np.mean(metric_values)
+                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_type}", mean_metric_value, prog_bar=True, sync_dist=True)
+                    self.metric_values_dict[metric_name][data_type] = []  # reset for next epoch
         else:
             if self.in_memory:
                 # first concatenate everything into tensors to operate upon
-                predictions = torch.cat(self.predictions_list, dim=2)
-                targets = torch.cat(self.targets_list, dim=2)
+                predictions = torch.cat(self.predictions_list, dim=2).squeeze(0)
+                targets = torch.cat(self.targets_list, dim=2).squeeze(0)
                 # compute metrics from in-memory structure
                 for metric in self.metrics:
                     metric_name = metric.__class__.__name__
-                    metric_value = metric(targets, predictions)
-                    pl_module.log(f"val/{metric_name}_accross_dataset", metric_value.item(), prog_bar=True, sync_dist=True)
+                    if self.split_by_target_type:
+                        for data_type, channels in self._get_channels_dict(pl_module).items():
+                            metric_value = metric(targets[channels,:], predictions[channels,:])
+                            pl_module.log(f"val/{metric_name}_accross_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
+                    else:
+                        metric_value = metric(targets, predictions)
+                        pl_module.log(f"val/{metric_name}_accross_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
 
                 # empty the lists for next epoch
                 pl_module.predictions_list = []

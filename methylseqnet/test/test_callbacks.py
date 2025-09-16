@@ -18,12 +18,11 @@ def test_hdf5_prediction_writer():
     
     # Create temporary directory that auto-cleans
     with tempfile.TemporaryDirectory() as temp_dir:
+        io_mappings_str = "mapping"
         # Initialize the callback
-        io_mappings_str = "input_key->output_key,another_input->another_output"
         writer = HDF5PredictionWriter(
             output_dir=temp_dir,
             write_interval="batch",
-            io_mappings_str=io_mappings_str
         )
         
         # Create mock trainer and pl_module
@@ -31,6 +30,7 @@ def test_hdf5_prediction_writer():
         mock_trainer.global_rank = 0  # Simulate rank 0
         mock_pl_module = Mock()
         mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
+        mock_pl_module.io_mappings_str = io_mappings_str
         
         pred_shape = (10, 3)  # Example prediction shape
         
@@ -151,6 +151,7 @@ def test_hdf5_prediction_writer_file_cleanup():
         mock_trainer.global_rank = 0
         mock_pl_module = Mock()
         mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
+        mock_pl_module.io_mappings_str = ""
         
         predictions = torch.randn(2, 5, 3)
         pred_shape = predictions.shape[1:]
