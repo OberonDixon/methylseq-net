@@ -16,6 +16,7 @@ setup(
         "pynvml",
         "logomaker",
         "pysam",
+        "pytest",
         "lightning", 
         "h5py",
         "pyBigWig",
