@@ -2,6 +2,7 @@ import h5py
 import os
 from abc import ABC, abstractmethod
 import tempfile
+from collections import defaultdict
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -13,6 +14,7 @@ import wandb
 
 from dimelo import load_processed
 from methylseqnet import dna_io
+from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks
 
 class BaseHDF5Writer(ABC):
     def __init__(
@@ -118,40 +120,73 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         self,
         io_mappings_str="",
         split_by_target_type=True,
-        metrics=[],
+        metrics=[PearsonAcrossPositions(), PearsonAcrossTasks()],
         in_memory=True,
+        metrics_per_sample=True,
+        metrics_across_dataset=False,
     ):
         Callback.__init__(self)
         self.in_memory = in_memory
         BaseHDF5Writer.__init__(self, output_dir=None, io_mappings_str=io_mappings_str)
         self.split_by_target_type = split_by_target_type
         self.metrics = metrics
+        self.metrics_per_sample = metrics_per_sample
+        self.metrics_across_dataset = metrics_across_dataset
+        if not self.metrics_across_dataset and not self.in_memory:
+            raise ValueError("if metrics_across_dataset is False, nothing gets saved between batches, so in_memory must be True.")
+
+        self.metric_values_dict = defaultdict(list)
+        self.targets_list = []
+        self.predictions_list = []
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        if self.in_memory:
-            _, targets = self._input_target_from_batch(batch, pl_module)
-            predictions = outputs["predictions"]
-            pl_module.predictions_list.append(predictions.detach().cpu())
-            pl_module.targets_list.append(targets.detach().cpu())
-        else:
-            self.append_batch_to_h5(trainer, pl_module, outputs["predictions"], ["" for _ in outputs["predictions"]], None, batch)
+        _, targets = self._input_target_from_batch(batch, pl_module)
+        predictions = outputs["predictions"]
+        batch_size = predictions.shape[0]
+        if self.metrics_per_sample:
+            for i in range(batch_size):
+                sample_predictions = predictions[i].detach().cpu()
+                sample_targets = targets[i].detach().cpu()
+                for metric in self.metrics:
+                    metric_name = metric.__class__.__name__
+                    metric_value = metric(sample_targets, sample_predictions)
+                    self.metric_values_dict[metric_name].append(metric_value.item())
+        if self.metrics_across_dataset:
+            if self.in_memory:
+                self.predictions_list.append(predictions.detach().cpu())
+                self.targets_list.append(targets.detach().cpu())
+            else:
+                self.append_batch_to_h5(trainer, pl_module, predictions, ["" for _ in predictions], None, batch)
 
     def on_validation_epoch_end(self, trainer, pl_module):
-        if self.in_memory:
-            # first concatenate everything into tensors to operate upon
-            predictions = torch.cat(pl_module.predictions_list, dim=0)
-            targets = torch.cat(pl_module.targets_list, dim=0)
-            # compute metrics from in-memory structure
-            print(predictions.shape, targets.shape)
-
-            # empty the lists for next epoch
-            pl_module.predictions_list = []
-            pl_module.targets_list = []
+        if self.metrics_per_sample:
+            for metric in self.metrics:
+                metric_name = metric.__class__.__name__
+                metric_values = self.metric_values_dict[metric_name]
+                # log the mean
+                if len(metric_values) > 0:
+                    mean_metric_value = np.mean(metric_values)
+                    pl_module.log(f"val/{metric_name}_mean_per_sample", mean_metric_value, prog_bar=True, sync_dist=True)
+                self.metric_values_dict[metric_name] = []  # reset for next epoch
         else:
-            # first close all of the file handles to flush everything to disk
-            self._close_all()
-            # then load from the h5 file(s) and compute metrics
-            raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
+            if self.in_memory:
+                # first concatenate everything into tensors to operate upon
+                predictions = torch.cat(self.predictions_list, dim=2)
+                targets = torch.cat(self.targets_list, dim=2)
+                # compute metrics from in-memory structure
+                for metric in self.metrics:
+                    metric_name = metric.__class__.__name__
+                    metric_value = metric(targets, predictions)
+                    pl_module.log(f"val/{metric_name}_accross_dataset", metric_value.item(), prog_bar=True, sync_dist=True)
+
+                # empty the lists for next epoch
+                pl_module.predictions_list = []
+                pl_module.targets_list = []
+            else:
+                # first close all of the file handles to flush everything to disk
+                self._close_all()
+                # then load from the h5 file(s) and compute metrics
+                raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
 
 
 class GPUMemoryLogger(Callback):
