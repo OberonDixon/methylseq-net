@@ -5,7 +5,7 @@ def main(model_identifier):
     for fold in range(8):
         print(f"Running through fold{fold}.")
         run_dataset_save_h5(
-            model_path=f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/best-checkpoint.ckpt',
+            model_path=f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/best-checkpoint-train-residual-only.ckpt',
             mode='residual-w/-pretrained-embeddings',
             dataset_path=(
                 f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold{fold}.h5",

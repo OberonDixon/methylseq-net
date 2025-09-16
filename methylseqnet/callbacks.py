@@ -48,7 +48,10 @@ class HDF5PredictionWriter(BasePredictionWriter):
         self.pred_counter = 0
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        targets = pl_module.trim_targets(batch[1])
+        inputs = batch[0]
+        targets = batch[1]
+        # TODO: make this work in the case where inputs contains embeddings for pretrained
+        targets = pl_module.trim_targets(inputs,targets)
         # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
         rank = trainer.global_rank
         if rank!=0:
@@ -74,8 +77,6 @@ class HDF5PredictionWriter(BasePredictionWriter):
         predictions_np = predictions.detach().cpu().numpy()
         targets_np = targets.detach().cpu().numpy()
         curr_size = f["predictions"].shape[0]
-
-        print(predictions_np.shape, targets_np.shape)
 
         # Resize datasets
         f["predictions"].resize(max(curr_size,max(batch_indices)+1), axis=0)
