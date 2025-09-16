@@ -105,6 +105,37 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
     def on_predict_end(self, trainer, pl_module):
         self._close_all()
 
+class ValidationMetricsLogger(Callback, BaseHDF5Writer):
+    def __init__(
+        self,
+        io_mappings_str="",
+        split_by_target_type=True,
+        metrics=[],
+        in_memory=True,
+    ):
+        Callback.__init__(self)
+        self.in_memory = in_memory
+        BaseHDF5Writer.__init__(self, output_dir=None, io_mappings_str=io_mappings_str)
+        self.split_by_target_type = split_by_target_type
+        self.metrics = metrics
+
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if self.in_memory:
+            pass
+            # append to in-memory structure
+        else:
+            pass
+            # call self.append_batch_to_h5
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        if self.in_memory:
+            # compute metrics from in-memory structure
+            pass
+        else:
+            # computer metrics from h5 files
+            pass
+
+
 class GPUMemoryLogger(Callback):
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
         if torch.cuda.is_available():
