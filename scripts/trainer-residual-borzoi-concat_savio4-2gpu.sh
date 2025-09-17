@@ -38,13 +38,13 @@ CONFIG_FILES=(
     # "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basenji_concat-emb-final-aug-6folds.gin"
 )
 
-# START_CHECKPOINT="slurm23966228task0"
+START_CHECKPOINT="slurm28108438task1"
 
-# echo $START_CHECKPOINT
+echo $START_CHECKPOINT
 
 # Get the config file for this array task
 CONFIG_FILE=${CONFIG_FILES[$SLURM_ARRAY_TASK_ID]}
 
 UNIQUE_IDENTIFIER="slurm${SLURM_ARRAY_JOB_ID}task${SLURM_ARRAY_TASK_ID}"
 source activate methylseqnet-prod
-NCCL_P2P_DISABLE=1 python ../methylseqnet/trainer.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1 --logging-level DEBUG #--start-from-checkpoint $START_CHECKPOINT
+NCCL_P2P_DISABLE=1 python ../methylseqnet/trainer.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1 --logging-level DEBUG --start-from-checkpoint $START_CHECKPOINT
