@@ -36,6 +36,7 @@ class MethylSeqNN(L.LightningModule):
         model_merge_operation='multiply',
         merged_output_head=None,
         out_tracks=None,
+        data_types_subset=None,
         
         # Pretrained model handling       
         pretrained_seq_model_generator=None,
@@ -153,6 +154,8 @@ class MethylSeqNN(L.LightningModule):
                 except:
                     self.merged_output_head.append(layer())             
 
+        self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
+
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
         self.hooked_activations = {}
@@ -269,6 +272,16 @@ class MethylSeqNN(L.LightningModule):
         # mask out tasks that aren't relevant to sample
         if mask is not None:
             mask = self.trim_targets(inputs,mask) 
+        # additionally mask out tasks that aren't in the data_types_subset, if provided
+        if self.data_types_subset is not None:
+            io_mappings_df = self.get_io_mappings_df()
+            subset_indices = io_mappings_df[io_mappings_df['data_type'].isin(self.data_types_subset)]['channel'].tolist()
+            subset_mask = torch.zeros_like(targets,dtype=torch.bool)
+            subset_mask[:,subset_indices,:] = 1
+            if mask is not None:
+                mask = mask & subset_mask
+            else:
+                mask = subset_mask
             
         if not self.regression:
             targets = (targets>self.label_threshold_cts).float()

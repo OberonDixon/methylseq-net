@@ -157,12 +157,13 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
             for i in range(batch_size):
                 if self.split_by_target_type:
                     for data_type, channels in self._get_channels_dict(pl_module).items():
-                        sample_predictions = predictions[i,channels,:].detach().cpu()
-                        sample_targets = targets[i,channels,:].detach().cpu()
-                        for metric in self.metrics:
-                            metric_name = metric.__class__.__name__
-                            metric_value = metric(sample_targets, sample_predictions)
-                            self.metric_values_dict[metric_name][data_type].append(metric_value.item())
+                        if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
+                            sample_predictions = predictions[i,channels,:].detach().cpu()
+                            sample_targets = targets[i,channels,:].detach().cpu()
+                            for metric in self.metrics:
+                                metric_name = metric.__class__.__name__
+                                metric_value = metric(sample_targets, sample_predictions)
+                                self.metric_values_dict[metric_name][data_type].append(metric_value.item())
                 else:
                     sample_predictions = predictions[i,:,:].detach().cpu()
                     sample_targets = targets[i,:,:].detach().cpu()
@@ -197,8 +198,9 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                     metric_name = metric.__class__.__name__
                     if self.split_by_target_type:
                         for data_type, channels in self._get_channels_dict(pl_module).items():
-                            metric_value = metric(targets[channels,:], predictions[channels,:])
-                            pl_module.log(f"val/{metric_name}_accross_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
+                            if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
+                                metric_value = metric(targets[channels,:], predictions[channels,:])
+                                pl_module.log(f"val/{metric_name}_accross_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
                     else:
                         metric_value = metric(targets, predictions)
                         pl_module.log(f"val/{metric_name}_accross_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
