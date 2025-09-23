@@ -11,7 +11,7 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-8 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=9-9 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 #SBATCH --exclude=n0386.savio4
 # exclude node 386 temporarily because it has a hardware issue
 # Command(s) to run:
@@ -26,6 +26,7 @@ CONFIG_FILES=(
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basenji_concat-emb-final.gin"
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basenji_concat-emb-penult.gin"
     "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basenji_concat-emb-twice.gin"
+    "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-final-transforms.gin"
     # "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-final-add.gin"
     # "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset_concat-emb-penult-add.gin"
     # "../configs/residual/concat_pretrained_embeddings/borzoi_residual-methylseq-basset-add.gin"
