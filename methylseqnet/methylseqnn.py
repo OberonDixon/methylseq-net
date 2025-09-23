@@ -343,8 +343,8 @@ class MethylSeqNN(L.LightningModule):
             
             module = getattr(self, attr_name)
             
-            if isinstance(module, nn.Module) and attr_name!='pretrained_seq_model':  # Check if it's an nn.Module or nn.ModuleList. Exclude pretrained model
-                params = [p for p in module.parameters()]  # Include all params to make trainability switchable
+            if isinstance(module, nn.Module): # Check if it's an nn.Module or nn.ModuleList.
+                params = [p for p in module.parameters() if p.requires_grad]  # Include all params to make trainability switchable
                 if params:  # Only add if there are trainable params
                     weight_decay = getattr(module, 'weight_decay', 0)
                     param_groups.append({'params': params, 'weight_decay': weight_decay})

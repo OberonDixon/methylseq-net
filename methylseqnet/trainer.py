@@ -340,7 +340,7 @@ if __name__ == '__main__':
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
-    parser.add_argument('--samples_per_step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
+    parser.add_argument('--samples-per-step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')

@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=train_methylseqnet_concat_2gpu_cotrains
 #SBATCH --account=fc_nilah
-#SBATCH --partition=savio4_gpu
+#SBATCH --partition=savio3_gpu,savio4_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
@@ -12,6 +12,7 @@
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
 #SBATCH --array=0-1 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --exclude=n0[120-145],n0[134-138],n0[143-145],n0[158-161],n0[174-176]
 # Command(s) to run:
 # Define an array of config files
 CONFIG_FILES=(
