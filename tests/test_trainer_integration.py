@@ -15,7 +15,6 @@ from methylseqnet.methylseqnn import MethylSeqNN
 def test_trainer_integration():
     with tempfile.TemporaryDirectory() as temp_dir:
         os.environ["WANDB_MODE"] = "offline"
-        os.environ["WANDB_DIR"] = temp_dir
         model = trainer.main(
             config="./tests/configs/borzoi_probe_test.gin",
             output_dir=temp_dir,
@@ -36,6 +35,6 @@ def test_trainer_integration():
         for ckpt_file in checkpoint_files:
             model = MethylSeqNN.load_from_checkpoint(checkpoints_dir / ckpt_file)
             assert isinstance(model, MethylSeqNN)
-        # # Check wandb directory contains a run folder
-        # wandb_dir = Path(f"{temp_dir}/wandb")
-        # assert any(wandb_dir.iterdir())
+        # Check wandb directory contains a run folder
+        wandb_dir = Path(f"{temp_dir}/test/wandb")
+        assert any(wandb_dir.iterdir())
