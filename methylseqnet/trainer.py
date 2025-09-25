@@ -292,6 +292,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             ckpt_path=checkpoint_to_use
         )
 
+    return model
+
 def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
     gpu_memory_logger = GPUMemoryLogger()
     validation_metrics_logger = ValidationMetricsLogger()
