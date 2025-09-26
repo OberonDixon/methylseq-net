@@ -136,6 +136,7 @@ def main(
     start_from_checkpoint = None,
     no_wandb = False,
     no_checkpoints = False,
+    no_haplotype_metrics = False,
 ):
     """
     Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
@@ -151,6 +152,7 @@ def main(
             best-checkpoint will be used; this can't be overridden right now.
         no_wandb: if True, do not save WandB logs
         no_checkpoints: if True, do not save model checkpoints
+        no_haplotype_metrics: if True, disable haplotype-specific metrics logging during training
     
     TODO: refactor logic for resume from requeue vs starting from a possibly-differently-configured checkpoint to increase clarity and who handles what
     """
@@ -256,7 +258,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = create_callbacks(model_dir, no_checkpoints, stage_name),
+                    callbacks = create_callbacks(model_dir, no_checkpoints, stage_name, no_haplotype_metrics),
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -277,7 +279,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             epochs_elapsed+=stage_dict["epochs"]
     else:
         trainer = Trainer(
-            callbacks = create_callbacks(model_dir, no_checkpoints, None),
+            callbacks = create_callbacks(model_dir, no_checkpoints, None, no_haplotype_metrics),
             default_root_dir=model_dir,
             logger=logger,
             accelerator='auto', 
@@ -294,21 +296,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
 
     return model
 
-def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
-    gpu_memory_logger = GPUMemoryLogger()
-    validation_metrics_logger = ValidationMetricsLogger()
-    haplotyped_pred_logger = HaplotypedPredLogger(
-        hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
-        hp2_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
-        hp1_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
-        hp2_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
-        ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
-        regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
-        crop_for_accessibility = 163840,
-        label_bin_size = 128,
-        log_stats = True,
-        upload_plots = True,       
-    )
+def create_callbacks(model_dir, no_checkpoints=False, stage_name=None, no_haplotype_metrics=False):
+    callbacks = []
     if not no_checkpoints:
         suffix = f"-{stage_name}" if stage_name is not None else ""
         # Temporary checkpoint written every epoch
@@ -330,9 +319,28 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None):
         # Manually reset best score to infinity so it always starts fresh per stage
         best_val_checkpoint.best_model_score = torch.tensor(float("inf"))
         best_val_checkpoint.best_model_path = ""
-        callbacks = [temp_checkpoint, best_val_checkpoint, gpu_memory_logger, haplotyped_pred_logger, validation_metrics_logger]
-    else:
-        callbacks = [gpu_memory_logger, haplotyped_pred_logger, validation_metrics_logger]
+        # haplotyped_pred_logger
+        callbacks.append(temp_checkpoint)
+        callbacks.append(best_val_checkpoint)
+    if not no_haplotype_metrics:
+        haplotyped_pred_logger = HaplotypedPredLogger(
+            hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
+            hp2_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
+            hp1_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
+            hp2_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
+            ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
+            regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
+            crop_for_accessibility = 163840,
+            label_bin_size = 128,
+            log_stats = True,
+            upload_plots = True,       
+        )
+        callbacks.append(haplotyped_pred_logger)
+    gpu_memory_logger = GPUMemoryLogger()
+    validation_metrics_logger = ValidationMetricsLogger()
+    callbacks.append(gpu_memory_logger)
+    callbacks.append(validation_metrics_logger)
+
     return callbacks
 
 if __name__ == '__main__':
@@ -346,6 +354,7 @@ if __name__ == '__main__':
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
+    parser.add_argument('--no-haplotype-metrics', action='store_true', help='If set, enable haplotype-specific metrics logging during training.')
     parser.add_argument(
         "--logging-level",
         type=str,
@@ -371,4 +380,5 @@ if __name__ == '__main__':
         start_from_checkpoint=args.start_from_checkpoint,
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,
+        no_haplotype_metrics=args.no_haplotype_metrics,
         )

@@ -293,7 +293,7 @@ class MethylSeqNN(L.LightningModule):
             self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
         effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
 
-        loss = (
+        loss_terms = [
             self._apply_masked_loss(
                 self.prediction_criterion,
                     (outputs,targets),
@@ -301,21 +301,28 @@ class MethylSeqNN(L.LightningModule):
                     weight=1,
                     log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
                 )
-            + self._apply_masked_loss(
-                self.activation_criterion,
-                (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones_like(outputs),),
-                mask=None,
-                weight=self.residual_activation_loss_weight,
-                log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+        ]
+        if self.residual_activation_loss_weight>0:
+            loss_terms.append(
+                self._apply_masked_loss(
+                    self.activation_criterion,
+                    (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones_like(outputs),),
+                    mask=None,
+                    weight=self.residual_activation_loss_weight,
+                    log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+                )
             )
-            + self._apply_masked_loss(
-                self.seq_only_prediction_criterion,
-                (self.hooked_activations[id(self.seq_output_head[-1])],targets) if id(self.seq_output_head[-1]) in self.hooked_activations else (targets,targets),
-                mask=effective_mask,
-                weight=self.seq_only_loss_weight,
-                log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+        if len(self.seq_output_head)>0:
+            loss_terms.append(
+                self._apply_masked_loss(
+                    self.seq_only_prediction_criterion,
+                    (self.hooked_activations[id(self.seq_output_head[-1])],targets) if id(self.seq_output_head[-1]) in self.hooked_activations else (targets,targets),
+                    mask=effective_mask,
+                    weight=self.seq_only_loss_weight,
+                    log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+                )
             )
-        )
+        loss = sum(loss_terms)
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
         self.hooked_activations.clear()

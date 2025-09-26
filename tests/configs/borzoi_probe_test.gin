@@ -75,14 +75,15 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163520
+# methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "./tests/data/fold0-downsampled.h5",
+    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
 ]
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
-    "./tests/data/fold1-downsampled.h5",
+    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
 ]
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
