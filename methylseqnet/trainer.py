@@ -25,6 +25,7 @@ from lightning.pytorch import Trainer, seed_everything
 import signal
 import pprint
 import logging
+import warnings
 
 os.environ["SLURM_JOB_NAME"] = "interactive"
 
@@ -132,6 +133,7 @@ def main(
     unique_identifier,
     gpus,
     batch_size,
+    max_epochs,
     samples_per_step = -1,
     start_from_checkpoint = None,
     no_wandb = False,
@@ -147,6 +149,7 @@ def main(
         unique_identifier: the unique name for the folder in which the model's checkpoints will live
         gpus: how many gpus lightning gets to use, 'auto' will use all available
         batch_size: override the batch size that is in the gin config file; useful for e.g. running a config on different hardware without changing it
+        max_epochs: maximum number of epochs to train; this is overridden if training stages are defined in the gin config file
         samples_per_step: how many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally
         start_from_checkpoint: the unique identifier for a model that you want to start from. This is assumed to be in the same output_dir. 
             best-checkpoint will be used; this can't be overridden right now.
@@ -159,6 +162,11 @@ def main(
     gin.parse_config_file(config)
     
     model = MethylSeqNN()
+
+    if len(model.train_stages)>0:
+        total_stage_epochs = sum([stage_dict['epochs'] for stage_name,stage_dict in model.train_stages.items()])
+        if total_stage_epochs != max_epochs:
+            warnings.warn(f"Training stages detected in gin config; max_epochs={max_epochs} will be ignored in favor of total stage epochs {total_stage_epochs}.")
     
     from methylseqnet.trainer import MethylSeqDataModule
     if batch_size>0:
@@ -284,7 +292,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             logger=logger,
             accelerator='auto', 
             devices=gpus, 
-            max_epochs=100,
+            max_epochs=max_epochs,
             strategy="ddp_find_unused_parameters_true",
             accumulate_grad_batches=accumulate_grad_batches,
         )    
@@ -350,6 +358,7 @@ if __name__ == '__main__':
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
     parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
+    parser.add_argument('--max-epochs', type=int, required=False, default=100, help='Maximum number of epochs to train; this is overridden if training stages are defined in the gin config file.')
     parser.add_argument('--samples-per-step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
@@ -377,6 +386,8 @@ if __name__ == '__main__':
         unique_identifier=args.unique_identifier,
         gpus=args.gpus,
         batch_size=args.batch_size,
+        max_epochs=args.max_epochs,
+        samples_per_step=args.samples_per_step,
         start_from_checkpoint=args.start_from_checkpoint,
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,

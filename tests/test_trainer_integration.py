@@ -84,6 +84,7 @@ def test_trainer_integration(config_file):
             unique_identifier="test",
             gpus='auto',
             batch_size=1,
+            max_epochs=1,
             no_haplotype_metrics=True,
         )
         # Check that temp_dir/unique_identifier/checkpoints folder contains a checkpoint for each stage
