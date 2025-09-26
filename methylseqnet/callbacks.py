@@ -18,6 +18,20 @@ from dimelo import load_processed
 from methylseqnet import dna_io
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks
 
+class ConditionalBestScoreReset(Callback):
+    def __init__(self, checkpoint_callback, reset_on_train_start):
+        self.checkpoint_callback = checkpoint_callback
+        self.reset_on_train_start = reset_on_train_start
+    
+    def on_train_start(self, trainer, pl_module):
+        if self.reset_on_train_start:
+            # resets the callback as if it were freshly initialized
+            self.checkpoint_callback.best_model_score = None
+            self.checkpoint_callback.best_model_path = ""
+            self.checkpoint_callback.current_score = None
+            self.checkpoint_callback.best_k_models = {}
+            self.checkpoint_callback.kth_best_model_path = ""
+
 class BaseHDF5Writer(ABC):
     def __init__(
         self,

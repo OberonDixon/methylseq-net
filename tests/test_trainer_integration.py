@@ -76,6 +76,7 @@ def get_config_files_with_names():
 @pytest.mark.parametrize("config_file", get_config_files_with_names())
 def test_trainer_integration(config_file):
     nuke_gin_config()
+    wandb.finish()
     with tempfile.TemporaryDirectory() as temp_dir:
         os.environ["WANDB_MODE"] = "offline"
         model = trainer.main(
@@ -93,9 +94,7 @@ def test_trainer_integration(config_file):
         assert "temp-checkpoint.ckpt" in checkpoint_files
         if model.train_stages:
             for stage_name in model.train_stages.keys():
-                # warning if not present
-                if f"best-checkpoint-{stage_name}.ckpt" not in checkpoint_files:
-                    warnings.warn(f"Warning: best-checkpoint-{stage_name}.ckpt not found in {checkpoints_dir}, only found {checkpoint_files}. In the future this will raise an error.")
+                assert f"best-checkpoint-{stage_name}.ckpt" in checkpoint_files, f"best-checkpoint-{stage_name}.ckpt not found in {checkpoints_dir}, only found {checkpoint_files}. In the future this will raise an error."
         else:
             assert "best-checkpoint.ckpt" in checkpoint_files
         # Check that checkpoints can be loaded
@@ -105,6 +104,3 @@ def test_trainer_integration(config_file):
         # Check wandb directory contains a run folder
         wandb_dir = Path(f"{temp_dir}/test/wandb")
         assert any(wandb_dir.iterdir())
-
-        wandb.finish()
-        del os.environ["WANDB_MODE"]

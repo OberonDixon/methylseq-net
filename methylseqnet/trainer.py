@@ -13,7 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from methylseqnet.callbacks import GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger
+from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -200,6 +200,7 @@ def main(
     start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
     
     start_checkpoint_epoch = 0
+    starting_from_best = False
     # if the temp checkpoint exists, model training has been restarted
     if os.path.isfile(temp_checkpoint_path):
         checkpoint_to_use = temp_checkpoint_path
@@ -266,7 +267,13 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     model.start_epoch = start_checkpoint_epoch
                 
                 trainer = Trainer(
-                    callbacks = create_callbacks(model_dir, no_checkpoints, stage_name, no_haplotype_metrics),
+                    callbacks = create_callbacks(
+                        model_dir=model_dir,
+                        no_checkpoints=no_checkpoints,
+                        stage_name=stage_name,
+                        no_haplotype_metrics=no_haplotype_metrics,
+                        starting_from_best=starting_from_best
+                    ),
                     default_root_dir=model_dir,
                     logger=logger,
                     accelerator='auto', 
@@ -283,11 +290,18 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 # once a training stage is complete, the next one should start from the best checkpoint from that stage
                 best_checkpoint_path = model_dir/'checkpoints'/f'best-checkpoint-{stage_name}.ckpt'
                 checkpoint_to_use = best_checkpoint_path
+                starting_from_best = True
                 
             epochs_elapsed+=stage_dict["epochs"]
     else:
         trainer = Trainer(
-            callbacks = create_callbacks(model_dir, no_checkpoints, None, no_haplotype_metrics),
+            callbacks = create_callbacks(
+                model_dir=model_dir,
+                no_checkpoints=no_checkpoints,
+                stage_name=None,
+                no_haplotype_metrics=no_haplotype_metrics,
+                starting_from_best=starting_from_best
+            ),
             default_root_dir=model_dir,
             logger=logger,
             accelerator='auto', 
@@ -304,8 +318,23 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
 
     return model
 
-def create_callbacks(model_dir, no_checkpoints=False, stage_name=None, no_haplotype_metrics=False):
-    callbacks = []
+def create_callbacks(
+    model_dir,
+    no_checkpoints=False,
+    stage_name=None,
+    no_haplotype_metrics=False,
+    starting_from_best=False
+) -> list:
+    """
+    Create a list of callbacks for the Trainer, including checkpointing and logging.
+    Args:
+        model_dir: directory where model checkpoints will be saved
+        no_checkpoints: if True, do not create checkpoint callbacks
+        stage_name: if provided, used to suffix the best-checkpoint filename
+        no_haplotype_metrics: if True, disable haplotype-specific metrics logging during training
+        starting_from_best: if True, reset best score tracking in ConditionalBestScoreReset callback
+    """
+    callbacks = [GPUMemoryLogger(),ValidationMetricsLogger()]
     if not no_checkpoints:
         suffix = f"-{stage_name}" if stage_name is not None else ""
         # Temporary checkpoint written every epoch
@@ -324,12 +353,12 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None, no_haplot
             filename='best-checkpoint'+suffix,           # Name for the best checkpoint
             save_last=False                       # Don't save a 'last' checkpoint
         )
-        # Manually reset best score to infinity so it always starts fresh per stage
-        best_val_checkpoint.best_model_score = torch.tensor(float("inf"))
-        best_val_checkpoint.best_model_path = ""
-        # haplotyped_pred_logger
-        callbacks.append(temp_checkpoint)
-        callbacks.append(best_val_checkpoint)
+        # Reset best score if continuing from previous stage
+        reset_best_score = ConditionalBestScoreReset(
+            best_val_checkpoint,
+            reset_on_train_start=starting_from_best, # only reset if starting from a best checkpoint -> then we want the callback state reset
+            )
+        callbacks.extend([temp_checkpoint,best_val_checkpoint,reset_best_score])
     if not no_haplotype_metrics:
         haplotyped_pred_logger = HaplotypedPredLogger(
             hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
@@ -344,10 +373,6 @@ def create_callbacks(model_dir, no_checkpoints=False, stage_name=None, no_haplot
             upload_plots = True,       
         )
         callbacks.append(haplotyped_pred_logger)
-    gpu_memory_logger = GPUMemoryLogger()
-    validation_metrics_logger = ValidationMetricsLogger()
-    callbacks.append(gpu_memory_logger)
-    callbacks.append(validation_metrics_logger)
 
     return callbacks
 
