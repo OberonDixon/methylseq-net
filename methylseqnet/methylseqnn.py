@@ -261,6 +261,18 @@ class MethylSeqNN(L.LightningModule):
                 x = self._merge_submodels(x_res, x_seq)
                 x = self._merged_output_forward(x)
                 return x
+            # run pretrained model to get embeddings, then run factorization to get outputs
+            case 'factorized-from-pretrained':
+                self._check_x_attributes(x)
+                embeddings = self._pretrained_embedder_forward(x)
+                x = self._embeddings_factorization_forward(x, embeddings)
+                return x
+            # factorization on top of cached embeddings
+            case 'factorized-from-pretrained-embeddings':
+                x, embeddings = self._split_multidataset_input(x)
+                self._check_x_attributes(x)
+                x = self._embeddings_factorization_forward(x, embeddings)
+                return x
             # run only the residual model; outputs may not reflect true labels    
             case 'residual-only':
                 self._check_x_attributes(x)
