@@ -54,6 +54,7 @@ class MethylSeqNN(L.LightningModule):
         embeddings_to_seq_rep=None,
         input_to_methyl_rep=None,
         true_methyl_rep_weight=0.5,
+        interpolate_methyl_reps_location='rep',
         factorized_reps_to_output=None,
         factorized_reps_to_output_submodel_per_task=True,
 
@@ -107,6 +108,10 @@ class MethylSeqNN(L.LightningModule):
                 - embeddings_to_methyl_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
                 - embeddings_to_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
                 - input_to_methyl_rep: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
+                - true_methyl_rep_weight: weight (0-1) for the true methyl representation when interpolating with the predicted methyl representation
+                - interpolate_methyl_reps_location: where to do the interpolation of true and predicted methyl representations. Options:
+                    - 'rep': interpolate between representations
+                    - 'output': interpolate between outputs
                 - factorized_reps_to_output: a list of nn.Modules that run sequentially to convert the combined methyl and sequence representations to output
                 - factorized_reps_to_output_submodel_per_task: if True, create a separate factorized_reps_to_output submodel for each task
             Cropping / padding behavior:
@@ -199,11 +204,12 @@ class MethylSeqNN(L.LightningModule):
                 except:
                     self.merged_output_head.append(layer()) 
 
+        self.true_methyl_rep_weight = true_methyl_rep_weight
+        self.interpolate_methyl_reps_location = interpolate_methyl_reps_location
         if self.use_embeddings_factorization:
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
             self.embeddings_to_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_seq_rep])
             self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
-            self.true_methyl_rep_weight = true_methyl_rep_weight
             self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
             if self.factorized_reps_to_output_submodel_per_task:
                 self.factorized_reps_to_output = nn.ModuleDict(
@@ -439,6 +445,8 @@ class MethylSeqNN(L.LightningModule):
                 self.peak_subset_threshold = stage_dict['peak_subset_threshold']
             else:
                 self.peak_subset_threshold = 0
+            self.true_methyl_rep_weight = stage_dict.get('true_methyl_rep_weight', self.true_methyl_rep_weight)
+            self.interpolate_methyl_reps_location = stage_dict.get('interpolate_methyl_reps_location', self.interpolate_methyl_reps_location)
         
     def set_requires_grad(self, grad_dict):
         """
@@ -738,14 +746,21 @@ class MethylSeqNN(L.LightningModule):
         seq_rep = self._embeddings_to_seq_rep_forward(embeddings)
         imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
         true_methyl_rep = self._input_to_methyl_rep_forward(x)
-        if math.isclose(self.true_methyl_rep_weight,1.0):
-            return self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
-        elif math.isclose(self.true_methyl_rep_weight,0.0):
-            return self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
-        else:
-            x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
-            x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
-            return x_true_component + x_imputed_component
+        match self.interpolate_methyl_reps_location:
+            case 'output':
+                if math.isclose(self.true_methyl_rep_weight,1.0):
+                    return self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+                elif math.isclose(self.true_methyl_rep_weight,0.0):
+                    return self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+                else:
+                    x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+                    x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+                    return x_true_component + x_imputed_component
+            case 'rep':
+                interpolated_rep = self.true_methyl_rep_weight * true_methyl_rep + (1 - self.true_methyl_rep_weight) * imputed_methyl_rep
+                return self._factorized_reps_to_output_forward(seq_rep, interpolated_rep)
+            case _:
+                raise NotImplementedError(f"interpolate_methyl_reps_location={self.interpolate_methyl_reps_location} not implemented.")
         
     def _embeddings_to_seq_rep_forward(self, embeddings):
         seq_rep = embeddings
