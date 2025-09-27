@@ -1,6 +1,7 @@
 import importlib
 from collections import defaultdict
 import inspect
+import math
 import logging
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class MethylSeqNN(L.LightningModule):
         embeddings_to_methyl_rep=None,
         embeddings_to_seq_rep=None,
         input_to_methyl_rep=None,
+        true_methyl_rep_weight=0.5,
         factorized_reps_to_output=None,
         factorized_reps_to_output_submodel_per_task=True,
 
@@ -137,6 +139,8 @@ class MethylSeqNN(L.LightningModule):
             raise ValueError("MethylSeqNN pretrained model factorization components require a defined pretrained sequence model.")
         if layers and self.use_embeddings_factorization:
             raise ValueError("MethylSeqNN residual model and embeddings factorization are different, mutually incompatible approaches. Define one or the other, not both.")
+        if true_methyl_rep_weight>1 or true_methyl_rep_weight<0:
+            raise ValueError("MethylSeqNN true_methyl_rep_weight must be between 0 and 1.")
         
         self.out_tracks = out_tracks
         self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
@@ -199,6 +203,7 @@ class MethylSeqNN(L.LightningModule):
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
             self.embeddings_to_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_seq_rep])
             self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
+            self.true_methyl_rep_weight = true_methyl_rep_weight
             self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
             if self.factorized_reps_to_output_submodel_per_task:
                 self.factorized_reps_to_output = nn.ModuleDict(
@@ -682,8 +687,6 @@ class MethylSeqNN(L.LightningModule):
             x_methylseq_allchannels = self._residual_layers_forward(x_methylseq,embeddings)  
             return x_methylseq_allchannels
 
-        
-
     def _merge_submodels(self, x_res, x_seq):
         if self.layers and self.pretrained_seq_model:
             if self.model_merge_operation in self.operations:
@@ -723,8 +726,14 @@ class MethylSeqNN(L.LightningModule):
         seq_rep = self._embeddings_to_seq_rep_forward(embeddings)
         imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
         true_methyl_rep = self._input_to_methyl_rep_forward(x)
-        x_output = self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
-        return x_output
+        if math.isclose(self.true_methyl_rep_weight,1.0):
+            return self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+        elif math.isclose(self.true_methyl_rep_weight,0.0):
+            return self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+        else:
+            x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+            x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+            return x_true_component + x_imputed_component
         
     def _embeddings_to_seq_rep_forward(self, embeddings):
         seq_rep = embeddings
