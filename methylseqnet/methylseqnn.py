@@ -144,6 +144,7 @@ class MethylSeqNN(L.LightningModule):
         self.label_threshold_cts = label_threshold_cts
         
         self.train_stages = train_stages
+        self.current_stage_name = None
         self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
         self.peak_subset_threshold = 0
         self.pad_all_layers = pad_all_layers
@@ -411,6 +412,16 @@ class MethylSeqNN(L.LightningModule):
             if name == layer_name:
                 return layer
         raise ValueError(f"Layer {layer_name} not found in the model")
+
+    def apply_current_stage(self):
+        if self.train_stages:
+            stage_dict = self.train_stages[self.current_stage_name]
+            self.mode = stage_dict['mode']
+            self.set_requires_grad(stage_dict['grad_dict'])
+            if 'peak_subset_threshold' in stage_dict:
+                self.peak_subset_threshold = stage_dict['peak_subset_threshold']
+            else:
+                self.peak_subset_threshold = 0
         
     def set_requires_grad(self, grad_dict):
         """

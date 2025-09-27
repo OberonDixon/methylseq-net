@@ -257,12 +257,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
 ####################################################################################################################################################
                 """)
                 # configure model for stage
-                model.mode = stage_dict['mode']
-                model.set_requires_grad(stage_dict['grad_dict'])
-                if 'peak_subset_threshold' in stage_dict:
-                    model.peak_subset_threshold = stage_dict['peak_subset_threshold']
-                else:
-                    model.peak_subset_threshold = 0
+                model.current_stage_name = stage_name
+                model.apply_current_stage()
                 if start_checkpoint_epoch > 0 and current_epoch == 0:
                     model.start_epoch = start_checkpoint_epoch
                 
