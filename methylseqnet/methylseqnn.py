@@ -29,19 +29,30 @@ gin.register(nn.Softplus)
 class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
-        # Core architecture
-        layers,
-        seq_input_head=None,
-        seq_output_head=None,
-        model_merge_operation='multiply',
-        merged_output_head=None,
+
+        # Task details
         out_tracks=None,
         data_types_subset=None,
+        regression=True,
+        label_threshold_cts=5,
         
-        # Pretrained model handling       
+        # Pretrained model
+        seq_input_head=None,
+        seq_output_head=None,  
         pretrained_seq_model_generator=None,
         pretrained_seq_model_weights=None,
         concat_pretrained_embeddings_at={},
+
+        # Residual model
+        layers=None,
+        model_merge_operation='multiply',
+        merged_output_head=None,
+
+        # Factorizer for pretrained model
+        embeddings_to_methyl_representation=None,
+        embeddings_to_seq_representation=None,
+        input_to_methyl_representation=None,
+        factorized_reps_to_output=None,
 
         # Cropping / padding behavior
         pad_all_layers=False,
@@ -50,56 +61,82 @@ class MethylSeqNN(L.LightningModule):
         
         # Training schedule and stage-specific config
         train_stages={},
+
+        # Optimizer config
+        optimizer_class=AdamOptimizer,
         residual_activation_loss_weight=0,
         seq_only_loss_weight=0,
         prediction_criterion=PoissonLoss,
         seq_only_prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
-        label_threshold_cts=5,
-
-        # Optimizer config
-        optimizer_class=AdamOptimizer,
-        learning_rate=None,
-        betas=None,
-        momentum=None,
-        pos_weight=None,
-
-        # Deprecated / legacy flags
-        regression=False,
-        pow=False, # temporarily brought back for backward compatibility; does nothing
     ):
         """
         Args:
-            Core architecture:
-             - layers: a list of nn.Modules that run sequentially to form the seq+methyl model
-            Pretrained model handling:
-             - pretrained_seq_model_generator: returns an nn.Module objects when called with the pretrained_seq_model_weights.
+            Task details:
+            - out_tracks: the number of output tracks (channels) for the model. Deprecated(?).
+            - data_types_subset: a list of data types (str) to subset the loss and metrics to. If None, use all.
+            - regression: if True, treat as regression problem; if False, treat as classification problem.
+                 In the classification case, dataloader still provides counts but a threshold is applied.
+            - label_threshold_cts: threshold in counts above which a label is considered positive (for non-regression tasks)
+            Pretrained model:
+            - seq_input_head: a list of nn.Modules that run sequentially before the pretrained_seq_model
+            - seq_output_head: a list of nn.Modules that run sequentially after the pretrained_seq_model
+            - pretrained_seq_model_generator: returns an nn.Module objects when called with the pretrained_seq_model_weights.
                  Which generator is provided here will determine the pretrained model architecture.
-             - pretrained_seq_model_weights: specifier passed to pretrained_seq_model_generator to provide appropriate info
+            - pretrained_seq_model_weights: specifier passed to pretrained_seq_model_generator to provide appropriate info
                  for the pretrained_seq_model. Expect str or Path. This should specify the pretrained weights not the
                  architecture.
-             - concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
+            - concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
                 Schema {layer_before_which_to_concat:relative_bin_size}; when relative bin size is >1 pooling will be
                 used to pool embeddings down to size and when relative bin size is <1 interpolation will be used to get
                 the embeddings up to size. In both cases, padding/cropping will be used to match up with the shape[-1]
                 dimension of x after scaling.
+            Residual model:
+            - layers: a list of nn.Modules that run sequentially to form the seq+methyl model
+            - model_merge_operation: how to combine the pretrained and residual models. Options:
+                - multiply: element-wise multiplication
+                - log_multiply: element-wise multiplication on a log scale
+                - tanh_log_multiply: element-wise multiplication on a log scale with tanh normalization of residuals
+                - add: element-wise addition
+                - mx+b: element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
+            - merged_output_head: a list of nn.Modules that run sequentially after the merging of the pretrained and residual models
+            Factorizer for pretrained model
+            - embeddings_to_methyl_representation: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
+            - embeddings_to_seq_representation: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
+            - input_to_methyl_representation: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
+            - factorized_reps_to_output: a list of nn.Modules that run sequentially to convert the combined methyl and sequence representations to output
             Cropping / padding behavior:
-             - pad_all_layers
-             - crop_off_sequence
-             - crop_off_final
+            - pad_all_layers
+            - crop_off_sequence
+            - crop_off_final
             Training schedule and stage-specific config:
-             - train_stages: a dictionary providing at minimum a model `mode` and `epochs` count for a stage. May also provide
+            - train_stages: a dictionary providing at minimum a model `mode` and `epochs` count for a stage. May also provide
                  `grad_dict` to specify model submodules to train for this stage and `loss_dict` to specify loss function 
                  components.
            Optimizer config:
-
-           Deprecated / legacy flags:
+            - optimizer_class: the optimizer class to use. Must be a subclass of torch.optim.Optimizer. Parameters defined in config.
+            - residual_activation_loss_weight: weight for an auxiliary loss on the activations of the final residual layer
+            - seq_only_loss_weight: weight for an auxiliary loss on the predictions of the sequence-only model
+            - prediction_criterion: the loss function class to use for main prediction loss. Must be a subclass of nn.Module.
+            - seq_only_prediction_criterion: the loss function class to use for sequence-only prediction loss. Must be a subclass of nn.Module.
+            - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
         """
         super().__init__()
-        if out_tracks is None:
-            raise ValueError("MethylSeqNN requires out_tracks be specified in the gin config file or when instantiating the class.")
+        use_embeddings_factorization = (
+            embeddings_to_methyl_representation
+            or embeddings_to_seq_representation
+            or factorized_reps_to_output
+            )
         if not layers and not pretrained_seq_model_generator:
             raise ValueError("MethylSeqNN requires a defined methylseq model (self.layers) or a defined pretrained sequence model.")
+        if use_embeddings_factorization and not pretrained_seq_model_generator:
+            raise ValueError("MethylSeqNN pretrained model factorization components require a defined pretrained sequence model.")
+        if layers and use_embeddings_factorization:
+            raise ValueError("MethylSeqNN residual model and embeddings factorization are different, mutually incompatible approaches. Define one or the other, not both.")
+        
+        self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
+        self.regression = regression
+        self.label_threshold_cts = label_threshold_cts
         
         self.train_stages = train_stages
         self.mode = 'full-model' #'residual-w/-pretrained-embeddings'
@@ -137,8 +174,6 @@ class MethylSeqNN(L.LightningModule):
                     self.layers.append(layer())
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
-            # if pretrained_seq_model_weights:
-            #     self.pretrained_seq_model
             for param in self.pretrained_seq_model.parameters():
                 param.requires_grad = False
             if seq_input_head:
@@ -154,8 +189,6 @@ class MethylSeqNN(L.LightningModule):
                 except:
                     self.merged_output_head.append(layer())             
 
-        self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
-
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
         self.hooked_activations = {}
@@ -165,17 +198,9 @@ class MethylSeqNN(L.LightningModule):
             self.layers[-1].register_forward_hook(self._capture_activations_hook)
         if self.seq_only_loss_weight!=0:
             self.seq_output_head[-1].register_forward_hook(self._capture_activations_hook)
-            
-        
-        self.regression = regression
-        self.label_threshold_cts = label_threshold_cts
-        # self.learning_rate = learning_rate
-        # self.momentum = momentum
-        # self.pos_weight = torch.tensor([pos_weight])
-        # self.betas = betas
 
         self.io_mappings_str = ''
-
+        
         self.prediction_criterion = prediction_criterion()
         self.seq_only_prediction_criterion = seq_only_prediction_criterion()
         self.activation_criterion = activation_criterion()
