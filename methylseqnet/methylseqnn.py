@@ -561,6 +561,10 @@ class MethylSeqNN(L.LightningModule):
         self.io_mappings_str = io_mappings_str
         subsets = self.get_loss_subsets_from_io_mappings()
         self.apply_subsets_to_losses(subsets)
+        self.input_to_outputs_dict = defaultdict(list)
+        for _,io_mappings_row in self.get_io_mappings_df().iterrows():
+            self.input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
+        self.num_cell_types = len(self.input_to_outputs_dict)
     
     def get_io_mappings_df(self):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
@@ -627,15 +631,12 @@ class MethylSeqNN(L.LightningModule):
             for layer in self.seq_output_head:
                 x = layer(x) 
         return x
-
+    
     def _residual_forward(self, x, embeddings=None):
         if x.shape[1]>7:
-            input_to_outputs_dict = defaultdict(list)
-            for _,io_mappings_row in self.get_io_mappings_df().iterrows():
-                input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
             x_methylseq_allchannels = None
             x_pseudobatch_list = []
-            for cell_type in input_to_outputs_dict.keys():
+            for cell_type in self.input_to_outputs_dict.keys():
                 x_methylseq = torch.cat(
                     [
                         x[:,0:4,:],
@@ -655,7 +656,7 @@ class MethylSeqNN(L.LightningModule):
             x_methylseq_allchannels = x_pseudobatch.new_zeros(x.size(0), *x_pseudobatch.shape[1:])
             
             batch_size = x.size(0)
-            for cell_type_idx, (cell_type, channels) in enumerate(input_to_outputs_dict.items()):
+            for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_pseudobatch[start:end]
@@ -706,6 +707,68 @@ class MethylSeqNN(L.LightningModule):
             x = x[:,:,self.crop_off_final:-self.crop_off_final] 
 
         return x
+
+    def _embeddings_factorization_forward(self, x, embeddings):
+        seq_rep = self._embeddings_to_seq_rep_forward(embeddings)
+        imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
+        true_methyl_rep = self._input_to_methyl_rep_forward(x)
+        x_output = self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+        return x_output
+        
+    def _embeddings_to_seq_rep_forward(self, embeddings):
+        seq_rep = embeddings
+        for layer in self.embeddings_to_seq_rep:
+            seq_rep = layer(seq_rep)
+        return seq_rep
+
+    def _embeddings_to_methyl_rep_forward(self, embeddings):
+        methyl_rep = embeddings
+        for layer in self.embeddings_to_methyl_rep:
+            methyl_rep = layer(methyl_rep)
+        return methyl_rep
+
+    def _input_to_methyl_rep_forward(self, x):
+        """
+        Extract methylation channels from x and run through input_to_methyl_rep layers.
+        This should always return a representation of shape (N,num_cell_types,rep_dim,L')
+        Note: input_to_methyl_rep must encode from (N,3,L) to (N,1,rep_dim,L') per cell type
+        """
+        if x.shape[1]>7:
+            for cell_type in self.input_to_outputs_dict.keys():
+                x_methyl = x[:,4+3*cell_type:4+3*(cell_type+1),:]
+                x_methyl_pseudobatch_list.append(x_methyl)
+            x_methyl_pseudobatch = torch.cat(x_methyl_pseudobatch_list, dim=0)
+            for layer in self.input_to_methyl_rep:
+                x_methyl_pseudobatch = layer(x_methyl_pseudobatch)
+            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(x.size(0), self.num_cell_types, *x_methyl_pseudobatch.shape[2:])
+            batch_size = x.size(0)
+
+            for cell_type_idx, cell_type in enumerate(self.input_to_outputs_dict.keys()):
+                start = cell_type_idx*batch_size
+                end = (cell_type_idx+1)*batch_size
+                x_cell_type = x_methyl_pseudobatch[start:end]
+                x_methyl_allchannels[:, cell_type, :, :] = x_cell_type[:, cell_type, :, :]
+            return x_methyl_allchannels
+        elif x.shape[1]==7:
+            x_methyl = x[:,4:7,:]
+            for layer in self.input_to_methyl_rep:
+                x_methyl = layer(x_methyl)
+            return torch.cat([x_methyl]*self.num_cell_types, dim=1)
+        else:
+            raise ValueError(f"Input to _input_to_methyl_rep_forward must have 7 or more channels. Found {x.shape[1]}.")
+
+    def _factorized_reps_to_output_forward(self, seq_rep, methyl_rep):
+        if self.factorized_reps_to_output_submodel_per_task:
+            for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
+                x_methylseq_rep = torch.cat([seq_rep, methyl_rep[:, cell_type, :, :]], dim=1)
+                for layer in self.factorized_reps_to_output[cell_type]:
+                    x_methylseq_rep = layer(x_methylseq_rep)
+                if cell_type_idx==0:
+                    x_output_allchannels = x_methylseq_rep.new_zeros(x_methylseq_rep.size(0), self.out_tracks, x_methylseq_rep.size(2))
+                x_output_allchannels[:, channels, :] = x_methylseq_rep
+            return x_output_allchannels
+        else:
+            raise NotImplementedError("factorized_reps_to_output_submodel_per_task=False not implemented.")
     
     def _concat_pretrained_embeddings(self, embeddings, rbs, x, embeddings_pseudobatch_scaleup=1):
         """
