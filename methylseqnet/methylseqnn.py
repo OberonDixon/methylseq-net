@@ -49,9 +49,9 @@ class MethylSeqNN(L.LightningModule):
         merged_output_head=None,
 
         # Factorizer for pretrained model
-        embeddings_to_methyl_representation=None,
-        embeddings_to_seq_representation=None,
-        input_to_methyl_representation=None,
+        embeddings_to_methyl_rep=None,
+        embeddings_to_seq_rep=None,
+        input_to_methyl_rep=None,
         factorized_reps_to_output=None,
 
         # Cropping / padding behavior
@@ -101,9 +101,9 @@ class MethylSeqNN(L.LightningModule):
                 - mx+b: element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
             - merged_output_head: a list of nn.Modules that run sequentially after the merging of the pretrained and residual models
             Factorizer for pretrained model
-            - embeddings_to_methyl_representation: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
-            - embeddings_to_seq_representation: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
-            - input_to_methyl_representation: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
+            - embeddings_to_methyl_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
+            - embeddings_to_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
+            - input_to_methyl_rep: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
             - factorized_reps_to_output: a list of nn.Modules that run sequentially to convert the combined methyl and sequence representations to output
             Cropping / padding behavior:
             - pad_all_layers
@@ -122,16 +122,18 @@ class MethylSeqNN(L.LightningModule):
             - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
         """
         super().__init__()
-        use_embeddings_factorization = (
-            embeddings_to_methyl_representation
-            or embeddings_to_seq_representation
-            or factorized_reps_to_output
-            )
         if not layers and not pretrained_seq_model_generator:
             raise ValueError("MethylSeqNN requires a defined methylseq model (self.layers) or a defined pretrained sequence model.")
-        if use_embeddings_factorization and not pretrained_seq_model_generator:
+        self.use_embeddings_factorization = (
+            embeddings_to_methyl_rep
+            or embeddings_to_seq_rep
+            or factorized_reps_to_output
+        )
+        if self.use_embeddings_factorization and not (embeddings_to_methyl_rep and embeddings_to_seq_rep and input_to_methyl_rep and factorized_reps_to_output):
+            raise ValueError("MethylSeqNN embeddings factorization components require all of embeddings_to_methyl_rep, embeddings_to_seq_rep, input_to_methyl_rep, and factorized_reps_to_output to be defined.")
+        if self.use_embeddings_factorization and not pretrained_seq_model_generator:
             raise ValueError("MethylSeqNN pretrained model factorization components require a defined pretrained sequence model.")
-        if layers and use_embeddings_factorization:
+        if layers and self.use_embeddings_factorization:
             raise ValueError("MethylSeqNN residual model and embeddings factorization are different, mutually incompatible approaches. Define one or the other, not both.")
         
         self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
@@ -166,12 +168,6 @@ class MethylSeqNN(L.LightningModule):
         self.seq_input_head = nn.ModuleList()
         self.seq_output_head = nn.ModuleList()
         self.merged_output_head = nn.ModuleList()
-        if layers:
-            for layer in layers:
-                try:
-                    self.layers.append(layer(pad=self.pad_all_layers))
-                except:
-                    self.layers.append(layer())
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
             for param in self.pretrained_seq_model.parameters():
@@ -182,12 +178,24 @@ class MethylSeqNN(L.LightningModule):
             if seq_output_head:
                 for layer in seq_output_head:
                     self.seq_output_head.append(layer())
+        if layers:
+            for layer in layers:
+                try:
+                    self.layers.append(layer(pad=self.pad_all_layers))
+                except:
+                    self.layers.append(layer())
         if merged_output_head:
             for layer in merged_output_head:
                 try:
                     self.merged_output_head.append(layer(pad=self.pad_all_layers))
                 except:
-                    self.merged_output_head.append(layer())             
+                    self.merged_output_head.append(layer()) 
+
+        if self.use_embeddings_factorization:
+            self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
+            self.embeddings_to_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_seq_rep])
+            self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
+            self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
 
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
