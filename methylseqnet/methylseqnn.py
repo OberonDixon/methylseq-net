@@ -53,6 +53,7 @@ class MethylSeqNN(L.LightningModule):
         embeddings_to_seq_rep=None,
         input_to_methyl_rep=None,
         factorized_reps_to_output=None,
+        factorized_reps_to_output_submodel_per_task=True,
 
         # Cropping / padding behavior
         pad_all_layers=False,
@@ -73,53 +74,54 @@ class MethylSeqNN(L.LightningModule):
         """
         Args:
             Task details:
-            - out_tracks: the number of output tracks (channels) for the model. Deprecated(?).
-            - data_types_subset: a list of data types (str) to subset the loss and metrics to. If None, use all.
-            - regression: if True, treat as regression problem; if False, treat as classification problem.
-                 In the classification case, dataloader still provides counts but a threshold is applied.
-            - label_threshold_cts: threshold in counts above which a label is considered positive (for non-regression tasks)
+                - out_tracks: the number of output tracks (channels) for the model.
+                - data_types_subset: a list of data types (str) to subset the loss and metrics to. If None, use all.
+                - regression: if True, treat as regression problem; if False, treat as classification problem.
+                    In the classification case, dataloader still provides counts but a threshold is applied.
+                - label_threshold_cts: threshold in counts above which a label is considered positive (for non-regression tasks)
             Pretrained model:
-            - seq_input_head: a list of nn.Modules that run sequentially before the pretrained_seq_model
-            - seq_output_head: a list of nn.Modules that run sequentially after the pretrained_seq_model
-            - pretrained_seq_model_generator: returns an nn.Module objects when called with the pretrained_seq_model_weights.
-                 Which generator is provided here will determine the pretrained model architecture.
-            - pretrained_seq_model_weights: specifier passed to pretrained_seq_model_generator to provide appropriate info
-                 for the pretrained_seq_model. Expect str or Path. This should specify the pretrained weights not the
-                 architecture.
-            - concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
-                Schema {layer_before_which_to_concat:relative_bin_size}; when relative bin size is >1 pooling will be
-                used to pool embeddings down to size and when relative bin size is <1 interpolation will be used to get
-                the embeddings up to size. In both cases, padding/cropping will be used to match up with the shape[-1]
-                dimension of x after scaling.
+                - seq_input_head: a list of nn.Modules that run sequentially before the pretrained_seq_model
+                - seq_output_head: a list of nn.Modules that run sequentially after the pretrained_seq_model
+                - pretrained_seq_model_generator: returns an nn.Module objects when called with the pretrained_seq_model_weights.
+                    Which generator is provided here will determine the pretrained model architecture.
+                - pretrained_seq_model_weights: specifier passed to pretrained_seq_model_generator to provide appropriate info
+                    for the pretrained_seq_model. Expect str or Path. This should specify the pretrained weights not the
+                    architecture.
+                - concat_pretrained_embeddings_at: a dict for pretrained_seq_model embeddings injection into layers model. 
+                    Schema {layer_before_which_to_concat:relative_bin_size}; when relative bin size is >1 pooling will be
+                    used to pool embeddings down to size and when relative bin size is <1 interpolation will be used to get
+                    the embeddings up to size. In both cases, padding/cropping will be used to match up with the shape[-1]
+                    dimension of x after scaling.
             Residual model:
-            - layers: a list of nn.Modules that run sequentially to form the seq+methyl model
-            - model_merge_operation: how to combine the pretrained and residual models. Options:
-                - multiply: element-wise multiplication
-                - log_multiply: element-wise multiplication on a log scale
-                - tanh_log_multiply: element-wise multiplication on a log scale with tanh normalization of residuals
-                - add: element-wise addition
-                - mx+b: element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
-            - merged_output_head: a list of nn.Modules that run sequentially after the merging of the pretrained and residual models
+                - layers: a list of nn.Modules that run sequentially to form the seq+methyl model
+                - model_merge_operation: how to combine the pretrained and residual models. Options:
+                    - multiply: element-wise multiplication
+                    - log_multiply: element-wise multiplication on a log scale
+                    - tanh_log_multiply: element-wise multiplication on a log scale with tanh normalization of residuals
+                    - add: element-wise addition
+                    - mx+b: element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
+                - merged_output_head: a list of nn.Modules that run sequentially after the merging of the pretrained and residual models
             Factorizer for pretrained model
-            - embeddings_to_methyl_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
-            - embeddings_to_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
-            - input_to_methyl_rep: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
-            - factorized_reps_to_output: a list of nn.Modules that run sequentially to convert the combined methyl and sequence representations to output
+                - embeddings_to_methyl_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
+                - embeddings_to_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
+                - input_to_methyl_rep: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
+                - factorized_reps_to_output: a list of nn.Modules that run sequentially to convert the combined methyl and sequence representations to output
+                - factorized_reps_to_output_submodel_per_task: if True, create a separate factorized_reps_to_output submodel for each task
             Cropping / padding behavior:
-            - pad_all_layers
-            - crop_off_sequence
-            - crop_off_final
+                - pad_all_layers: if True, all layers that support padding will be padded to keep input length the same as output length.
+                - crop_off_sequence: if provided, crop off this many bases from each end of the input sequence before feeding to the methylseq layers model.
+                - crop_off_final: if provided, crop off this many bins from each end of the final output of the model.
             Training schedule and stage-specific config:
-            - train_stages: a dictionary providing at minimum a model `mode` and `epochs` count for a stage. May also provide
-                 `grad_dict` to specify model submodules to train for this stage and `loss_dict` to specify loss function 
-                 components.
+                - train_stages: a dictionary providing at minimum a model `mode` and `epochs` count for a stage. May also provide
+                    `grad_dict` to specify model submodules to train for this stage and `loss_dict` to specify loss function 
+                    components.
            Optimizer config:
-            - optimizer_class: the optimizer class to use. Must be a subclass of torch.optim.Optimizer. Parameters defined in config.
-            - residual_activation_loss_weight: weight for an auxiliary loss on the activations of the final residual layer
-            - seq_only_loss_weight: weight for an auxiliary loss on the predictions of the sequence-only model
-            - prediction_criterion: the loss function class to use for main prediction loss. Must be a subclass of nn.Module.
-            - seq_only_prediction_criterion: the loss function class to use for sequence-only prediction loss. Must be a subclass of nn.Module.
-            - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
+                - optimizer_class: the optimizer class to use. Must be a subclass of torch.optim.Optimizer. Parameters defined in config.
+                - residual_activation_loss_weight: weight for an auxiliary loss on the activations of the final residual layer
+                - seq_only_loss_weight: weight for an auxiliary loss on the predictions of the sequence-only model
+                - prediction_criterion: the loss function class to use for main prediction loss. Must be a subclass of nn.Module.
+                - seq_only_prediction_criterion: the loss function class to use for sequence-only prediction loss. Must be a subclass of nn.Module.
+                - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
         """
         super().__init__()
         if not layers and not pretrained_seq_model_generator:
@@ -136,6 +138,7 @@ class MethylSeqNN(L.LightningModule):
         if layers and self.use_embeddings_factorization:
             raise ValueError("MethylSeqNN residual model and embeddings factorization are different, mutually incompatible approaches. Define one or the other, not both.")
         
+        self.out_tracks = out_tracks
         self.data_types_subset = data_types_subset if data_types_subset is None else set(data_types_subset)
         self.regression = regression
         self.label_threshold_cts = label_threshold_cts
@@ -195,7 +198,16 @@ class MethylSeqNN(L.LightningModule):
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
             self.embeddings_to_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_seq_rep])
             self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
-            self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
+            self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
+            if self.factorized_reps_to_output_submodel_per_task:
+                self.factorized_reps_to_output = nn.ModuleDict(
+                    {
+                        task_index: nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
+                            for task_index in range(self.out_tracks)
+                    }
+                )
+            else:
+                self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
 
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
