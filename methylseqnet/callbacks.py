@@ -257,6 +257,22 @@ class GPUMemoryLogger(Callback):
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             pl_module.log("test/gpu_peak_MB", peak_mem, prog_bar=False)
 
+class SubmodulesGradientNormLogger(Callback):
+    def __init__(self, submodule_names: list[str]):
+        super().__init__()
+        self.submodule_names = submodule_names
+    def on_after_backward(self, trainer, pl_module):
+        grad_norms = {}
+        for name, param in pl_module.named_parameters():
+            for submodule_name in self.submodule_names:
+                if name.startswith(submodule_name) and param.grad is not None:
+                    if submodule_name not in grad_norms:
+                        grad_norms[submodule_name] = 0.0
+                    grad_norms[submodule_name] += param.grad.data.norm(2).item() ** 2
+        for submodule_name, norm_sq in grad_norms.items():
+            grad_norm = norm_sq ** 0.5
+            pl_module.log(f"train/grad_norm_{submodule_name}", grad_norm, prog_bar=False)
+
 class HaplotypedPredLogger(Callback):
     def __init__(
         self,
@@ -371,11 +387,14 @@ class HaplotypedPredLogger(Callback):
         ).squeeze().cpu().numpy() if self.hp2_accessibility_bedgz is not None else None
         with torch.no_grad():
             training_mode = pl_module.mode
+            training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
             pl_module.eval()
             pl_module.mode = 'full-model'
+            pl_module.true_methyl_rep_weight = 1.0
             hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             pl_module.mode = training_mode
+            pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
         return hp1_target, hp2_target, hp1_pred, hp2_pred
 
 

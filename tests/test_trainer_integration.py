@@ -31,6 +31,11 @@ def test_trainer_integration(config_file):
             batch_size=1,
             max_epochs=1,
             no_haplotype_metrics=True,
+            track_gradients_for_modules=[
+                'embeddings_to_methyl_rep',
+                'embeddings_to_seq_rep',
+                'factorized_reps_to_output',
+            ],
         )
         # Check that temp_dir/unique_identifier/checkpoints folder contains a checkpoint for each stage
         checkpoints_dir = Path(f"{temp_dir}/test/checkpoints")

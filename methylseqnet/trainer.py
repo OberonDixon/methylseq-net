@@ -13,7 +13,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger
+from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from collections import defaultdict
 import pynvml
@@ -139,6 +139,7 @@ def main(
     no_wandb = False,
     no_checkpoints = False,
     no_haplotype_metrics = False,
+    track_gradients_for_modules = [],
 ):
     """
     Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
@@ -319,7 +320,8 @@ def create_callbacks(
     no_checkpoints=False,
     stage_name=None,
     no_haplotype_metrics=False,
-    starting_from_best=False
+    starting_from_best=False,
+    track_gradients_for_modules=[],
 ) -> list:
     """
     Create a list of callbacks for the Trainer, including checkpointing and logging.
@@ -329,6 +331,7 @@ def create_callbacks(
         stage_name: if provided, used to suffix the best-checkpoint filename
         no_haplotype_metrics: if True, disable haplotype-specific metrics logging during training
         starting_from_best: if True, reset best score tracking in ConditionalBestScoreReset callback
+        track_gradients_for_modules: list of module names for which to log gradient norms
     """
     callbacks = [GPUMemoryLogger(),ValidationMetricsLogger()]
     if not no_checkpoints:
@@ -369,6 +372,8 @@ def create_callbacks(
             upload_plots = True,       
         )
         callbacks.append(haplotyped_pred_logger)
+    if track_gradients_for_modules:
+        callbacks.append(SubmodulesGradientNormLogger(track_gradients_for_modules))
 
     return callbacks
 
@@ -385,6 +390,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
     parser.add_argument('--no-haplotype-metrics', action='store_true', help='If set, enable haplotype-specific metrics logging during training.')
+    parser.add_argument('--track-gradients-for-modules', nargs='+', type=str, required=False, default=['embeddings_to_methyl_rep','embeddings_to_sequence_rep','factorized_rep_to_output'], help='If provided, track gradients for the named module(s). Can be specified multiple times.')
     parser.add_argument(
         "--logging-level",
         type=str,
@@ -413,4 +419,5 @@ if __name__ == '__main__':
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,
         no_haplotype_metrics=args.no_haplotype_metrics,
-        )
+        track_gradients_for_modules=args.track_gradients_for_modules
+    )
