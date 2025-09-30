@@ -186,6 +186,7 @@ class MethylSeqNN(L.LightningModule):
         self.seq_output_head = nn.ModuleList()
         self.merged_output_head = nn.ModuleList()
         self.capture_true_methyl_rep = ActivationCapture()
+        self.capture_imputed_methyl_rep = ActivationCapture()
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
             for param in self.pretrained_seq_model.parameters():
@@ -239,7 +240,7 @@ class MethylSeqNN(L.LightningModule):
         if self.seq_only_loss_weight!=0:
             self.seq_output_head[-1].register_forward_hook(self._capture_activations_hook)
         if self.methyl_rep_loss_weight!=0:
-            self.embeddings_to_methyl_rep[-1].register_forward_hook(self._capture_activations_hook)
+            self.capture_imputed_methyl_rep.register_forward_hook(self._capture_activations_hook)
             self.capture_true_methyl_rep.register_forward_hook(self._capture_activations_hook)
 
         self.io_mappings_str = ''
@@ -384,37 +385,48 @@ class MethylSeqNN(L.LightningModule):
                 )
         ]
         if self.residual_activation_loss_weight>0:
-            loss_terms.append(
-                self._apply_masked_loss(
-                    self.activation_criterion,
-                    (self.hooked_activations[id(self.layers[-1])],) if id(self.layers[-1]) in self.hooked_activations else (torch.ones_like(outputs),),
-                    mask=None,
-                    weight=self.residual_activation_loss_weight,
-                    log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+            if id(self.layers[-1]) in self.hooked_activations:
+                residual_activations = self.hooked_activations[id(self.layers[-1])]
+                loss_terms.append(
+                    self._apply_masked_loss(
+                        self.activation_criterion,
+                        (residual_activations,),
+                        mask=None,
+                        weight=self.residual_activation_loss_weight,
+                        log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+                    )
                 )
-            )
+            else:
+                warnings.warn("residual_activations_loss not calculated; hooked activations not found.")
         if len(self.seq_output_head)>0 and self.seq_only_loss_weight>0:
-            loss_terms.append(
-                self._apply_masked_loss(
-                    self.seq_only_prediction_criterion,
-                    (self.hooked_activations[id(self.seq_output_head[-1])],targets) if id(self.seq_output_head[-1]) in self.hooked_activations else (targets,targets),
-                    mask=effective_mask,
-                    weight=self.seq_only_loss_weight,
-                    log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+            if id(self.seq_output_head[-1]) in self.hooked_activations:
+                seq_out_activations = self.hooked_activations[id(self.seq_output_head[-1])]
+                loss_terms.append(
+                    self._apply_masked_loss(
+                        self.seq_only_prediction_criterion,
+                        (seq_out_activations,targets),
+                        mask=effective_mask,
+                        weight=self.seq_only_loss_weight,
+                        log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+                    )
                 )
-            )
+            else:
+                warnings.warn("seq_only_loss not calculated; hooked activations not found.")
         if self.methyl_rep_loss_weight>0:
-            loss_terms.append(
-                self._apply_masked_loss(
-                    self.methyl_rep_criterion,
-                    (self.hooked_activations[id(self.embeddings_to_methyl_rep[-1])], self.hooked_activations[id(self.input_to_methyl_rep[-1])]) 
-                        if id(self.embeddings_to_methyl_rep[-1]) in self.hooked_activations and id(self.input_to_methyl_rep[-1]) in self.hooked_activations 
-                        else (torch.ones_like(outputs), torch.ones_like(outputs)),
-                    mask=effective_mask,
-                    weight=self.methyl_rep_loss_weight,
-                    log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
+            if id(self.capture_imputed_methyl_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
+                imputed_methyl_rep = self.hooked_activations[id(self.capture_imputed_methyl_rep)]
+                true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
+                loss_terms.append(
+                    self._apply_masked_loss(
+                        self.methyl_rep_criterion,
+                        (imputed_methyl_rep, true_methyl_rep),
+                        mask=effective_mask,
+                        weight=self.methyl_rep_loss_weight,
+                        log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
+                    )
                 )
-            )
+            else:
+                warnings.warn("methyl_rep_loss not calculated; no hooked activations found.")
         loss = sum(loss_terms)
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
@@ -600,9 +612,17 @@ class MethylSeqNN(L.LightningModule):
     
         for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep:
             kernel_size = getattr(layer, 'kernel_size', 1)
+            if isinstance(kernel_size,tuple):
+                kernel_size = kernel_size[0]
             pool_size = getattr(layer, 'pool_size', 1)
+            if isinstance(pool_size,tuple):
+                pool_size = pool_size[0]
             stride = getattr(layer, 'stride', 1)
+            if isinstance(stride,tuple):
+                stride = stride[0]
             dilation = getattr(layer, 'dilation', 1)
+            if isinstance(dilation,tuple):
+                dilation = dilation[0]
             repeat = getattr(layer, 'repeat', 1)
             rate_mult = getattr(layer, 'rate_mult', 1.0)
             
@@ -797,6 +817,7 @@ class MethylSeqNN(L.LightningModule):
         for layer in self.embeddings_to_methyl_rep:
             methyl_rep = layer(methyl_rep)
         methyl_rep = methyl_rep.view(methyl_rep.shape[0],self.num_cell_types,-1,methyl_rep.shape[2])
+        self.capture_imputed_methyl_rep(methyl_rep)
         return methyl_rep
 
     def _input_to_methyl_rep_forward(self, x):
