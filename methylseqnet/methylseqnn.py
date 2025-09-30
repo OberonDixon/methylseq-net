@@ -72,9 +72,11 @@ class MethylSeqNN(L.LightningModule):
         optimizer_class=AdamOptimizer,
         residual_activation_loss_weight=0,
         seq_only_loss_weight=0,
+        methyl_rep_loss_weight=0,
         prediction_criterion=PoissonLoss,
         seq_only_prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
+        methyl_rep_criterion=BCELoss,
     ):
         """
         Args:
@@ -183,6 +185,7 @@ class MethylSeqNN(L.LightningModule):
         self.seq_input_head = nn.ModuleList()
         self.seq_output_head = nn.ModuleList()
         self.merged_output_head = nn.ModuleList()
+        self.capture_true_methyl_rep = ActivationCapture()
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
             for param in self.pretrained_seq_model.parameters():
@@ -230,16 +233,21 @@ class MethylSeqNN(L.LightningModule):
         self.hooked_activations = {}
         self.residual_activation_loss_weight = residual_activation_loss_weight
         self.seq_only_loss_weight = seq_only_loss_weight
+        self.methyl_rep_loss_weight = methyl_rep_loss_weight
         if self.residual_activation_loss_weight!=0:
             self.layers[-1].register_forward_hook(self._capture_activations_hook)
         if self.seq_only_loss_weight!=0:
             self.seq_output_head[-1].register_forward_hook(self._capture_activations_hook)
+        if self.methyl_rep_loss_weight!=0:
+            self.embeddings_to_methyl_rep[-1].register_forward_hook(self._capture_activations_hook)
+            self.capture_true_methyl_rep.register_forward_hook(self._capture_activations_hook)
 
         self.io_mappings_str = ''
         
         self.prediction_criterion = prediction_criterion()
         self.seq_only_prediction_criterion = seq_only_prediction_criterion()
         self.activation_criterion = activation_criterion()
+        self.methyl_rep_criterion = methyl_rep_criterion()
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
@@ -385,7 +393,7 @@ class MethylSeqNN(L.LightningModule):
                     log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
                 )
             )
-        if len(self.seq_output_head)>0:
+        if len(self.seq_output_head)>0 and self.seq_only_loss_weight>0:
             loss_terms.append(
                 self._apply_masked_loss(
                     self.seq_only_prediction_criterion,
@@ -393,6 +401,18 @@ class MethylSeqNN(L.LightningModule):
                     mask=effective_mask,
                     weight=self.seq_only_loss_weight,
                     log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+                )
+            )
+        if self.methyl_rep_loss_weight>0:
+            loss_terms.append(
+                self._apply_masked_loss(
+                    self.methyl_rep_criterion,
+                    (self.hooked_activations[id(self.embeddings_to_methyl_rep[-1])], self.hooked_activations[id(self.input_to_methyl_rep[-1])]) 
+                        if id(self.embeddings_to_methyl_rep[-1]) in self.hooked_activations and id(self.input_to_methyl_rep[-1]) in self.hooked_activations 
+                        else (torch.ones_like(outputs), torch.ones_like(outputs)),
+                    mask=effective_mask,
+                    weight=self.methyl_rep_loss_weight,
+                    log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
                 )
             )
         loss = sum(loss_terms)
@@ -809,11 +829,13 @@ class MethylSeqNN(L.LightningModule):
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_methyl_pseudobatch[start:end]
                 x_methyl_allchannels[:, cell_type, :, :] = x_cell_type
+            x_methyl_allchannels = self.capture_true_methyl_rep(x_methyl_allchannels)
             return x_methyl_allchannels
         elif x.shape[1]==7:
             x_methyl = x[:,4:7,:]
             for layer in self.input_to_methyl_rep:
                 x_methyl = layer(x_methyl)
+            x_methyl = self.capture_true_methyl_rep(x_methyl)
             return torch.cat([x_methyl]*self.num_cell_types, dim=1)
         else:
             raise ValueError(f"Input to _input_to_methyl_rep_forward must have 7 or more channels. Found {x.shape[1]}.")

@@ -61,7 +61,7 @@ methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-probe-only':{
-                'mode':'pretrained-embeddings-only',
+                'mode':'pretrained-only',
                 'grad_dict':{
                     'layers':False,
                     'pretrained_seq_model':False,
@@ -71,7 +71,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':7,
             },
             'train-residual-only':{
-                'mode':'residual-w/-pretrained-embeddings',
+                'mode':'residual-only',
                 'grad_dict':{
                     'layers':True,
                     'pretrained_seq_model':False,

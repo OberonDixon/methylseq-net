@@ -9,6 +9,13 @@ gin.external_configurable(nn.MaxPool1d, module='torch.nn')
 
 @gin.configurable
 @gin.register
+class ActivationCapture(nn.Module):
+    """Dummy module to enable hook registration on non-module operations."""
+    def forward(self, x):
+        return x
+
+@gin.configurable
+@gin.register
 class EncodingAdjuster(nn.Module):
     """
     OBSOLETE: this class is obsolete. Use transforms.py::EncodingSelector instead.

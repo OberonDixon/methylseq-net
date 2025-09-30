@@ -46,10 +46,14 @@ class PoissonLoss(MaskedLoss):
 @gin.register
 @gin.configurable
 class BCELoss(MaskedLoss):
-    def __init__(self,pos_weight=100,eps=1e-7,**kwargs):
+    def __init__(self,pos_weight=None,with_logits=False,eps=1e-7,**kwargs):
         super().__init__()
         self.eps=eps
-        self.bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight,reduction='none',**kwargs)
+        self.with_logits=with_logits
+        if self.with_logits:
+            self.bce = nn.BCEWithLogitsLoss(pos_weight=pos_weight,reduction='none',**kwargs)
+        else:
+            self.bce = nn.BCELoss(weight=pos_weight,reduction='none',**kwargs)
     def forward(self,predictions,targets,mask=None):
         loss = self.bce(predictions,targets)
         if mask is not None:

@@ -72,7 +72,7 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
 ]
 methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
-            'train-factorized-pretrained-embeddings':{
+            'train-factorized-true-methyl-1.0':{
                 'mode':'factorized-from-pretrained',
                 'grad_dict':{
                     'layers':False,
@@ -87,7 +87,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':10,
                 'true_methyl_rep_weight':1.0,
             },
-            'train-factorized-pretrained-embeddings':{
+            'train-factorized-true-methyl-0.0':{
                 'mode':'factorized-from-pretrained',
                 'grad_dict':{
                     'layers':False,
