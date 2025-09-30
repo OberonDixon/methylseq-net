@@ -27,18 +27,18 @@ embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_size=4
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
 factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.in_channels=1025
-factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.filters=50
+factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.filters=512
 factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.kernel_size=1
 
-factorized_reps_to_output_second/methylseqnet.layers.ConvBlock.in_channels=50
-factorized_reps_to_output_second/methylseqnet.layers.ConvBlock.filters=25
+factorized_reps_to_output_second/methylseqnet.layers.ConvBlock.in_channels=512
+factorized_reps_to_output_second/methylseqnet.layers.ConvBlock.filters=512
 factorized_reps_to_output_second/methylseqnet.layers.ConvBlock.kernel_size=1
 
-factorized_reps_to_output_third/methylseqnet.layers.ConvBlock.in_channels=25
-factorized_reps_to_output_third/methylseqnet.layers.ConvBlock.filters=10
+factorized_reps_to_output_third/methylseqnet.layers.ConvBlock.in_channels=512
+factorized_reps_to_output_third/methylseqnet.layers.ConvBlock.filters=512
 factorized_reps_to_output_third/methylseqnet.layers.ConvBlock.kernel_size=1
 
-factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.in_channels=10
+factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.in_channels=512
 factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.shared_head=False
 factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.filters=1
 
