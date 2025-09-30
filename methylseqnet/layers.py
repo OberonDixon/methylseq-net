@@ -172,15 +172,19 @@ class ConvTower(nn.Module):
 @gin.configurable
 @gin.register
 class ConvBlock(nn.Module):
-    def __init__(self, in_channels, filters, kernel_size, dilation=1, weight_decay=0, pad=False):
+    def __init__(self, in_channels, filters, kernel_size, pool_size=1, pool_class=nn.MaxPool1d, dilation=1, weight_decay=0, pad=False):
         super().__init__()
         self.kernel_size=kernel_size
         self.dilation=dilation
+        self.pool_size=pool_size
         self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=(kernel_size -1) // 2 if pad else 0)
         self.weight_decay = weight_decay
+        self.pool = pool_class(pool_size) if pool_size>1 else None
 
     def forward(self, x):
         x = self.conv(x)
+        if self.pool:
+            x = self.pool(x)
         x = F.gelu(x)
         return x
 

@@ -3,6 +3,7 @@ from collections import defaultdict
 import inspect
 import math
 import logging
+import warnings
 logger = logging.getLogger(__name__)
 
 import torch
@@ -25,6 +26,7 @@ from methylseqnet.pretrained import *
 from methylseqnet.activations import *
 
 gin.register(nn.Softplus)
+gin.register(nn.Sigmoid)
 
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
@@ -214,12 +216,14 @@ class MethylSeqNN(L.LightningModule):
             if self.factorized_reps_to_output_submodel_per_task:
                 self.factorized_reps_to_output = nn.ModuleDict(
                     {
-                        task_index: nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
+                        f"factorized_reps_to_output_task{task_index}": nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
                             for task_index in range(self.out_tracks)
                     }
                 )
             else:
                 self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
+        else:
+            self.input_to_methyl_rep = nn.ModuleList([])
 
         self.receptive_field,self.total_stride = self.calculate_receptive_field_and_stride()
 
@@ -539,7 +543,7 @@ class MethylSeqNN(L.LightningModule):
         inputs_length = x.shape[2] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
         targets_length = targets.shape[2]
         
-        if self.layers:
+        if self.layers or self.input_to_methyl_rep:
             if not self.pad_all_layers:
                 network_outputs_length = (inputs_length - self.receptive_field+self.total_stride)//self.total_stride
             else:
@@ -574,7 +578,7 @@ class MethylSeqNN(L.LightningModule):
         # Total pooling
         total_pooling = 1
     
-        for layer in self.layers+self.merged_output_head:
+        for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep:
             kernel_size = getattr(layer, 'kernel_size', 1)
             pool_size = getattr(layer, 'pool_size', 1)
             stride = getattr(layer, 'stride', 1)
@@ -772,6 +776,7 @@ class MethylSeqNN(L.LightningModule):
         methyl_rep = embeddings
         for layer in self.embeddings_to_methyl_rep:
             methyl_rep = layer(methyl_rep)
+        methyl_rep = methyl_rep.view(methyl_rep.shape[0],self.num_cell_types,-1,methyl_rep.shape[2])
         return methyl_rep
 
     def _input_to_methyl_rep_forward(self, x):
@@ -781,20 +786,29 @@ class MethylSeqNN(L.LightningModule):
         Note: input_to_methyl_rep must encode from (N,3,L) to (N,1,rep_dim,L') per cell type
         """
         if x.shape[1]>7:
+            x_methyl_pseudobatch_list = []
             for cell_type in self.input_to_outputs_dict.keys():
-                x_methyl = x[:,4+3*cell_type:4+3*(cell_type+1),:]
+                x_methyl = torch.cat(
+                    [
+                        x[:,0:4,:],
+                        x[:,4+3*cell_type:4+3*(cell_type+1),:],
+                    ],
+                    dim=1,
+                )
+                if self.crop_off_sequence:
+                    x_methyl = x_methyl[:,:,self.crop_off_sequence:-self.crop_off_sequence]
                 x_methyl_pseudobatch_list.append(x_methyl)
             x_methyl_pseudobatch = torch.cat(x_methyl_pseudobatch_list, dim=0)
             for layer in self.input_to_methyl_rep:
                 x_methyl_pseudobatch = layer(x_methyl_pseudobatch)
-            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(x.size(0), self.num_cell_types, *x_methyl_pseudobatch.shape[2:])
+            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(x.size(0), self.num_cell_types, *x_methyl_pseudobatch.shape[1:])
             batch_size = x.size(0)
 
             for cell_type_idx, cell_type in enumerate(self.input_to_outputs_dict.keys()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_methyl_pseudobatch[start:end]
-                x_methyl_allchannels[:, cell_type, :, :] = x_cell_type[:, cell_type, :, :]
+                x_methyl_allchannels[:, cell_type, :, :] = x_cell_type
             return x_methyl_allchannels
         elif x.shape[1]==7:
             x_methyl = x[:,4:7,:]
@@ -807,12 +821,13 @@ class MethylSeqNN(L.LightningModule):
     def _factorized_reps_to_output_forward(self, seq_rep, methyl_rep):
         if self.factorized_reps_to_output_submodel_per_task:
             for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
-                x_methylseq_rep = torch.cat([seq_rep, methyl_rep[:, cell_type, :, :]], dim=1)
-                for layer in self.factorized_reps_to_output[cell_type]:
-                    x_methylseq_rep = layer(x_methylseq_rep)
-                if cell_type_idx==0:
-                    x_output_allchannels = x_methylseq_rep.new_zeros(x_methylseq_rep.size(0), self.out_tracks, x_methylseq_rep.size(2))
-                x_output_allchannels[:, channels, :] = x_methylseq_rep
+                for task_index in channels:
+                    x_methylseq_rep = torch.cat([seq_rep, methyl_rep[:, cell_type_idx, :, :]], dim=1)
+                    for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{task_index}"]:
+                        x_methylseq_rep = layer(x_methylseq_rep)
+                    if cell_type_idx==0:
+                        x_output_allchannels = x_methylseq_rep.new_zeros(x_methylseq_rep.size(0), self.out_tracks, x_methylseq_rep.size(2))
+                    x_output_allchannels[:, task_index, :] = x_methylseq_rep
             return x_output_allchannels
         else:
             raise NotImplementedError("factorized_reps_to_output_submodel_per_task=False not implemented.")
