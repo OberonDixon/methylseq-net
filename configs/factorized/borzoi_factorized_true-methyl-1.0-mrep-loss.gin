@@ -70,7 +70,7 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_final/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=0.5
+methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
@@ -95,6 +95,7 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
 # methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
+methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"

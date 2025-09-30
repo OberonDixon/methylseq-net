@@ -70,24 +70,10 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_final/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=0.5
+methylseqnet.methylseqnn.MethylSeqNN.interpolate_methyl_reps_location='output'
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
-            'train-factorized-true-methyl-1.0':{
-                'mode':'factorized-from-pretrained',
-                'grad_dict':{
-                    'layers':False,
-                    'pretrained_seq_model':False,
-                    'seq_input_head':False,
-                    'seq_output_head':True,
-                    'input_to_methyl_rep':True,
-                    'embeddings_to_methyl_rep':False,
-                    'embeddings_to_seq_rep':True,
-                    'factorized_reps_to_output':True,
-                },
-                'epochs':10,
-                'true_methyl_rep_weight':1.0,
-            },
-            'train-factorized-true-methyl-0.0':{
+            'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
                 'grad_dict':{
                     'layers':False,
@@ -97,10 +83,9 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'input_to_methyl_rep':True,
                     'embeddings_to_methyl_rep':True,
                     'embeddings_to_seq_rep':True,
-                    'factorized_reps_to_output':False,
+                    'factorized_reps_to_output':True,
                 },
-                'epochs':20,
-                'true_methyl_rep_weight':0.5,
+                'epochs':30,
             },
         }
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
