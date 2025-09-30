@@ -844,6 +844,7 @@ class MethylSeqNN(L.LightningModule):
     def _factorized_reps_to_output_forward(self, seq_rep, methyl_rep):
         if self.factorized_reps_to_output_submodel_per_task:
             for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
+                # this is slow! I assume. Something more like the pseudobatching above should be much quicker
                 for task_index in channels:
                     x_methylseq_rep = torch.cat([seq_rep, methyl_rep[:, cell_type_idx, :, :]], dim=1)
                     for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{task_index}"]:
