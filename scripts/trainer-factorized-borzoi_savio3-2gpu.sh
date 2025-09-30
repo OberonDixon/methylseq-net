@@ -11,12 +11,13 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-1 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=2-2 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 # Command(s) to run:
 # Define an array of config files
 CONFIG_FILES=(
     "../configs/factorized/borzoi_factorized_dual-reps-tm1.0-methyl-multiply-mrep-ortho-losses.gin"
     "../configs/factorized/borzoi_factorized_dual-reps-tm1.0-methyl-multiply-no-aux-losses.gin"
+    "../configs/factorized/borzoi_factorized_dual-reps-tm1.0-methyl-multiply-mrep-ortho1k-losses.gin"
     # "../configs/factorized/borzoi_factorized_true-methyl-1.0-mrep-loss.gin"
     # "../configs/factorized/borzoi_factorized_true-methyl-1.0.gin"
     # "../configs/factorized/borzoi_factorized_true-methyl-0.0.gin"
