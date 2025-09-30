@@ -54,7 +54,7 @@ methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [
     @embeddings_to_methyl_rep/ConvBlock,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_seq_rep = [
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_indep_seq_rep = [
     @embeddings_to_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [

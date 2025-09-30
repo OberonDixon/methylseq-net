@@ -395,7 +395,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
     parser.add_argument('--no-haplotype-metrics', action='store_true', help='If set, enable haplotype-specific metrics logging during training.')
-    parser.add_argument('--track-gradients-for-modules', nargs='+', type=str, required=False, default=['embeddings_to_methyl_rep','embeddings_to_sequence_rep','factorized_rep_to_output'], help='If provided, track gradients for the named module(s). Can be specified multiple times.')
+    parser.add_argument('--track-gradients-for-modules', nargs='+', type=str, required=False, default=['embeddings_to_methyl_rep','embeddings_to_methyl_indep_seq_rep','embeddings_to_methyl_dep_seq_rep','factorized_rep_to_output'], help='If provided, track gradients for the named module(s). Can be specified multiple times.')
     parser.add_argument(
         "--logging-level",
         type=str,

@@ -54,7 +54,8 @@ class MethylSeqNN(L.LightningModule):
 
         # Factorizer for pretrained model
         embeddings_to_methyl_rep=None,
-        embeddings_to_seq_rep=None,
+        embeddings_to_methyl_indep_seq_rep=None,
+        embeddings_to_methyl_dep_seq_rep=None,
         input_to_methyl_rep=None,
         true_methyl_rep_weight=0.5,
         interpolate_methyl_reps_location='rep',
@@ -74,10 +75,12 @@ class MethylSeqNN(L.LightningModule):
         residual_activation_loss_weight=0,
         seq_only_loss_weight=0,
         methyl_rep_loss_weight=0,
+        seq_reps_orthogonality_loss_weight=0,
         prediction_criterion=PoissonLoss,
         seq_only_prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
         methyl_rep_criterion=BCELoss,
+        seq_reps_orthogonality_criterion=OrthogonalityLoss,
     ):
         """
         Args:
@@ -111,7 +114,8 @@ class MethylSeqNN(L.LightningModule):
                 - merged_output_head: a list of nn.Modules that run sequentially after the merging of the pretrained and residual models
             Factorizer for pretrained model
                 - embeddings_to_methyl_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methyl representation
-                - embeddings_to_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to sequence representation
+                - embeddings_to_methyl_indep_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methylation-independent sequence representation
+                - embeddings_to_methyl_dep_seq_rep: a list of nn.Modules that run sequentially to convert pretrained embeddings to methylation-dependent sequence representation
                 - input_to_methyl_rep: a list of nn.Modules that run sequentially to convert methylseq input to methyl representation
                 - true_methyl_rep_weight: weight (0-1) for the true methyl representation when interpolating with the predicted methyl representation
                 - interpolate_methyl_reps_location: where to do the interpolation of true and predicted methyl representations. Options:
@@ -131,20 +135,24 @@ class MethylSeqNN(L.LightningModule):
                 - optimizer_class: the optimizer class to use. Must be a subclass of torch.optim.Optimizer. Parameters defined in config.
                 - residual_activation_loss_weight: weight for an auxiliary loss on the activations of the final residual layer
                 - seq_only_loss_weight: weight for an auxiliary loss on the predictions of the sequence-only model
+                - methyl_rep_loss_weight: weight for an auxiliary loss on the predicted methyl representation
+                - seq_reps_orthogonality_loss_weight: weight for an auxiliary loss to encourage orthogonality between
                 - prediction_criterion: the loss function class to use for main prediction loss. Must be a subclass of nn.Module.
                 - seq_only_prediction_criterion: the loss function class to use for sequence-only prediction loss. Must be a subclass of nn.Module.
                 - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
+                - methyl_rep_criterion: the loss function class to use for methyl representation loss. Must be a subclass of nn.Module.
+                - seq_reps_orthogonality_criterion: the loss function class to use for sequence representations orthogonality loss. Must be a subclass of nn.Module.
         """
         super().__init__()
         if not layers and not pretrained_seq_model_generator:
             raise ValueError("MethylSeqNN requires a defined methylseq model (self.layers) or a defined pretrained sequence model.")
         self.use_embeddings_factorization = (
             embeddings_to_methyl_rep
-            or embeddings_to_seq_rep
+            or embeddings_to_methyl_indep_seq_rep
             or factorized_reps_to_output
         )
-        if self.use_embeddings_factorization and not (embeddings_to_methyl_rep and embeddings_to_seq_rep and input_to_methyl_rep and factorized_reps_to_output):
-            raise ValueError("MethylSeqNN embeddings factorization components require all of embeddings_to_methyl_rep, embeddings_to_seq_rep, input_to_methyl_rep, and factorized_reps_to_output to be defined.")
+        if self.use_embeddings_factorization and not (embeddings_to_methyl_rep and embeddings_to_methyl_indep_seq_rep and input_to_methyl_rep and factorized_reps_to_output):
+            raise ValueError("MethylSeqNN embeddings factorization components require all of embeddings_to_methyl_rep, embeddings_to_methyl_indep_seq_rep, input_to_methyl_rep, and factorized_reps_to_output to be defined.")
         if self.use_embeddings_factorization and not pretrained_seq_model_generator:
             raise ValueError("MethylSeqNN pretrained model factorization components require a defined pretrained sequence model.")
         if layers and self.use_embeddings_factorization:
@@ -188,6 +196,8 @@ class MethylSeqNN(L.LightningModule):
         self.merged_output_head = nn.ModuleList()
         self.capture_true_methyl_rep = ActivationCapture()
         self.capture_imputed_methyl_rep = ActivationCapture()
+        self.capture_methyl_indep_seq_rep = ActivationCapture()
+        self.capture_methyl_dep_seq_rep = ActivationCapture()
         if pretrained_seq_model_generator is not None:
             self.pretrained_seq_model = pretrained_seq_model_generator(pretrained_seq_model_weights)
             for param in self.pretrained_seq_model.parameters():
@@ -215,7 +225,11 @@ class MethylSeqNN(L.LightningModule):
         self.interpolate_methyl_reps_location = interpolate_methyl_reps_location
         if self.use_embeddings_factorization:
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
-            self.embeddings_to_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_seq_rep])
+            self.embeddings_to_methyl_indep_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_indep_seq_rep])
+            if embeddings_to_methyl_dep_seq_rep:
+                self.embeddings_to_methyl_dep_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_dep_seq_rep])
+            else:
+                self.embeddings_to_methyl_dep_seq_rep = nn.ModuleList([])
             self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
             self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
             if self.factorized_reps_to_output_submodel_per_task:
@@ -236,6 +250,7 @@ class MethylSeqNN(L.LightningModule):
         self.residual_activation_loss_weight = residual_activation_loss_weight
         self.seq_only_loss_weight = seq_only_loss_weight
         self.methyl_rep_loss_weight = methyl_rep_loss_weight
+        self.seq_reps_orthogonality_loss_weight = seq_reps_orthogonality_loss_weight
         if self.residual_activation_loss_weight!=0:
             self.layers[-1].register_forward_hook(self._capture_activations_hook)
         if self.seq_only_loss_weight!=0:
@@ -243,6 +258,9 @@ class MethylSeqNN(L.LightningModule):
         if self.methyl_rep_loss_weight!=0:
             self.capture_imputed_methyl_rep.register_forward_hook(self._capture_activations_hook)
             self.capture_true_methyl_rep.register_forward_hook(self._capture_activations_hook)
+        if self.seq_reps_orthogonality_loss_weight!=0:
+            self.capture_methyl_indep_seq_rep.register_forward_hook(self._capture_activations_hook)
+            self.capture_methyl_dep_seq_rep.register_forward_hook(self._capture_activations_hook)
 
         self.io_mappings_str = ''
         
@@ -250,6 +268,7 @@ class MethylSeqNN(L.LightningModule):
         self.seq_only_prediction_criterion = seq_only_prediction_criterion()
         self.activation_criterion = activation_criterion()
         self.methyl_rep_criterion = methyl_rep_criterion()
+        self.seq_reps_orthogonality_criterion = seq_reps_orthogonality_criterion()
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
@@ -372,7 +391,7 @@ class MethylSeqNN(L.LightningModule):
         # option to only train on sites with peaks over threshold in some cell types. If thresh is zero, keep all are active
         active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1)
         fraction_true = active_pos_mask.float().mean()
-        if log_descriptor:
+        if log_descriptor and self.peak_subset_threshold>0:
             self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
         effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
 
@@ -428,6 +447,21 @@ class MethylSeqNN(L.LightningModule):
                 )
             else:
                 warnings.warn("methyl_rep_loss not calculated; no hooked activations found.")
+        if self.seq_reps_orthogonality_loss_weight>0:
+            if id(self.capture_methyl_indep_seq_rep) in self.hooked_activations and id(self.capture_methyl_dep_seq_rep) in self.hooked_activations:
+                methyl_indep_seq_rep = self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
+                methyl_dep_seq_rep = self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
+                loss_terms.append(
+                    self._apply_masked_loss(
+                        self.seq_reps_orthogonality_criterion,
+                        (methyl_indep_seq_rep, methyl_dep_seq_rep),
+                        mask=None,
+                        weight=self.seq_reps_orthogonality_loss_weight,
+                        log_name=f"{log_descriptor}/seq_reps_orthogonality_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("seq_reps_orthogonality_loss not calculated; no hooked activations found.")
         loss = sum(loss_terms)
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
@@ -788,29 +822,38 @@ class MethylSeqNN(L.LightningModule):
         return x
 
     def _embeddings_factorization_forward(self, x, embeddings):
-        seq_rep = self._embeddings_to_seq_rep_forward(embeddings)
+        methyl_indep_seq_rep = self._embeddings_to_methyl_indep_seq_rep_forward(embeddings)
+        methyl_dep_seq_rep = self._embeddings_to_methyl_dep_seq_rep_forward(embeddings)
         imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
         true_methyl_rep = self._input_to_methyl_rep_forward(x)
         match self.interpolate_methyl_reps_location:
             case 'output':
                 if math.isclose(self.true_methyl_rep_weight,1.0):
-                    return self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
+                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep)
                 elif math.isclose(self.true_methyl_rep_weight,0.0):
-                    return self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep)
                 else:
-                    x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(seq_rep, true_methyl_rep)
-                    x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(seq_rep, imputed_methyl_rep)
+                    x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep)
+                    x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep)
                     return x_true_component + x_imputed_component
             case 'rep':
                 interpolated_rep = self.true_methyl_rep_weight * true_methyl_rep + (1 - self.true_methyl_rep_weight) * imputed_methyl_rep
-                return self._factorized_reps_to_output_forward(seq_rep, interpolated_rep)
+                return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, interpolated_rep)
             case _:
                 raise NotImplementedError(f"interpolate_methyl_reps_location={self.interpolate_methyl_reps_location} not implemented.")
         
-    def _embeddings_to_seq_rep_forward(self, embeddings):
+    def _embeddings_to_methyl_indep_seq_rep_forward(self, embeddings):
         seq_rep = embeddings
-        for layer in self.embeddings_to_seq_rep:
+        for layer in self.embeddings_to_methyl_indep_seq_rep:
             seq_rep = layer(seq_rep)
+        self.capture_methyl_indep_seq_rep(seq_rep)
+        return seq_rep
+
+    def _embeddings_to_methyl_dep_seq_rep_forward(self, embeddings):
+        seq_rep = embeddings
+        for layer in self.embeddings_to_methyl_dep_seq_rep:
+            seq_rep = layer(seq_rep)
+        self.capture_methyl_dep_seq_rep(seq_rep)
         return seq_rep
 
     def _embeddings_to_methyl_rep_forward(self, embeddings):
@@ -863,12 +906,17 @@ class MethylSeqNN(L.LightningModule):
         else:
             raise ValueError(f"Input to _input_to_methyl_rep_forward must have 7 or more channels. Found {x.shape[1]}.")
 
-    def _factorized_reps_to_output_forward(self, seq_rep, methyl_rep):
+    def _factorized_reps_to_output_forward(self, methyl_indep_seq_rep, methyl_dep_seq_rep, methyl_rep):
         if self.factorized_reps_to_output_submodel_per_task:
             for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
                 # this is slow! I assume. Something more like the pseudobatching above should be much quicker
                 for task_index in channels:
-                    x_methylseq_rep = torch.cat([seq_rep, methyl_rep[:, cell_type_idx, :, :]], dim=1)
+                    celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
+                    if self.embeddings_to_methyl_dep_seq_rep:
+                        methyl_dep_seq_rep_task = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
+                        x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_task], dim=1)
+                    else:
+                        x_methylseq_rep = torch.cat([methyl_indep_seq_rep, celltype_methyl_rep], dim=1)
                     for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{task_index}"]:
                         x_methylseq_rep = layer(x_methylseq_rep)
                     if cell_type_idx==0:

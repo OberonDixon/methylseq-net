@@ -14,6 +14,47 @@ class MaskedLoss(nn.Module, ABC):
         pass
 
 @gin.register
+@gin.configurable
+class OrthogonalityLoss(MaskedLoss):
+    def __init__(self, eps=1e-7, normalize=True, **kwargs):
+        """
+        Loss to encourage orthogonality between two embeddings.
+        
+        Args:
+            eps: Small constant for numerical stability
+            normalize: If True, normalize embeddings before computing dot product
+                      (computes cosine similarity). If False, computes raw dot product.
+        """
+        super().__init__()
+        self.eps = eps
+        self.normalize = normalize
+    
+    def forward(self, embedding1, embedding2, mask=None):
+        """
+        Args:
+            embedding1: Tensor of shape (N, D)
+            embedding2: Tensor of shape (N, D)
+            mask: Optional mask tensor (not used in this loss)
+        Returns:
+            Scalar loss encouraging orthogonality
+        """
+        if self.normalize:
+            # Normalize to unit vectors (compute cosine similarity)
+            e1_norm = embedding1 / (embedding1.norm(dim=1, keepdim=True) + self.eps)
+            e2_norm = embedding2 / (embedding2.norm(dim=1, keepdim=True) + self.eps)
+            # Compute dot product between normalized vectors
+            dot_product = (e1_norm * e2_norm).sum(dim=1)
+        else:
+            # Raw dot product
+            dot_product = (embedding1 * embedding2).sum(dim=1)
+        
+        # Square the dot product and average over batch
+        loss = (dot_product ** 2).mean()
+        
+        logging.debug(f"{self.__class__.__name__} loss {loss}.")
+        return loss
+
+@gin.register
 class LogL1Loss(MaskedLoss):
     def __init__(self):
         super().__init__()
