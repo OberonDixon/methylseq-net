@@ -389,7 +389,12 @@ class HaplotypedPredLogger(Callback):
             training_mode = pl_module.mode
             training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
             pl_module.eval()
-            pl_module.mode = 'full-model'
+            if pl_module.layers:
+                pl_module.mode = 'full-model'
+            elif pl_module.input_to_methyl_rep:
+                pl_module.mode = 'factorized-from-pretrained'
+            else:
+                pl_module.mode = 'pretrained-only'
             pl_module.true_methyl_rep_weight = 1.0
             hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()

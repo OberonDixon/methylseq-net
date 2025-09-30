@@ -832,11 +832,12 @@ class MethylSeqNN(L.LightningModule):
             x_methyl_allchannels = self.capture_true_methyl_rep(x_methyl_allchannels)
             return x_methyl_allchannels
         elif x.shape[1]==7:
-            x_methyl = x[:,4:7,:]
+            if self.crop_off_sequence:
+                x = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]
             for layer in self.input_to_methyl_rep:
-                x_methyl = layer(x_methyl)
-            x_methyl = self.capture_true_methyl_rep(x_methyl)
-            return torch.cat([x_methyl]*self.num_cell_types, dim=1)
+                x = layer(x)
+            x = self.capture_true_methyl_rep(x)
+            return torch.cat([x.unsqueeze(1)]*self.num_cell_types, dim=1)
         else:
             raise ValueError(f"Input to _input_to_methyl_rep_forward must have 7 or more channels. Found {x.shape[1]}.")
 
