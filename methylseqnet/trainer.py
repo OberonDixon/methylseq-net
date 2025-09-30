@@ -135,6 +135,7 @@ def main(
     batch_size,
     max_epochs,
     samples_per_step = -1,
+    samples_per_log = 64,
     start_from_checkpoint = None,
     no_wandb = False,
     no_checkpoints = False,
@@ -269,7 +270,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                         no_checkpoints=no_checkpoints,
                         stage_name=stage_name,
                         no_haplotype_metrics=no_haplotype_metrics,
-                        starting_from_best=starting_from_best
+                        starting_from_best=starting_from_best,
+                        track_gradients_for_modules=track_gradients_for_modules,
                     ),
                     default_root_dir=model_dir,
                     logger=logger,
@@ -278,6 +280,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     max_epochs=target_epoch,
                     strategy="ddp_find_unused_parameters_true",
                     accumulate_grad_batches=accumulate_grad_batches,
+                    log_every_n_steps=samples_per_log//accumulate_grad_batches,
                 )  
                 trainer.fit(
                     model,
@@ -297,7 +300,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 no_checkpoints=no_checkpoints,
                 stage_name=None,
                 no_haplotype_metrics=no_haplotype_metrics,
-                starting_from_best=starting_from_best
+                starting_from_best=starting_from_best,
+                track_gradients_for_modules=track_gradients_for_modules,
             ),
             default_root_dir=model_dir,
             logger=logger,
@@ -306,6 +310,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             max_epochs=max_epochs,
             strategy="ddp_find_unused_parameters_true",
             accumulate_grad_batches=accumulate_grad_batches,
+            log_every_n_steps=samples_per_log//accumulate_grad_batches,
         )    
         trainer.fit(
             model,
@@ -415,6 +420,7 @@ if __name__ == '__main__':
         batch_size=args.batch_size,
         max_epochs=args.max_epochs,
         samples_per_step=args.samples_per_step,
+        samples_per_log=64,
         start_from_checkpoint=args.start_from_checkpoint,
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,
