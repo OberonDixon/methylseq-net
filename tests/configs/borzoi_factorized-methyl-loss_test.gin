@@ -9,6 +9,8 @@ seq_model/methylseqnet.transforms.EncodingSelector.encoding_str='seq-only'
 input_to_methyl_rep/methylseqnet.transforms.EncodingSelector.encoding_str='interp-methyl-only'
 
 input_to_methyl_rep/AvgPool1d.kernel_size=128
+input_to_methyl_rep/Hardtanh.min_val=0.0
+input_to_methyl_rep/Hardtanh.max_val=1.0
 
 embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
 embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
@@ -58,6 +60,7 @@ methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_seq_rep = [
 methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
+    @input_to_methyl_rep/Hardtanh,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_first/ConvBlock,

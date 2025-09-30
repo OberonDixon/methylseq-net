@@ -27,6 +27,7 @@ from methylseqnet.activations import *
 
 gin.register(nn.Softplus)
 gin.register(nn.Sigmoid)
+gin.register(nn.Hardtanh)
 
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
