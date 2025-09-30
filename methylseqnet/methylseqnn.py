@@ -403,65 +403,8 @@ class MethylSeqNN(L.LightningModule):
                     weight=1,
                     log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
                 )
-        ]
-        if self.residual_activation_loss_weight>0:
-            if id(self.layers[-1]) in self.hooked_activations:
-                residual_activations = self.hooked_activations[id(self.layers[-1])]
-                loss_terms.append(
-                    self._apply_masked_loss(
-                        self.activation_criterion,
-                        (residual_activations,),
-                        mask=None,
-                        weight=self.residual_activation_loss_weight,
-                        log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
-                    )
-                )
-            else:
-                warnings.warn("residual_activations_loss not calculated; hooked activations not found.")
-        if len(self.seq_output_head)>0 and self.seq_only_loss_weight>0:
-            if id(self.seq_output_head[-1]) in self.hooked_activations:
-                seq_out_activations = self.hooked_activations[id(self.seq_output_head[-1])]
-                loss_terms.append(
-                    self._apply_masked_loss(
-                        self.seq_only_prediction_criterion,
-                        (seq_out_activations,targets),
-                        mask=effective_mask,
-                        weight=self.seq_only_loss_weight,
-                        log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
-                    )
-                )
-            else:
-                warnings.warn("seq_only_loss not calculated; hooked activations not found.")
-        if self.methyl_rep_loss_weight>0:
-            if id(self.capture_imputed_methyl_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
-                imputed_methyl_rep = self.hooked_activations[id(self.capture_imputed_methyl_rep)]
-                true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
-                loss_terms.append(
-                    self._apply_masked_loss(
-                        self.methyl_rep_criterion,
-                        (imputed_methyl_rep, true_methyl_rep),
-                        mask=effective_mask,
-                        weight=self.methyl_rep_loss_weight,
-                        log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
-                    )
-                )
-            else:
-                warnings.warn("methyl_rep_loss not calculated; no hooked activations found.")
-        if self.seq_reps_orthogonality_loss_weight>0:
-            if id(self.capture_methyl_indep_seq_rep) in self.hooked_activations and id(self.capture_methyl_dep_seq_rep) in self.hooked_activations:
-                methyl_indep_seq_rep = self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
-                methyl_dep_seq_rep = self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
-                loss_terms.append(
-                    self._apply_masked_loss(
-                        self.seq_reps_orthogonality_criterion,
-                        (methyl_indep_seq_rep, methyl_dep_seq_rep),
-                        mask=None,
-                        weight=self.seq_reps_orthogonality_loss_weight,
-                        log_name=f"{log_descriptor}/seq_reps_orthogonality_loss" if log_descriptor else None,
-                    )
-                )
-            else:
-                warnings.warn("seq_reps_orthogonality_loss not calculated; no hooked activations found.")
+        ] + self._calculate_auxiliary_losses(log_descriptor, effective_mask, targets)
+
         loss = sum(loss_terms)
         if log_descriptor:
             self.log(f"{log_descriptor}/loss", loss, sync_dist=True)
@@ -479,6 +422,68 @@ class MethylSeqNN(L.LightningModule):
         if log_name:
             self.log(log_name,loss,sync_dist=True)            
         return weight*loss
+
+    def _calculate_auxiliary_losses(self, log_descriptor, effective_mask, targets):
+        auxiliary_losses = []
+        if self.residual_activation_loss_weight>0:
+            if id(self.layers[-1]) in self.hooked_activations:
+                residual_activations = self.hooked_activations[id(self.layers[-1])]
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.activation_criterion,
+                        (residual_activations,),
+                        mask=None,
+                        weight=self.residual_activation_loss_weight,
+                        log_name=f"{log_descriptor}/residual_activations_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("residual_activations_loss not calculated; hooked activations not found.")
+        if len(self.seq_output_head)>0 and self.seq_only_loss_weight>0:
+            if id(self.seq_output_head[-1]) in self.hooked_activations:
+                seq_out_activations = self.hooked_activations[id(self.seq_output_head[-1])]
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.seq_only_prediction_criterion,
+                        (seq_out_activations,targets),
+                        mask=effective_mask,
+                        weight=self.seq_only_loss_weight,
+                        log_name=f"{log_descriptor}/seq_only_prediction_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("seq_only_loss not calculated; hooked activations not found.")
+        if self.methyl_rep_loss_weight>0:
+            if id(self.capture_imputed_methyl_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
+                imputed_methyl_rep = self.hooked_activations[id(self.capture_imputed_methyl_rep)]
+                true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.methyl_rep_criterion,
+                        (imputed_methyl_rep, true_methyl_rep),
+                        mask=effective_mask,
+                        weight=self.methyl_rep_loss_weight,
+                        log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("methyl_rep_loss not calculated; no hooked activations found.")
+        if self.seq_reps_orthogonality_loss_weight>0:
+            if id(self.capture_methyl_indep_seq_rep) in self.hooked_activations and id(self.capture_methyl_dep_seq_rep) in self.hooked_activations:
+                methyl_indep_seq_rep = self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
+                methyl_dep_seq_rep = self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.seq_reps_orthogonality_criterion,
+                        (methyl_indep_seq_rep, methyl_dep_seq_rep),
+                        mask=None,
+                        weight=self.seq_reps_orthogonality_loss_weight,
+                        log_name=f"{log_descriptor}/seq_reps_orthogonality_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("seq_reps_orthogonality_loss not calculated; no hooked activations found.")
+        return auxiliary_losses
     
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay
