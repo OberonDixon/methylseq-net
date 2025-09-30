@@ -70,6 +70,7 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_final/ConvFinal,
     @Softplus,
 ]
+methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=0.5
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
@@ -78,8 +79,12 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'pretrained_seq_model':False,
                     'seq_input_head':False,
                     'seq_output_head':True,
+                    'input_to_methyl_rep':True,
+                    'embeddings_to_methyl_rep':True,
+                    'embeddings_to_seq_rep':True,
+                    'factorized_reps_to_output':True,
                 },
-                'epochs':1,
+                'epochs':30,
             },
         }
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
@@ -91,12 +96,8 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
