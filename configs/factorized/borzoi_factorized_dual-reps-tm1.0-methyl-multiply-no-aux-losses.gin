@@ -74,7 +74,8 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_output_head':True,
                     'input_to_methyl_rep':True,
                     'embeddings_to_methyl_rep':True,
-                    'embeddings_to_seq_rep':True,
+                    'embeddings_to_methyl_indep_seq_rep':True,
+                    'embeddings_to_methyl_dep_seq_rep':True,
                     'factorized_reps_to_output':True,
                 },
                 'epochs':30,
@@ -88,7 +89,8 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
 # methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
-methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=0.0
+methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight=0.0
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
