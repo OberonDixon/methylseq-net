@@ -267,10 +267,9 @@ class MethylSeqNN(L.LightningModule):
             self.seq_output_head[-1].register_forward_hook(self._capture_activations_hook)
         if self.methyl_rep_loss_weight!=0:
             self.capture_imputed_methyl_rep.register_forward_hook(self._capture_activations_hook)
-            self.capture_true_methyl_rep.register_forward_hook(self._capture_activations_hook)
-        if self.seq_reps_orthogonality_loss_weight!=0:
-            self.capture_methyl_indep_seq_rep.register_forward_hook(self._capture_activations_hook)
-            self.capture_methyl_dep_seq_rep.register_forward_hook(self._capture_activations_hook)
+        self.capture_true_methyl_rep.register_forward_hook(self._capture_activations_hook)
+        self.capture_methyl_indep_seq_rep.register_forward_hook(self._capture_activations_hook)
+        self.capture_methyl_dep_seq_rep.register_forward_hook(self._capture_activations_hook)
 
         self.io_mappings_str = ''
         
@@ -505,7 +504,7 @@ class MethylSeqNN(L.LightningModule):
                         self.seq_reps_to_methyl_criterion,
                         (x, true_methyl_rep),
                         mask=None,
-                        weight=self.seq_reps_orthogonality_loss_weight,
+                        weight=1.0,
                         log_name=f"{log_descriptor}/methyl_indep_seq_rep_to_methyl_loss" if log_descriptor else None,
                     )
                 )
@@ -522,7 +521,7 @@ class MethylSeqNN(L.LightningModule):
                         self.seq_reps_to_methyl_criterion,
                         (x, true_methyl_rep),
                         mask=None,
-                        weight=self.seq_reps_orthogonality_loss_weight,
+                        weight=1.0,
                         log_name=f"{log_descriptor}/methyl_dep_seq_rep_to_methyl_loss" if log_descriptor else None,
                     )
                 )
