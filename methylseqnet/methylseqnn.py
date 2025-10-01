@@ -411,15 +411,19 @@ class MethylSeqNN(L.LightningModule):
             self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
         effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
 
-        loss_terms = [
-            self._apply_masked_loss(
-                self.prediction_criterion,
-                    (outputs,targets),
-                    mask=effective_mask,
-                    weight=1,
-                    log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
-                )
-        ] + self._calculate_auxiliary_losses(log_descriptor, effective_mask, targets)
+        loss_terms = (
+            [
+                self._apply_masked_loss(
+                    self.prediction_criterion,
+                        (outputs,targets),
+                        mask=effective_mask,
+                        weight=1,
+                        log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
+                    )
+            ]
+            + self._calculate_auxiliary_losses(log_descriptor, effective_mask, targets)
+            + self._calculate_probe_losses(log_descriptor, effective_mask, targets)
+        )
 
         loss = sum(loss_terms)
         if log_descriptor:
