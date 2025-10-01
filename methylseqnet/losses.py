@@ -55,6 +55,20 @@ class OrthogonalityLoss(MaskedLoss):
         return loss
 
 @gin.register
+@gin.configurable
+class MSELoss(MaskedLoss):
+    def __init__(self):
+        super().__init__()
+    def forward(self,predictions,targets,mask=None):
+        loss = (predictions - targets)**2
+        if mask is not None:
+            loss = (loss * mask.float()).sum() / (mask.float().sum() + 1e-7)
+        else:
+            loss = loss.mean()
+            logging.debug(f"{self.__class__.__name__} running without a mask, calculated {loss.item()}")
+        return loss
+
+@gin.register
 class LogL1Loss(MaskedLoss):
     def __init__(self):
         super().__init__()

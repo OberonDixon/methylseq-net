@@ -28,6 +28,7 @@ from methylseqnet.activations import *
 gin.register(nn.Softplus)
 gin.register(nn.Sigmoid)
 gin.register(nn.Hardtanh)
+gin.register(nn.Conv1d)
 
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
@@ -56,6 +57,8 @@ class MethylSeqNN(L.LightningModule):
         embeddings_to_methyl_rep=None,
         embeddings_to_methyl_indep_seq_rep=None,
         embeddings_to_methyl_dep_seq_rep=None,
+        methyl_indep_seq_rep_probe=None,
+        methyl_dep_seq_rep_probe=None,
         input_to_methyl_rep=None,
         true_methyl_rep_weight=0.5,
         interpolate_methyl_reps_location='rep',
@@ -81,6 +84,7 @@ class MethylSeqNN(L.LightningModule):
         activation_criterion=LogL1Loss,
         methyl_rep_criterion=BCELoss,
         seq_reps_orthogonality_criterion=OrthogonalityLoss,
+        seq_reps_to_methyl_criterion=MSELoss
     ):
         """
         Args:
@@ -223,6 +227,8 @@ class MethylSeqNN(L.LightningModule):
 
         self.true_methyl_rep_weight = true_methyl_rep_weight
         self.interpolate_methyl_reps_location = interpolate_methyl_reps_location
+        self.methyl_indep_seq_rep_probe = nn.ModuleList([])
+        self.methyl_dep_seq_rep_probe = nn.ModuleList([])
         if self.use_embeddings_factorization:
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
             self.embeddings_to_methyl_indep_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_indep_seq_rep])
@@ -231,6 +237,10 @@ class MethylSeqNN(L.LightningModule):
             else:
                 self.embeddings_to_methyl_dep_seq_rep = nn.ModuleList([])
             self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
+            if methyl_indep_seq_rep_probe:
+                self.methyl_indep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_indep_seq_rep_probe])
+            if methyl_dep_seq_rep_probe:
+                self.methyl_dep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_dep_seq_rep_probe])
             self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
             if self.factorized_reps_to_output_submodel_per_task:
                 self.factorized_reps_to_output = nn.ModuleDict(
@@ -269,6 +279,7 @@ class MethylSeqNN(L.LightningModule):
         self.activation_criterion = activation_criterion()
         self.methyl_rep_criterion = methyl_rep_criterion()
         self.seq_reps_orthogonality_criterion = seq_reps_orthogonality_criterion()
+        self.seq_reps_to_methyl_criterion = seq_reps_to_methyl_criterion()
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
@@ -483,6 +494,40 @@ class MethylSeqNN(L.LightningModule):
                 )
             else:
                 warnings.warn("seq_reps_orthogonality_loss not calculated; no hooked activations found.")
+        if self.methyl_indep_seq_rep_probe and self.embeddings_to_methyl_indep_seq_rep:
+            if id(self.capture_methyl_indep_seq_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
+                x = self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
+                true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
+                for layer in self.methyl_indep_seq_rep_probe:
+                    x = layer(x)
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.seq_reps_to_methyl_criterion,
+                        (x, true_methyl_rep),
+                        mask=None,
+                        weight=self.seq_reps_orthogonality_loss_weight,
+                        log_name=f"{log_descriptor}/methyl_indep_seq_rep_to_methyl_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("methyl_indep_seq_rep_to_methyl loss not calculated; no hooked activations found.")
+        if self.methyl_dep_seq_rep_probe and self.embeddings_to_methyl_dep_seq_rep:
+            if id(self.capture_methyl_dep_seq_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
+                x = self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
+                true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
+                for layer in self.methyl_dep_seq_rep_probe:
+                    x = layer(x)
+                auxiliary_losses.append(
+                    self._apply_masked_loss(
+                        self.seq_reps_to_methyl_criterion,
+                        (x, true_methyl_rep),
+                        mask=None,
+                        weight=self.seq_reps_orthogonality_loss_weight,
+                        log_name=f"{log_descriptor}/methyl_dep_seq_rep_to_methyl_loss" if log_descriptor else None,
+                    )
+                )
+            else:
+                warnings.warn("methyl_dep_seq_rep_to_methyl loss not calculated; no hooked activations found.")
         return auxiliary_losses
     
     def configure_optimizers(self):
