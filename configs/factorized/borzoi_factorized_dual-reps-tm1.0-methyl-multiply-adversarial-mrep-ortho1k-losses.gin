@@ -66,7 +66,7 @@ methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
 methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe=[@methyl_reps_probe/Conv1d]
 methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe=[@methyl_reps_probe/Conv1d]
 methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe_upstream_grad_scale=-1
-methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe_upstream_grad_scale=-1
+methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe_upstream_grad_scale=0
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output/ConvFinal,
     @Softplus,
