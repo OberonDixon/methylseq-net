@@ -315,6 +315,7 @@ class ConvFinal(nn.Module):
         in_channels, 
         filters, 
         pool_size=1, 
+        pool_class=nn.AvgPool1d, 
         kernel_size=1, 
         shared_head=False, 
         stride=1, 
@@ -327,7 +328,7 @@ class ConvFinal(nn.Module):
         self.kernel_size = kernel_size
         self.filters = filters
         self.pool_size = pool_size
-        self.pool = nn.AvgPool1d(pool_size)
+        self.pool = pool_class(pool_size)
         self.stride = stride
         self.shared_head = shared_head # this sets the output head for all the output tracks to be the same
         self.weight_decay = weight_decay

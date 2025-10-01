@@ -16,11 +16,11 @@ embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
 embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
 embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.filters=42
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.in_channels=1920
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=42
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=4
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
 
 factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.in_channels=1025
 factorized_reps_to_output_first/methylseqnet.layers.ConvBlock.filters=512
@@ -49,7 +49,7 @@ methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = None
 methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [
-    @embeddings_to_methyl_rep/ConvBlock,
+    @embeddings_to_methyl_rep/ConvFinal,
     @Sigmoid,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_indep_seq_rep = [
