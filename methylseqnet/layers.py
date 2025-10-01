@@ -1,11 +1,42 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.autograd import Function
 import gin
 import warnings
 
 gin.external_configurable(nn.AvgPool1d, module='torch.nn')
 gin.external_configurable(nn.MaxPool1d, module='torch.nn')
+
+class GradientReversal(Function):
+    @staticmethod
+    def forward(ctx, x, lambda_):
+        ctx.lambda_ = lambda_
+        return x.view_as(x)
+    
+    @staticmethod
+    def backward(ctx, grad_output):
+        return grad_output * ctx.lambda_, None
+
+
+class GradientReversalLayer(nn.Module):
+    """Gradient Reversal Layer for adversarial training.
+    
+    Passes input unchanged in forward pass, but scales gradients in backward pass.
+    
+    Args:
+        lambda_: Scaling factor for gradients:
+            - Positive values: Normal gradient flow (scaled by lambda)
+            - Negative values: Reversed gradients (adversarial training)
+            - Zero: No gradients flow through
+            - Default: 0.0 (stop gradients)
+    """
+    def __init__(self, lambda_=0.0):
+        super().__init__()
+        self.lambda_ = lambda_
+    
+    def forward(self, x):
+        return GradientReversal.apply(x, self.lambda_)
 
 @gin.configurable
 @gin.register

@@ -79,6 +79,8 @@ class MethylSeqNN(L.LightningModule):
         seq_only_loss_weight=0,
         methyl_rep_loss_weight=0,
         seq_reps_orthogonality_loss_weight=0,
+        methyl_indep_seq_rep_probe_upstream_grad_scale=0,
+        methyl_dep_seq_rep_probe_upstream_grad_scale=0,
         prediction_criterion=PoissonLoss,
         seq_only_prediction_criterion=PoissonLoss,
         activation_criterion=LogL1Loss,
@@ -141,6 +143,8 @@ class MethylSeqNN(L.LightningModule):
                 - seq_only_loss_weight: weight for an auxiliary loss on the predictions of the sequence-only model
                 - methyl_rep_loss_weight: weight for an auxiliary loss on the predicted methyl representation
                 - seq_reps_orthogonality_loss_weight: weight for an auxiliary loss to encourage orthogonality between
+                - methyl_indep_seq_rep_probe_upstream_grad_scale: scale for gradients passing back from the methyl_indep_seq_rep_probe to the methyl_indep_seq_rep
+                - methyl_dep_seq_rep_probe_upstream_grad_scale: scale for gradients passing back from the methyl_dep_seq_rep_probe to the methyl_dep_seq_rep
                 - prediction_criterion: the loss function class to use for main prediction loss. Must be a subclass of nn.Module.
                 - seq_only_prediction_criterion: the loss function class to use for sequence-only prediction loss. Must be a subclass of nn.Module.
                 - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
@@ -229,6 +233,8 @@ class MethylSeqNN(L.LightningModule):
         self.interpolate_methyl_reps_location = interpolate_methyl_reps_location
         self.methyl_indep_seq_rep_probe = nn.ModuleList([])
         self.methyl_dep_seq_rep_probe = nn.ModuleList([])
+        self.methyl_indep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_indep_seq_rep_probe_upstream_grad_scale)
+        self.methyl_dep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_dep_seq_rep_probe_upstream_grad_scale)
         if self.use_embeddings_factorization:
             self.embeddings_to_methyl_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_rep])
             self.embeddings_to_methyl_indep_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_indep_seq_rep])
@@ -493,13 +499,20 @@ class MethylSeqNN(L.LightningModule):
                 )
             else:
                 warnings.warn("seq_reps_orthogonality_loss not calculated; no hooked activations found.")
+        return auxiliary_losses
+
+    def _calculate_probe_losses(self, log_descriptor, effective_mask, targets):
+        probe_losses = []
         if self.methyl_indep_seq_rep_probe and self.embeddings_to_methyl_indep_seq_rep:
             if id(self.capture_methyl_indep_seq_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
-                x = self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
+                # cut off, invert, or otherwise modify gradients passing back into the seq rep from the probe
+                x = self.methyl_indep_seq_rep_probe_grad_interface(
+                    self.hooked_activations[id(self.capture_methyl_indep_seq_rep)]
+                )
                 true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
                 for layer in self.methyl_indep_seq_rep_probe:
                     x = layer(x)
-                auxiliary_losses.append(
+                probe_losses.append(
                     self._apply_masked_loss(
                         self.seq_reps_to_methyl_criterion,
                         (x, true_methyl_rep),
@@ -512,11 +525,14 @@ class MethylSeqNN(L.LightningModule):
                 warnings.warn("methyl_indep_seq_rep_to_methyl loss not calculated; no hooked activations found.")
         if self.methyl_dep_seq_rep_probe and self.embeddings_to_methyl_dep_seq_rep:
             if id(self.capture_methyl_dep_seq_rep) in self.hooked_activations and id(self.capture_true_methyl_rep) in self.hooked_activations:
-                x = self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
+                # cut off, invert, or otherwise modify gradients passing back into the seq rep from the probe
+                x = self.methyl_dep_seq_rep_probe_grad_interface(
+                    self.hooked_activations[id(self.capture_methyl_dep_seq_rep)]
+                )
                 true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
                 for layer in self.methyl_dep_seq_rep_probe:
                     x = layer(x)
-                auxiliary_losses.append(
+                probe_losses.append(
                     self._apply_masked_loss(
                         self.seq_reps_to_methyl_criterion,
                         (x, true_methyl_rep),
@@ -527,7 +543,7 @@ class MethylSeqNN(L.LightningModule):
                 )
             else:
                 warnings.warn("methyl_dep_seq_rep_to_methyl loss not calculated; no hooked activations found.")
-        return auxiliary_losses
+        return probe_losses
     
     def configure_optimizers(self):
         # Define parameter groups based on the layer's weight decay
