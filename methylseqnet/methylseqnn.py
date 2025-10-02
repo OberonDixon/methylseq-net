@@ -64,6 +64,7 @@ class MethylSeqNN(L.LightningModule):
         interpolate_methyl_reps_location='rep',
         factorized_reps_to_output=None,
         factorized_reps_to_output_submodel_per_task=True,
+        factorized_reps_to_output_submodels_shared=False,
 
         # Cropping / padding behavior
         pad_all_layers=False,
@@ -231,6 +232,8 @@ class MethylSeqNN(L.LightningModule):
 
         self.true_methyl_rep_weight = true_methyl_rep_weight
         self.interpolate_methyl_reps_location = interpolate_methyl_reps_location
+        self.factorized_reps_to_output_submodel_per_task = factorized_reps_to_output_submodel_per_task
+        self.factorized_reps_to_output_submodels_shared = factorized_reps_to_output_submodels_shared
         self.methyl_indep_seq_rep_probe = nn.ModuleList([])
         self.methyl_dep_seq_rep_probe = nn.ModuleList([])
         self.methyl_indep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_indep_seq_rep_probe_upstream_grad_scale)
@@ -247,14 +250,22 @@ class MethylSeqNN(L.LightningModule):
                 self.methyl_indep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_indep_seq_rep_probe])
             if methyl_dep_seq_rep_probe:
                 self.methyl_dep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_dep_seq_rep_probe])
-            self.factorized_reps_to_output_submodel_per_task=factorized_reps_to_output_submodel_per_task
             if self.factorized_reps_to_output_submodel_per_task:
-                self.factorized_reps_to_output = nn.ModuleDict(
-                    {
-                        f"factorized_reps_to_output_task{task_index}": nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
-                            for task_index in range(self.out_tracks)
-                    }
-                )
+                if self.factorized_reps_to_output_submodels_shared:
+                    factorized_reps_to_output_submodel = nn.ModuleList([layer() for layer in factorized_reps_to_output])
+                    self.factorized_reps_to_output = nn.ModuleDict(
+                        {
+                            f"factorized_reps_to_output_task{task_index}": factorized_reps_to_output_submodel 
+                                for task_index in range(self.out_tracks)
+                        }
+                    )
+                else:
+                    self.factorized_reps_to_output = nn.ModuleDict(
+                        {
+                            f"factorized_reps_to_output_task{task_index}": nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
+                                for task_index in range(self.out_tracks)
+                        }
+                    )
             else:
                 self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
         else:
