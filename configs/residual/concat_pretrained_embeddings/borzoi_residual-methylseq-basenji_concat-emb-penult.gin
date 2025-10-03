@@ -33,15 +33,15 @@ methylseqnet.layers.DilatedResidual.rate_mult=1.5
 methylseqnet.layers.DilatedResidual.repeat=11
 methylseqnet.layers.DilatedResidual.dropout=0.3
 
-first_concat/methylseqnet.layers.ConvBlock.in_channels=1960
-first_concat/methylseqnet.layers.ConvBlock.filters=100
-first_concat/methylseqnet.layers.ConvBlock.kernel_size=1
-first_concat/methylseqnet.layers.ConvBlock.dilation=1
+scaleup_block/methylseqnet.layers.ConvBlock.in_channels=%tower_end_filters
+scaleup_block/methylseqnet.layers.ConvBlock.filters=1536
+scaleup_block/methylseqnet.layers.ConvBlock.kernel_size=1
+scaleup_block/methylseqnet.layers.ConvBlock.dilation=1
 
-penult/methylseqnet.layers.ConvBlock.in_channels=100
-penult/methylseqnet.layers.ConvBlock.filters=1536
-penult/methylseqnet.layers.ConvBlock.kernel_size=5
-penult/methylseqnet.layers.ConvBlock.dilation=1
+penultimate_block/methylseqnet.layers.ConvBlock.in_channels=3456
+penultimate_block/methylseqnet.layers.ConvBlock.filters=100
+penultimate_block/methylseqnet.layers.ConvBlock.kernel_size=5
+penultimate_block/methylseqnet.layers.ConvBlock.dilation=1
 
 seq_model/methylseqnet.layers.ConvFinal.in_channels=1920
 seq_model/methylseqnet.layers.ConvFinal.shared_head=False
@@ -62,8 +62,8 @@ methylseqnet.methylseqnn.MethylSeqNN.layers = [
     @ConvDNA,
     @ConvTower,
     @DilatedResidual,
-    @first_concat/ConvBlock,
-    @penult/ConvBlock,
+    @scaleup_block/ConvBlock,
+    @penultimate_block/ConvBlock,
     @methylseq_model/ConvFinal,
     @Softplus,
 ]
@@ -101,7 +101,7 @@ methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
 methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={
-    -4:4,
+    -3:4,
 }
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss

@@ -11,12 +11,14 @@ import pysam
 from lightning.pytorch.callbacks import BasePredictionWriter, Callback
 from scipy.stats import pearsonr, spearmanr
 import torch
+from torch import nn
 import wandb
 import pandas as pd
 
 from dimelo import load_processed
 from methylseqnet import dna_io
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks
+from methylseqnet.transforms import EncodingSelector
 
 class ConditionalBestScoreReset(Callback):
     def __init__(self, checkpoint_callback, reset_on_train_start):
@@ -287,6 +289,7 @@ class HaplotypedPredLogger(Callback):
         label_bin_size: int = 128,
         log_stats: bool = True,
         upload_plots: bool = False,
+        plot_methylation: bool = False,
         ):
         super().__init__()
         self.hp1_cpg_bedgz = hp1_cpg_bedgz
@@ -300,12 +303,18 @@ class HaplotypedPredLogger(Callback):
         self.label_bin_size = label_bin_size
         self.log_stats = log_stats
         self.upload_plots = upload_plots
+        self.plot_methylation = plot_methylation
         if not (os.path.exists(hp1_cpg_bedgz) and os.path.exists(hp2_cpg_bedgz) and os.path.exists(ref_genome_fasta)):
             raise ValueError("One of the provided haplotype-specific cpg bed files or reference genome fasta does not exist.")
         if (hp1_accessibility_bedgz is not None) != (hp2_accessibility_bedgz is not None):
             raise ValueError("Either both or neither haplotype-specific accessibility bed files must be provided.")
         if (hp1_accessibility_bedgz is not None) and (not (os.path.exists(hp1_accessibility_bedgz) and os.path.exists(hp2_accessibility_bedgz))):
             raise ValueError("One of the provided haplotype-specific accessibility bed files does not exist.")
+
+        self.input_to_methylation = nn.Sequential(
+            EncodingSelector(encoding_str='interp-methyl-only'),
+            nn.AvgPool1d(kernel_size=128),
+        )
 
     def on_validation_epoch_end(self, trainer, pl_module) -> None:
         if trainer.is_global_zero:
@@ -315,22 +324,45 @@ class HaplotypedPredLogger(Callback):
             if run is not None and hasattr(run, "log"):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
-                    hp1_target, hp2_target, hp1_pred, hp2_pred = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
+                    hp1_target, hp2_target, hp1_pred, hp2_pred, hp1_methylation, hp2_methylation, hp1_pred_methylation, hp2_pred_methylation = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
                     if self.upload_plots:
                         region_str = f"{chromosome}:{start}-{end}"
-                        fig, axes = plt.subplots(4,1,figsize=(20,10), sharex=True)
+                        if self.plot_methylation:
+                            num_subplots = 6
+                            haplo_pred_idx = 0
+                            haplo_diff_pred_idx = 1
+                            methyl_pred_idx = 2
+                            haplo_true_idx = 3
+                            haplo_diff_true_idx = 4
+                            methyl_true_idx = 5
+                        else:
+                            num_subplot = 4
+                            haplo_pred_idx = 0
+                            haplo_diff_pred_idx = 1 
+                            haplo_true_idx = 2
+                            haplo_diff_true_idx = 3                           
+                        fig, axes = plt.subplots(6,1,figsize=(30,10), sharex=True)
                         fig.suptitle(f"{region_str}, epoch={epoch}")
-                        axes[0].plot(hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
-                        axes[0].plot(hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
-                        axes[0].set_ylabel("Haplo 1/2 Prediction")
-                        axes[1].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
-                        axes[1].set_ylabel("Haplo 1 minus Haplo 2 Prediction")
+                        axes[haplo_pred_idx].plot(hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                        axes[haplo_pred_idx].plot(hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
+                        axes[haplo_pred_idx].set_ylabel("Haplo 1/2 Prediction")
+                        axes[haplo_diff_pred_idx].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
+                        axes[haplo_diff_pred_idx].set_ylabel("Haplo 1 minus Haplo 2 Prediction")
+                        if self.plot_methylation:
+                            axes[methyl_pred_idx].plot(hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
+                            axes[methyl_pred_idx].plot(hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
+                            axes[methyl_pred_idx].set_ylabel("Haplo 1/2 Methylation")
                         if hp1_target is not None:
-                            axes[2].plot(hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
-                            axes[2].plot(hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
-                            axes[2].set_ylabel("Haplo 1/2 Target")
-                            axes[3].plot(hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
-                            axes[3].set_ylabel("Haplo 1 minus Haplo 2 Target")
+                            axes[haplo_true_idx].plot(hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                            axes[haplo_true_idx].plot(hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                            axes[haplo_true_idx].set_ylabel("Haplo 1/2 Target")
+                            axes[haplo_diff_true_idx].plot(hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                            axes[haplo_diff_true_idx].set_ylabel("Haplo 1 minus Haplo 2 Target")
+                            if self.plot_methylation:
+                                axes[methyl_true_idx].plot(hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
+                                axes[methyl_true_idx].plot(hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
+                                axes[methyl_true_idx].set_ylabel("Haplo 1/2 Imputed Methylation")
+                        axes[-1].set_xlabel("Position (binned)")
                         fig.canvas.draw()  # guarantee the figure is rendered NOW
                         w, h = fig.canvas.get_width_height()
                         run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
@@ -371,6 +403,8 @@ class HaplotypedPredLogger(Callback):
             end=end,
             device=device,
         )
+        hp1_methylation = self.input_to_methylation(hp1_input).squeeze().cpu().numpy()
+        hp2_methylation = self.input_to_methylation(hp2_input).squeeze().cpu().numpy()
         hp1_target = self._construct_target_tensor(
             pileup_file=self.hp1_accessibility_bedgz,
             chromosome=chromosome,
@@ -397,10 +431,20 @@ class HaplotypedPredLogger(Callback):
                 pl_module.mode = 'pretrained-only'
             pl_module.true_methyl_rep_weight = 1.0
             hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_pred_methylation = (
+                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].squeeze().cpu().numpy()
+                if pl_module.capture_imputed_methyl_rep in pl_module.hooked_activations
+                else np.zeros_like(hp1_methylation)
+            )
             hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_pred_methylation = (
+                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].squeeze().cpu().numpy()
+                if pl_module.capture_imputed_methyl_rep in pl_module.hooked_activations
+                else np.zeros_like(hp2_methylation)
+            )
             pl_module.mode = training_mode
             pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
-        return hp1_target, hp2_target, hp1_pred, hp2_pred
+        return hp1_target, hp2_target, hp1_pred, hp2_pred, hp1_methylation, hp2_methylation, hp1_pred_methylation, hp2_pred_methylation
 
 
     def _construct_input_tensor(
