@@ -181,10 +181,19 @@ class MethylSeqNN(L.LightningModule):
         self.pad_all_layers = pad_all_layers
         self.crop_off_sequence = crop_off_sequence
         self.crop_off_final = crop_off_final
-        self.concat_pretrained_embeddings_at = { # adjust negative indices to positive
-            (i if i >= 0 else len(layers) + i): v
-            for i, v in concat_pretrained_embeddings_at.items()
-        }
+        if layers:
+            self.concat_pretrained_embeddings_at = { # adjust negative indices to positive
+                (i if i >= 0 else len(layers) + i): v
+                for i, v in concat_pretrained_embeddings_at.items()
+            }
+        elif input_to_methyl_rep:
+            self.concat_pretrained_embeddings_at = { # adjust negative indices to positive
+                (i if i >= 0 else len(input_to_methyl_rep) + i): v
+                for i, v in concat_pretrained_embeddings_at.items()
+            }
+        else:
+            if concat_pretrained_embeddings_at:
+                raise ValueError("MethylSeqNN concat_pretrained_embeddings_at provided but no layers or input_to_methyl_rep defined; ignoring.")
         self.model_merge_operation = model_merge_operation
         self.operations = { # the different operations that can be used to combine pretrained and residual models. take in (res,x)
             'multiply': torch.mul,  # Element-wise multiplication
@@ -236,6 +245,7 @@ class MethylSeqNN(L.LightningModule):
         self.factorized_reps_to_output_submodels_shared = factorized_reps_to_output_submodels_shared
         self.methyl_indep_seq_rep_probe = nn.ModuleList([])
         self.methyl_dep_seq_rep_probe = nn.ModuleList([])
+        self.input_to_methyl_rep = nn.ModuleList([])
         self.methyl_indep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_indep_seq_rep_probe_upstream_grad_scale)
         self.methyl_dep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_dep_seq_rep_probe_upstream_grad_scale)
         if self.use_embeddings_factorization:
@@ -245,7 +255,11 @@ class MethylSeqNN(L.LightningModule):
                 self.embeddings_to_methyl_dep_seq_rep = nn.ModuleList([layer() for layer in embeddings_to_methyl_dep_seq_rep])
             else:
                 self.embeddings_to_methyl_dep_seq_rep = nn.ModuleList([])
-            self.input_to_methyl_rep = nn.ModuleList([layer() for layer in input_to_methyl_rep])
+            for layer in input_to_methyl_rep:
+                try:
+                    self.input_to_methyl_rep.append(layer(pad=self.pad_all_layers))
+                except:
+                    self.input_to_methyl_rep.append(layer())
             if methyl_indep_seq_rep_probe:
                 self.methyl_indep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_indep_seq_rep_probe])
             if methyl_dep_seq_rep_probe:
@@ -904,8 +918,11 @@ class MethylSeqNN(L.LightningModule):
     def _embeddings_factorization_forward(self, x, embeddings):
         methyl_indep_seq_rep = self._embeddings_to_methyl_indep_seq_rep_forward(embeddings)
         methyl_dep_seq_rep = self._embeddings_to_methyl_dep_seq_rep_forward(embeddings)
-        imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
-        true_methyl_rep = self._input_to_methyl_rep_forward(x)
+        true_methyl_rep = self._input_to_methyl_rep_forward(x, embeddings)
+        if math.isclose(self.true_methyl_rep_weight,1.0):
+            imputed_methyl_rep = torch.zeros_like(true_methyl_rep)
+        else:
+            imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
         match self.interpolate_methyl_reps_location:
             case 'output':
                 if math.isclose(self.true_methyl_rep_weight,1.0):
@@ -944,7 +961,7 @@ class MethylSeqNN(L.LightningModule):
         self.capture_imputed_methyl_rep(methyl_rep)
         return methyl_rep
 
-    def _input_to_methyl_rep_forward(self, x):
+    def _input_to_methyl_rep_forward(self, x, embeddings=None):
         """
         Extract methylation channels from x and run through input_to_methyl_rep layers.
         This should always return a representation of shape (N,num_cell_types,rep_dim,L')
@@ -963,9 +980,19 @@ class MethylSeqNN(L.LightningModule):
                 if self.crop_off_sequence:
                     x_methyl = x_methyl[:,:,self.crop_off_sequence:-self.crop_off_sequence]
                 x_methyl_pseudobatch_list.append(x_methyl)
+            pseudobatch_scaleup = len(x_methyl_pseudobatch_list)
             x_methyl_pseudobatch = torch.cat(x_methyl_pseudobatch_list, dim=0)
-            for layer in self.input_to_methyl_rep:
+            for layer_index, layer in enumerate(self.input_to_methyl_rep):
+                if layer_index in self.concat_pretrained_embeddings_at:
+                    rbs = self.concat_pretrained_embeddings_at[layer_index]
+                    x_methyl_pseudobatch = self._concat_pretrained_embeddings(
+                        embeddings, 
+                        rbs, 
+                        x_methyl_pseudobatch, 
+                        embeddings_pseudobatch_scaleup=pseudobatch_scaleup)
                 x_methyl_pseudobatch = layer(x_methyl_pseudobatch)
+            if self.crop_off_final:
+                x_methyl_pseudobatch = x_methyl_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final] 
             x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(x.size(0), self.num_cell_types, *x_methyl_pseudobatch.shape[1:])
             batch_size = x.size(0)
 
@@ -979,8 +1006,17 @@ class MethylSeqNN(L.LightningModule):
         elif x.shape[1]==7:
             if self.crop_off_sequence:
                 x = x[:,:,self.crop_off_sequence:-self.crop_off_sequence]
-            for layer in self.input_to_methyl_rep:
+            for layer_index, layer in enumerate(self.input_to_methyl_rep):
+                if layer_index in self.concat_pretrained_embeddings_at:
+                    rbs = self.concat_pretrained_embeddings_at[layer_index]
+                    x = self._concat_pretrained_embeddings(
+                        embeddings, 
+                        rbs, 
+                        x,
+                    )
                 x = layer(x)
+            if self.crop_off_final:
+                x = x[:,:,self.crop_off_final:-self.crop_off_final] 
             x = self.capture_true_methyl_rep(x)
             return torch.cat([x.unsqueeze(1)]*self.num_cell_types, dim=1)
         else:

@@ -181,9 +181,14 @@ def main(
     # determine accumulate_grad_batches based on samples_per_step
     batch_by_gpus = batch_size * (torch.cuda.device_count() if gpus=='auto' else int(gpus))
     if samples_per_step > 0:
-        if samples_per_step % batch_by_gpus != 0:
-            raise ValueError(f"samples_per_step ({samples_per_step}) must be a multiple of batch_size * num_gpus ({batch_by_gpus}).")
-        accumulate_grad_batches = samples_per_step // (batch_size * (torch.cuda.device_count() if gpus=='auto' else int(gpus)))
+        if batch_by_gpus > 0:
+            if samples_per_step % batch_by_gpus != 0:
+                raise ValueError(f"samples_per_step ({samples_per_step}) must be a multiple of batch_size * num_gpus ({batch_by_gpus}).")
+            accumulate_grad_batches = samples_per_step // batch_by_gpus
+        else:
+            if samples_per_step % batch_size != 0:
+                raise ValueError(f"samples_per_step ({samples_per_step}) must be a multiple of batch_size ({batch_size}).")
+            accumulate_grad_batches = samples_per_step // batch_size
     else:
         accumulate_grad_batches = 1
 
