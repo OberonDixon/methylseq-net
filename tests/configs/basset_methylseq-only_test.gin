@@ -1,6 +1,6 @@
-initial_filters = 30
-tower_end_filters = 40
-dilated_residual_filters = 40
+initial_filters = 10
+tower_end_filters = 10
+dilated_residual_filters = 10
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
