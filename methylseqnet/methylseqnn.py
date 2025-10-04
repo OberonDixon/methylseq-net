@@ -266,7 +266,7 @@ class MethylSeqNN(L.LightningModule):
                 self.methyl_dep_seq_rep_probe = nn.ModuleList([layer() for layer in methyl_dep_seq_rep_probe])
             if self.factorized_reps_to_output_submodel_per_task:
                 if self.factorized_reps_to_output_submodels_shared:
-                    factorized_reps_to_output_submodel = nn.ModuleList([layer() for layer in factorized_reps_to_output])
+                    factorized_reps_to_output_submodel = self._build_modulelist_with_padding(factorized_reps_to_output)
                     self.factorized_reps_to_output = nn.ModuleDict(
                         {
                             f"factorized_reps_to_output_task{task_index}": factorized_reps_to_output_submodel 
@@ -276,7 +276,7 @@ class MethylSeqNN(L.LightningModule):
                 else:
                     self.factorized_reps_to_output = nn.ModuleDict(
                         {
-                            f"factorized_reps_to_output_task{task_index}": nn.ModuleList([layer() for layer in factorized_reps_to_output]) 
+                            f"factorized_reps_to_output_task{task_index}": self._build_modulelist_with_padding(factorized_reps_to_output) 
                                 for task_index in range(self.out_tracks)
                         }
                     )
@@ -313,6 +313,15 @@ class MethylSeqNN(L.LightningModule):
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
+    def _build_modulelist_with_padding(self, modulelist_layers):
+        modulelist = nn.ModuleList()
+        for layer in modulelist_layers:
+            try:
+                modulelist.append(layer(pad=self.pad_all_layers))
+            except:
+                modulelist.append(layer())
+        return modulelist
+    
     def forward(self, x):
         """
         MethylSeqNN forward supports two types of inputs:
