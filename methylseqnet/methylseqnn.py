@@ -439,7 +439,7 @@ class MethylSeqNN(L.LightningModule):
             targets = (targets>self.label_threshold_cts).float()
             
         # option to only train on sites with peaks over threshold in some cell types. If thresh is zero, keep all are active
-        active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1)
+        active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1, keepdim=True)
         fraction_true = active_pos_mask.float().mean()
         if log_descriptor and self.peak_subset_threshold>0:
             self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
@@ -515,7 +515,7 @@ class MethylSeqNN(L.LightningModule):
                     self._apply_masked_loss(
                         self.methyl_rep_criterion,
                         (imputed_methyl_rep, true_methyl_rep),
-                        mask=effective_mask,
+                        mask=None,
                         weight=self.methyl_rep_loss_weight,
                         log_name=f"{log_descriptor}/methyl_rep_loss" if log_descriptor else None,
                     )
@@ -550,6 +550,7 @@ class MethylSeqNN(L.LightningModule):
                 true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
                 for layer in self.methyl_indep_seq_rep_probe:
                     x = layer(x)
+                x = x.unsqueeze(2)
                 probe_losses.append(
                     self._apply_masked_loss(
                         self.seq_reps_to_methyl_criterion,
@@ -570,6 +571,7 @@ class MethylSeqNN(L.LightningModule):
                 true_methyl_rep = self.hooked_activations[id(self.capture_true_methyl_rep)]
                 for layer in self.methyl_dep_seq_rep_probe:
                     x = layer(x)
+                x = x.unsqueeze(2)
                 probe_losses.append(
                     self._apply_masked_loss(
                         self.seq_reps_to_methyl_criterion,
@@ -1046,7 +1048,7 @@ class MethylSeqNN(L.LightningModule):
                         x_methylseq_rep = layer(x_methylseq_rep)
                     if cell_type_idx==0:
                         x_output_allchannels = x_methylseq_rep.new_zeros(x_methylseq_rep.size(0), self.out_tracks, x_methylseq_rep.size(2))
-                    x_output_allchannels[:, task_index, :] = x_methylseq_rep
+                    x_output_allchannels[:, task_index:task_index+1, :] = x_methylseq_rep
             return x_output_allchannels
         else:
             raise NotImplementedError("factorized_reps_to_output_submodel_per_task=False not implemented.")

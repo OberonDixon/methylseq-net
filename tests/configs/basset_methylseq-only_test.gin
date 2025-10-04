@@ -69,6 +69,6 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
     "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
 ]
-methylseqnet.trainer.MethylSeqDataModule.batch_size=1
+methylseqnet.trainer.MethylSeqDataModule.batch_size=2
 methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset

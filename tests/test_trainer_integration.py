@@ -28,7 +28,7 @@ def test_trainer_integration(config_file):
             output_dir=temp_dir,
             unique_identifier="test",
             gpus='auto',
-            batch_size=1,
+            batch_size=-1,
             max_epochs=1,
             no_haplotype_metrics=False,
             track_gradients_for_modules=[
