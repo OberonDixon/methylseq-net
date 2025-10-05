@@ -930,7 +930,7 @@ class MethylSeqNN(L.LightningModule):
         methyl_indep_seq_rep = self._embeddings_to_methyl_indep_seq_rep_forward(embeddings)
         methyl_dep_seq_rep = self._embeddings_to_methyl_dep_seq_rep_forward(embeddings)
         true_methyl_rep = self._input_to_methyl_rep_forward(x, embeddings)
-        if math.isclose(self.true_methyl_rep_weight,1.0):
+        if math.isclose(self.true_methyl_rep_weight,1.0) and self.methyl_rep_loss_weight==0:
             imputed_methyl_rep = torch.zeros_like(true_methyl_rep)
         else:
             imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
