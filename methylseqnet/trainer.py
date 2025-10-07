@@ -379,7 +379,8 @@ def create_callbacks(
             crop_for_accessibility = 163840,
             label_bin_size = 128,
             log_stats = True,
-            upload_plots = True,       
+            upload_plots = True,    
+            plot_methylation = True,   
         )
         callbacks.append(haplotyped_pred_logger)
     if track_gradients_for_modules:

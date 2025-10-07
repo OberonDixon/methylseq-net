@@ -325,6 +325,14 @@ class HaplotypedPredLogger(Callback):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
                     hp1_target, hp2_target, hp1_pred, hp2_pred, hp1_methylation, hp2_methylation, hp1_pred_methylation, hp2_pred_methylation = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
+                    if hp1_pred_methylation is not None and hp2_pred_methylation is not None:
+                        assert len(hp1_methylation) == len(hp2_methylation), f"methylation lengths do not match for {chromosome}:{start}-{end}"
+                        pred_len = len(hp1_pred)
+                        methyl_len = len(hp1_methylation)
+                        if methyl_len > pred_len:
+                            crop_off_each_end = (methyl_len - pred_len) // 2
+                            hp1_methylation = hp1_methylation[crop_off_each_end:crop_off_each_end+pred_len]
+                            hp2_methylation = hp2_methylation[crop_off_each_end:crop_off_each_end+pred_len]
                     if self.upload_plots:
                         region_str = f"{chromosome}:{start}-{end}"
                         if self.plot_methylation:
@@ -432,14 +440,14 @@ class HaplotypedPredLogger(Callback):
             pl_module.true_methyl_rep_weight = 1.0
             hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].squeeze().cpu().numpy()
-                if pl_module.capture_imputed_methyl_rep in pl_module.hooked_activations
-                else np.zeros_like(hp1_methylation)
+                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
+                else np.ones_like(hp1_methylation)
             )
             hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].squeeze().cpu().numpy()
-                if pl_module.capture_imputed_methyl_rep in pl_module.hooked_activations
+                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
                 else np.zeros_like(hp2_methylation)
             )
             pl_module.mode = training_mode
