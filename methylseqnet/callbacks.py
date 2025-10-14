@@ -284,7 +284,7 @@ class HaplotypedPredLogger(Callback):
         hp2_accessibility_bedgz: str,
         ref_genome_fasta : str,
         regions: list[tuple[str, int, int]],
-        model_outputs_slice: slice = slice(None),
+        model_outputs_slice: slice | list = slice(None),
         crop_for_accessibility: int = 163840,
         label_bin_size: int = 128,
         log_stats: bool = True,
