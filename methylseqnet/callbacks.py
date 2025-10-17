@@ -290,6 +290,7 @@ class HaplotypedPredLogger(Callback):
         log_stats: bool = True,
         upload_plots: bool = False,
         plot_methylation: bool = False,
+        methylation_exaggeration: float = 1.0,
         ):
         super().__init__()
         self.hp1_cpg_bedgz = hp1_cpg_bedgz
@@ -304,6 +305,7 @@ class HaplotypedPredLogger(Callback):
         self.log_stats = log_stats
         self.upload_plots = upload_plots
         self.plot_methylation = plot_methylation
+        self.methylation_exaggeration = methylation_exaggeration
         if not (os.path.exists(hp1_cpg_bedgz) and os.path.exists(hp2_cpg_bedgz) and os.path.exists(ref_genome_fasta)):
             raise ValueError("One of the provided haplotype-specific cpg bed files or reference genome fasta does not exist.")
         if (hp1_accessibility_bedgz is not None) != (hp2_accessibility_bedgz is not None):
@@ -472,11 +474,12 @@ class HaplotypedPredLogger(Callback):
             bin_size=1,
             crop=0,
         )
+        exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
         return torch.permute(
             torch.tensor(
                 dna_io.one_hot_encode_dna(
                     dna_strand=self.genome.fetch(chromosome,start,end), 
-                    cpg_methylation=cpg_ratio, 
+                    cpg_methylation=exp_cpg_ratio, 
                     valid_cpgs=non_zero_mask,
                 ),
                 dtype=torch.float32,
@@ -484,6 +487,19 @@ class HaplotypedPredLogger(Callback):
             ).unsqueeze(0),
             (0,2,1),
         )
+    
+    def _exaggerate_methylation(self, cpg_ratio, non_zero_mask, eps=1e-7) -> np.ndarray:
+        if self.methylation_exaggeration==1.0:
+            return cpg_ratio
+        else:
+            result = cpg_ratio.copy()
+            
+            # Clip to avoid numerical issues, then convert to logits, scale, convert back
+            clipped = np.clip(result[non_zero_mask], eps, 1 - eps)
+            logits = np.log(clipped / (1 - clipped))
+            result[non_zero_mask] = 1 / (1 + np.exp(-self.methylation_exaggeration * logits))
+            
+            return result
 
     def _construct_target_tensor(
         self,
