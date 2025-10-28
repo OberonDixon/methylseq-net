@@ -250,11 +250,11 @@ class MultiMethylWriter:
                     del f['methylation']
                 f.create_dataset(
                     'methylation',
-                    (0,self.num_variants,3*self.num_cell_types,self.seq_length),
-                    maxshape=(None,self.num_variants,3*self.num_cell_types,self.seq_length),
+                    (0,self.num_variants,self.num_cell_types,3,self.seq_length),
+                    maxshape=(None,self.num_variants,self.num_cell_types,3,self.seq_length),
                     dtype=np.float16,
                     compression='lzf',
-                    chunks=(1,self.num_variants,3,self.seq_length),
+                    chunks=(1,self.num_variants,self.num_cell_types,3,self.seq_length),
                 )
                 if 'tracks' in f:
                     del f['tracks']
@@ -303,8 +303,8 @@ class MultiMethylWriter:
             sample_specifier_list: List of sample identifiers
             onehot_seq_list: List of sequences, each with shape (num_variants, seq_length, 4) 
                             OR (seq_length, 4) if num_variants=1 (will auto-expand)
-            methylation_info_list: List of methylation data, each with shape (num_variants, seq_length, 3*num_cell_types)
-                                  OR (seq_length, 3*num_cell_types) if num_variants=1 (will auto-expand)
+            methylation_info_list: List of methylation data, each with shape (num_variants, seq_length, 3*num_cell_types) or (num_variants, seq_length, num_cell_types, 3)
+                                  OR (seq_length, 3*num_cell_types or (seq_length, num_cell_types, 3) if num_variants=1 (will auto-expand)
             labels_list: List of labels, each with shape (num_variants, track_length, num_tracks)
                         OR (track_length, num_tracks) if num_variants=1 (will auto-expand)
             mask_list: List of masks, each with shape (num_variants, track_length, num_tracks)
@@ -329,6 +329,25 @@ class MultiMethylWriter:
             # Check if masks need expansion
             if mask_list is not None and len(mask_list[0].shape) == 2:
                 mask_list = [mask[np.newaxis, :, :] for mask in mask_list]
+
+        # Auto-reshape methylation from old to new format if needed
+        if methylation_info_list is not None:
+            reshaped_methyl = []
+            for methyl in methylation_info_list:
+                # Check if it's the old flattened format: (..., seq_length, 3*num_cell_types)
+                if methyl.shape[-1] == 3 * self.num_cell_types and len(methyl.shape) == 3:
+                    # Reshape from (num_variants, seq_length, 3*num_cell_types) 
+                    # to (num_variants, seq_length, num_cell_types, 3)
+                    reshaped = methyl.reshape(methyl.shape[0], methyl.shape[1], self.num_cell_types, 3)
+                    reshaped_methyl.append(reshaped)
+                elif methyl.shape[-1] == 3 and methyl.shape[-2] == self.num_cell_types:
+                    # Already in new format: (num_variants, seq_length, num_cell_types, 3)
+                    reshaped_methyl.append(methyl)
+                else:
+                    raise ValueError(f"Unexpected methylation shape: {methyl.shape}. Expected either "
+                                f"(num_variants, seq_length, {3*self.num_cell_types}) or "
+                                f"(num_variants, seq_length, {self.num_cell_types}, 3)")
+            methylation_info_list = reshaped_methyl
         
         # Check shapes - now expecting (num_variants, seq_length, 4) for sequences
         if len(onehot_seq_list[0].shape) != 3:
@@ -396,9 +415,9 @@ class MultiMethylWriter:
                 else:
                     track_dataset[start_index:end_index, :, :, :] = [np.transpose(label,(0,2,1)) for label in labels_list]
                 if methylation_info_list is None:
-                    methyl_dataset[start_index:end_index, :, :, :] = 0
+                    methyl_dataset[start_index:end_index, :, :, :, :] = 0
                 else:
-                    methyl_dataset[start_index:end_index, :, :, :] = [np.transpose(methyl,(0,2,1)) for methyl in methylation_info_list]
+                    methyl_dataset[start_index:end_index, :, :, :, :] = [np.transpose(methyl,(0,2,3,1)) for methyl in methylation_info_list]
                 if self.mask:
                     mask_dataset[start_index:end_index, :, :, :] = [np.transpose(mask,(0,2,1)) for mask in mask_list]
             except IndexError as e:
