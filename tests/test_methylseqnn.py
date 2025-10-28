@@ -28,10 +28,10 @@ def nuke_gin_config():
     if hasattr(gin.config, '_CONFIG_IS_LOCKED'):
         gin.config._CONFIG_IS_LOCKED = False
 
-def get_config_files():
+def get_config_files(config_subdir: str = "configs"):
     """Find all gin config files relative to the test file location."""
     test_file_dir = Path(__file__).parent
-    configs_dir = test_file_dir / "configs"
+    configs_dir = test_file_dir / config_subdir
     
     # If configs not found next to test file, try looking in repo root
     if not configs_dir.exists():
@@ -39,7 +39,7 @@ def get_config_files():
         current_dir = test_file_dir
         while current_dir.parent != current_dir:  # Stop at filesystem root
             if any((current_dir / marker).exists() for marker in ["setup.py", "pyproject.toml", ".git"]):
-                configs_dir = current_dir / "tests" / "configs"
+                configs_dir = current_dir / "tests" / config_subdir
                 break
             current_dir = current_dir.parent
     
@@ -54,9 +54,9 @@ def get_config_files():
     
     return config_files
 
-def get_config_files_with_names():
+def get_config_files_with_names(config_subdir: str = "configs"):
     """Get config files with readable test names."""
-    config_files = get_config_files()
+    config_files = get_config_files(config_subdir)
     return [
         pytest.param(config_file, id=config_file.stem)
         for config_file in config_files

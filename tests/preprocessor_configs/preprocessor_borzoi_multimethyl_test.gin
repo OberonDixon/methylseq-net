@@ -1,0 +1,35 @@
+ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
+regions_bed = './tests/data/sequences_test.bed'
+methylation_directory = './tests/data'
+atac_directory = './tests/data'
+cage_directory = './tests/data'
+match_file = './tests/data/cell_type_matching_test.tsv'
+label_bin_size = 32
+label_num_bins = 16384
+seq_length = 524288
+
+MultiMethylWriter.track_length = %label_num_bins
+MultiMethylWriter.seq_length = %seq_length
+MultiMethylWriter.mask = True
+
+RegionBedParser.regions_bed = %regions_bed
+RegionBedParser.seq_length = %seq_length
+
+MultiMethylAtacCageAtlases.ref_genome = %ref_genome
+MultiMethylAtacCageAtlases.methylation_directory = %methylation_directory
+MultiMethylAtacCageAtlases.atac_directory = %atac_directory
+MultiMethylAtacCageAtlases.cage_directory = %cage_directory
+MultiMethylAtacCageAtlases.match_file = %match_file
+MultiMethylAtacCageAtlases.label_bin_size = %label_bin_size
+MultiMethylAtacCageAtlases.label_num_bins = %label_num_bins
+MultiMethylAtacCageAtlases.normalize_label_counts = False
+MultiMethylAtacCageAtlases.normalize_label_gc = False
+MultiMethylAtacCageAtlases.binarize_labels = False
+
+PreprocessingPipeline.sample_generator = @RegionBedParser()
+PreprocessingPipeline.multitask_io_handler = @MultiMethylAtacCageAtlases()
+PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
+PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
+PreprocessingPipeline.samples_per_batch = 2
+
+
