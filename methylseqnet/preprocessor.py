@@ -96,15 +96,15 @@ class PreprocessingPipeline:
         print(f'splits to process:{self.splits}')
         for split in self.splits:
             batches = self.sample_batches_by_split[split]
-            # Each key here is a data split that will want its own dataset
-            dataset_writer = self.initialize_dataset_writer(split)  
+            # Each key here is a data split that will want its own dataset. Most recent one is stored as class attribute
+            self.dataset_writer = self.initialize_dataset_writer(split)  
             if mode=='sequential':
                 for indices_list,sample_list in tqdm(batches,
-                                                      desc=f'processing and writing {split} to {dataset_writer.output_path}'):
+                                                      desc=f'processing and writing {split} to {self.dataset_writer.output_path}'):
                     self.multitask_io_handler.process_batch(
                         indices_list,
                         sample_list,
-                        dataset_writer,
+                        self.dataset_writer,
                         self.lock,
                     )          
             elif mode=='parallel':
@@ -113,11 +113,11 @@ class PreprocessingPipeline:
                         self.multitask_io_handler.process_batch, 
                         indices_list, 
                         sample_list, 
-                        dataset_writer, 
+                        self.dataset_writer, 
                         self.lock,
                     ) for indices_list,sample_list in batches]
                     for future in tqdm(as_completed(futures), total=len(futures), 
-                                       desc=f"processing and writing {split} to {dataset_writer.output_path}"):
+                                       desc=f"processing and writing {split} to {self.dataset_writer.output_path}"):
                         try:
                             future.result()
                         except Exception as e:

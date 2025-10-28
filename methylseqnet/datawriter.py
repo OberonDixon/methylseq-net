@@ -173,7 +173,8 @@ class DatasetWriter:
 @gin.configurable
 class MultiMethylWriter:
     """
-    Writes a dataset containing sequence and methylation information for all cell types/states in a single sample
+    Writes a dataset containing sequence and methylation information for all cell types/states in a single sample,
+    with support for multiple variants per sample (e.g., different haplotypes, epigenetic edits, or environmental contexts).
     """
     def __init__(
         self,
@@ -181,6 +182,7 @@ class MultiMethylWriter:
         track_length: int,
         num_tracks: int,
         output_path: str | Path,
+        num_variants: int = 1,
         mask: bool = True,
         io_mappings_list: list=[],
         append=False,
@@ -189,7 +191,9 @@ class MultiMethylWriter:
         Args:
             seq_length: the length of the nucleotide sequence
             track_length: the number of predicton track bins
+            num_tracks: the number of different prediction tasks
             output_path: the place to which the dataset will be written, including filename
+            num_variants: the number of variants per sample (e.g., haplotypes, epigenetic edits)
             mask: True if some tasks are masked out for some samples
             io_mappings_list: the task identification for each output task - what cell type, etc. This will be used to determine dataset shapes.
         """
@@ -202,6 +206,8 @@ class MultiMethylWriter:
         if self.num_tracks != max([io_mapping["channel"] for io_mapping in io_mappings_list]) + 1:
             raise ValueError(f"num_tracks unexpected value: calculated {max([io_mapping['channel'] for io_mapping in io_mappings_list]) + 1} from io_mappings_list but {self.num_tracks} was provided instead.")
         self.num_cell_types = max([io_mapping["cell_type"] for io_mapping in io_mappings_list]) + 1
+        
+        self.num_variants = num_variants
         
         # The path for the output hdf5 file
         if Path(output_path).suffix in ['.h5','.hdf5']:
@@ -234,42 +240,42 @@ class MultiMethylWriter:
                     del f['sequence']
                 f.create_dataset(
                     'sequence',
-                    (0,4,self.seq_length),
-                    maxshape=(None,4,self.seq_length),
+                    (0,self.num_variants,4,self.seq_length),
+                    maxshape=(None,self.num_variants,4,self.seq_length),
                     dtype=np.float16,
                     compression='lzf',
-                    chunks=(1,4,self.seq_length),
+                    chunks=(1,self.num_variants,4,self.seq_length),
                 )
                 if 'methylation' in f:
                     del f['methylation']
                 f.create_dataset(
                     'methylation',
-                    (0,3*self.num_cell_types,self.seq_length),
-                    maxshape=(None,3*self.num_cell_types,self.seq_length),
+                    (0,self.num_variants,3*self.num_cell_types,self.seq_length),
+                    maxshape=(None,self.num_variants,3*self.num_cell_types,self.seq_length),
                     dtype=np.float16,
                     compression='lzf',
-                    chunks=(1,3*self.num_cell_types,self.seq_length),
+                    chunks=(1,self.num_variants,3,self.seq_length),
                 )
                 if 'tracks' in f:
                     del f['tracks']
                 f.create_dataset(
                     'tracks',
-                    (0,self.num_tracks,self.track_length),
-                    maxshape=(None,self.num_tracks,self.track_length),
+                    (0,self.num_variants,self.num_tracks,self.track_length),
+                    maxshape=(None,self.num_variants,self.num_tracks,self.track_length),
                     dtype='float',
                     compression='lzf',
-                    chunks=(1,self.num_tracks,self.track_length),
+                    chunks=(1,self.num_variants,self.num_tracks,self.track_length),
                 )
                 if self.mask:
                     if 'mask' in f:
                         del f['mask']
                     f.create_dataset(
                         'mask',
-                        (0,self.num_tracks,self.track_length),
-                        maxshape=(None,self.num_tracks,self.track_length),
+                        (0,self.num_variants,self.num_tracks,self.track_length),
+                        maxshape=(None,self.num_variants,self.num_tracks,self.track_length),
                         dtype='bool',
                         compression='lzf',
-                        chunks=(1,self.num_tracks,self.track_length),
+                        chunks=(1,self.num_variants,self.num_tracks,self.track_length),
                     )
                 # Log the gin config string and io mappings as attributes in the HDF5 file
                 gin_config_str = gin.operative_config_str()
@@ -289,18 +295,62 @@ class MultiMethylWriter:
         labels_list=None,
         mask_list=None,
     ):
+        """
+        Write a chunk of data to the HDF5 file.
+        
+        Args:
+            indices_list: List of sample indices to write
+            sample_specifier_list: List of sample identifiers
+            onehot_seq_list: List of sequences, each with shape (num_variants, seq_length, 4) 
+                            OR (seq_length, 4) if num_variants=1 (will auto-expand)
+            methylation_info_list: List of methylation data, each with shape (num_variants, seq_length, 3*num_cell_types)
+                                  OR (seq_length, 3*num_cell_types) if num_variants=1 (will auto-expand)
+            labels_list: List of labels, each with shape (num_variants, track_length, num_tracks)
+                        OR (track_length, num_tracks) if num_variants=1 (will auto-expand)
+            mask_list: List of masks, each with shape (num_variants, track_length, num_tracks)
+                      OR (track_length, num_tracks) if num_variants=1 (will auto-expand)
+        """
         if labels_list is not None and len(onehot_seq_list)!=len(labels_list):
             raise ValueError(f'Cannot write chunk, unbalanced lengths:{len(onehot_seq_list)} sequences and {len(labels_list)} labels.')
-        if len(onehot_seq_list[0])!=self.seq_length:
-            raise ValueError(f'Cannot write chunk, seq length is {len(onehot_seq_list[0])} and should be {self.seq_length}.')
-        if labels_list is not None and labels_list[0].shape[0]!=self.track_length:
-            raise ValueError(f'Cannot write chunk, track length is {labels_list[0].shape[0]} and should be {self.track_length}.')
+        # Auto-expand dimensions if num_variants=1 and input lacks variants dimension
+        if self.num_variants == 1:
+            # Check if sequences need expansion (shape is (seq_length, 4) instead of (1, seq_length, 4))
+            if len(onehot_seq_list[0].shape) == 2:
+                onehot_seq_list = [seq[np.newaxis, :, :] for seq in onehot_seq_list]
+            
+            # Check if methylation needs expansion
+            if methylation_info_list is not None and len(methylation_info_list[0].shape) == 2:
+                methylation_info_list = [methyl[np.newaxis, :, :] for methyl in methylation_info_list]
+            
+            # Check if labels need expansion
+            if labels_list is not None and len(labels_list[0].shape) == 2:
+                labels_list = [label[np.newaxis, :, :] for label in labels_list]
+            
+            # Check if masks need expansion
+            if mask_list is not None and len(mask_list[0].shape) == 2:
+                mask_list = [mask[np.newaxis, :, :] for mask in mask_list]
+        
+        # Check shapes - now expecting (num_variants, seq_length, 4) for sequences
+        if len(onehot_seq_list[0].shape) != 3:
+            raise ValueError(f'Expected onehot_seq to have 3 dimensions (num_variants, seq_length, 4), got shape {onehot_seq_list[0].shape}')
+        if onehot_seq_list[0].shape[0] != self.num_variants:
+            raise ValueError(f'Cannot write chunk, first dimension should be {self.num_variants} variants, got {onehot_seq_list[0].shape[0]}.')
+        if onehot_seq_list[0].shape[1] != self.seq_length:
+            raise ValueError(f'Cannot write chunk, seq length is {onehot_seq_list[0].shape[1]} and should be {self.seq_length}.')
+        
+        if labels_list is not None:
+            if labels_list[0].shape[0] != self.num_variants:
+                raise ValueError(f'Cannot write chunk, labels first dimension should be {self.num_variants} variants, got {labels_list[0].shape[0]}.')
+            if labels_list[0].shape[1] != self.track_length:
+                raise ValueError(f'Cannot write chunk, track length is {labels_list[0].shape[1]} and should be {self.track_length}.')
 
         if self.mask:
             if mask_list is None:
                 raise ValueError("Datasetwriter initialized with 'mask=True', must provide a mask_list when writing chunk. Got 'None'")
-            if mask_list[0].shape[0]!=self.track_length:
-                raise ValueError(f'Cannot write chunk, mask length is {mask_list[0].shape[0]} and should be {self.track_length}.')
+            if mask_list[0].shape[0] != self.num_variants:
+                raise ValueError(f'Cannot write chunk, mask first dimension should be {self.num_variants} variants, got {mask_list[0].shape[0]}.')
+            if mask_list[0].shape[1] != self.track_length:
+                raise ValueError(f'Cannot write chunk, mask length is {mask_list[0].shape[1]} and should be {self.track_length}.')
                 
             
         with h5py.File(self.output_path, 'a') as f:
@@ -340,17 +390,17 @@ class MultiMethylWriter:
 
             try:
                 specifier_dataset[start_index:end_index] = sample_specifier_list
-                seq_dataset[start_index:end_index, :, :] = [np.transpose(onehot_seq,(1,0)) for onehot_seq in onehot_seq_list]
+                seq_dataset[start_index:end_index, :, :, :] = [np.transpose(onehot_seq,(0,2,1)) for onehot_seq in onehot_seq_list]
                 if labels_list is None:
-                    track_dataset[start_index:end_index, :, :] = np.nan
+                    track_dataset[start_index:end_index, :, :, :] = np.nan
                 else:
-                    track_dataset[start_index:end_index, :, :] = [np.transpose(label,(1,0)) for label in labels_list]
+                    track_dataset[start_index:end_index, :, :, :] = [np.transpose(label,(0,2,1)) for label in labels_list]
                 if methylation_info_list is None:
-                    methyl_dataset[start_index:end_index, :, :] = 0
+                    methyl_dataset[start_index:end_index, :, :, :] = 0
                 else:
-                    methyl_dataset[start_index:end_index, :, :] = [np.transpose(methyl,(1,0)) for methyl in methylation_info_list]
+                    methyl_dataset[start_index:end_index, :, :, :] = [np.transpose(methyl,(0,2,1)) for methyl in methylation_info_list]
                 if self.mask:
-                    mask_dataset[start_index:end_index, :, :] = [np.transpose(mask,(1,0)) for mask in mask_list]
+                    mask_dataset[start_index:end_index, :, :, :] = [np.transpose(mask,(0,2,1)) for mask in mask_list]
             except IndexError as e:
                 raise IndexError(f"Indexing error with indices_list: {indices_list}. Ensure all indices are within bounds.") from e
             except ValueError as e:
