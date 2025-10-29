@@ -32,7 +32,7 @@ def test_hdf5_prediction_writer():
         mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = io_mappings_str
         
-        pred_shape = (10, 3)  # Example prediction shape
+        pred_shape = (1, 10, 3)  # Example prediction shape
         
         # Batch 1 data
         predictions_1 = torch.randn(4, *pred_shape)
@@ -44,7 +44,12 @@ def test_hdf5_prediction_writer():
             "specifiers": specifiers_1
         }
 
-        mock_batch_1 = (Mock(), torch.randn(4, *pred_shape), Mock(), Mock())
+        mock_batch_1 = {
+            'sequence':Mock(),
+            'target':torch.randn(4, *pred_shape),
+            'mask':Mock(),
+            'specifier':Mock(),
+        }
         
         # Batch 2 data (simulate non-contiguous indices)
         predictions_2 = torch.randn(3, *pred_shape)
@@ -56,7 +61,12 @@ def test_hdf5_prediction_writer():
             "specifiers": specifiers_2
         }
 
-        mock_batch_2 = (Mock(), torch.randn(3, *pred_shape), Mock(), Mock())
+        mock_batch_2 = {
+            'sequence':Mock(),
+            'target':torch.randn(3, *pred_shape),
+            'mask':Mock(),
+            'specifier':Mock(),
+        }
         
         # Test writing first batch
         writer.write_on_batch_end(
@@ -163,7 +173,12 @@ def test_hdf5_prediction_writer_file_cleanup():
             "specifiers": specifiers
         }
 
-        mock_batch = (Mock(), torch.randn(2, *pred_shape), Mock(), Mock())
+        mock_batch = {
+            'sequence':Mock(),
+            'target':torch.randn(2, *pred_shape),
+            'mask':Mock(),
+            'specifier':Mock(),
+        }
         
         # Write some data to create file handles
         writer.write_on_batch_end(

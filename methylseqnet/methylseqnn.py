@@ -729,8 +729,8 @@ class MethylSeqNN(L.LightningModule):
             inputs: the input tensor provided to the model. This will be used to determine the input lengths
             targets: the targets (or targets mask) that needs to be trimmed based on the input and network
         """
-        inputs_length = sequence.shape[2] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
-        targets_length = targets.shape[2]
+        inputs_length = sequence.shape[-1] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
+        targets_length = targets.shape[-1]
         
         if self.layers or self.input_to_methyl_rep:
             if not self.pad_all_layers:
@@ -743,7 +743,7 @@ class MethylSeqNN(L.LightningModule):
             trim_off_targets = 2*self.crop_off_final
         
         if trim_off_targets>1:
-            return targets[:, :, trim_off_targets // 2:-trim_off_targets // 2]
+            return targets[..., trim_off_targets // 2:-trim_off_targets // 2]
         else:
             return targets
     

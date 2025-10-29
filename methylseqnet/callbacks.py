@@ -92,8 +92,8 @@ class BaseHDF5Writer(ABC):
         f["specifier"][batch_indices] = specifiers
 
     def _input_target_from_batch(self, batch, pl_module):
-        sequence = batch['sequence'].squeeze(1)
-        targets = batch['target'].squeeze(1)
+        sequence = batch['sequence']
+        targets = batch['target']
         # TODO: make this work in the case where inputs contains embeddings for pretrained
         # TODO: adjust for variants
         targets = pl_module.trim_targets(sequence,targets)
@@ -168,6 +168,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
+        targets = targets.squeeze(1)
         predictions = outputs["predictions"].squeeze(1) # TODO: adjust for variants
         batch_size = predictions.shape[0]
         if self.metrics_per_sample:
