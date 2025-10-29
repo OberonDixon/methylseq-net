@@ -120,7 +120,7 @@ class MultiMethylDataset(Dataset):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.transforms = [transform() for transform in transforms]
-        self.return_specifiers = return_specifiers
+        # self.return_specifiers = return_specifiers always return specifiers in dict
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
@@ -153,41 +153,59 @@ class MultiMethylDataset(Dataset):
         for attempt in range(self.max_retries):
             try:
                 with h5py.File(self.file_path, 'r') as f:
-                    sequence = f['sequence'][start_idx:end_idx,:,:]
-                    methylation = f['methylation'][start_idx:end_idx,:,:]
-                    target = f['tracks'][start_idx:end_idx,:,:]
+                    sequence = f['sequence'][start_idx:end_idx]
+                    methylation = f['methylation'][start_idx:end_idx]
+                    target = f['tracks'][start_idx:end_idx]
+
+                    # Backward compatibility: expand dimensions if needed
+                    if sequence.ndim == 3:
+                        # Old format: (batch, 4, seq_length) -> (batch, 1, 4, seq_length)
+                        sequence = sequence[:, np.newaxis, :, :]
+
+                    if target.ndim == 3:
+                        # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
+                        target = target[:, np.newaxis, :, :]
+
+                    if methylation.ndim == 3:
+                        # Old format: (batch, 3*num_cell_types, seq_length) -> (batch, 1, num_cell_types, 3, seq_length)
+                        batch_size = methylation.shape[0]
+                        seq_length = methylation.shape[2]
+                        num_cell_types = methylation.shape[1] // 3
+                        methylation = methylation.reshape(batch_size, num_cell_types, 3, seq_length)
+                        methylation = methylation[:, np.newaxis, :, :, :]
+
                     sequence = torch.tensor(sequence, dtype=torch.float32)
                     methylation = torch.tensor(methylation, dtype=torch.float32)
-                    input_data = torch.cat([sequence,methylation], dim=1)
                     target = torch.tensor(target, dtype=torch.float32)
                     if self.mask:
-                        mask = f['mask'][start_idx:end_idx,:,:]
+                        mask = f['mask'][start_idx:end_idx]
+                        if mask.ndim == 3:
+                            # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
+                            mask = mask[:, np.newaxis, :, :]
                         mask = torch.tensor(mask, dtype=torch.bool)
                     else:
                         mask = None
-                    if self.return_specifiers:
-                        try:
-                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
-                        except Exception as e:
-                            # adjust this line when the region option is removed
-                            
-                            raise ValueError('Dataset does not contain "specifier". Consider running with return_specifiers=False') from e
+                    specifiers = f['specifier'].asstr()[start_idx:end_idx]
 
-                        if self.batch_size is None:
-                            specifiers = specifiers[0]
+                    if self.batch_size is None:
+                        specifiers = specifiers[0]
                             
                 for transform in self.transforms:
-                    input_data, target, mask = transform(input_data, target, mask)
+                    sequence, methylation, target, mask = transform(sequence, methylation, target, mask)
 
                 if self.batch_size is None:
-                    input_data = input_data.squeeze(0)
+                    sequence = sequence.squeeze(0)
+                    methylation = methylation.squeeze(0)
                     target = target.squeeze(0)
                     mask = mask.squeeze(0) if mask is not None else mask
         
-                if self.return_specifiers:
-                    return input_data, target, mask, specifiers
-                else:
-                    return input_data, target, mask
+                return {
+                    'sequence': sequence,
+                    'methylation': methylation,
+                    'target': target,
+                    'mask': mask,
+                    'specifiers': specifiers,
+                }
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)

@@ -25,7 +25,7 @@ class LoaderTransform(ABC):
     """
     
     @abstractmethod
-    def __call__(self, input, target, mask):
+    def __call__(self, sequence, methylation, target, mask):
         """Apply the transform to the data."""
         pass
 
@@ -66,25 +66,29 @@ class CenteredSyntheticCpG(LoaderTransform):
         self.window_size = window_size
         self.center_cpg_frac = center_cpg_frac
         self.background_cpg_frac = background_cpg_frac
-    def __call__(self, input, target, mask):
+    def __call__(self, sequence, methylation, target, mask):
         """
         Args:
-            input (torch.Tensor): Input tensor of shape (num_samples, num_channels, seq_length) or
-                unbatched tensor (num_channels, seq_length)
-            target (torch.Tensor): Target tensor of shape (sample, task_idx, position) or
-                unbatched tensor (num_channels, seq_length)
-            mask (torch.Tensor): Mask tensor of shape (sample, task_idx, position) or
-                unbatched tensor (num_channels, seq_length)
+            sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
+                unbatched tensor (num_variants, 4, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
+                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
+            mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Transformed input, target, and mask.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Transformed sequence, methylation, target, and mask.
         """
-        input = input.clone()
+        methylation = methylation.clone()
 
-        if input.dim()==3:
-            for i in range(input.shape[0]):  # loop over samples
-                input[i] = self._apply_synthetic(input[i])
-        elif input.dim()==2:
-            input = self._apply_synthetic(input)
+        if methylation.dim()==4:
+            for i in range(methylation.shape[0]):  # loop over samples
+                for j in range(methylation.shape[1]):  # loop over variants
+                    methylation[i,j] = self._apply_synthetic(methylation[i,j])
+        elif methylation.dim()==3:
+            for j in range(methylation.shape[1]):  # loop over variants
+                methylation[j] = self._apply_synthetic(methylation[j])
 
         return input, target, mask
 
@@ -115,6 +119,7 @@ class CenteredSyntheticCpG(LoaderTransform):
             window (Tuple[int,int]): (start, end) indices
             frac (float): fraction between 0 and 1
         """
+        raise NotImplementedError("This is not implemented correctly currently; must fix handling of separate seq and methyl tensors")
         start, end = window
         channels = seq.shape[0]
         seq_len = seq.shape[-1]
@@ -169,43 +174,57 @@ class ReverseComplement(LoaderTransform):
         self.probability = probability
         self.batch_wise = batch_wise
 
-    def __call__(self, input, target, mask):
+    def __call__(self, sequence, methylation, target, mask):
         """
         Args:
-            input (torch.Tensor): Input tensor of shape (num_samples, num_channels, seq_length).
-            target (torch.Tensor): Target tensor of shape (sample, task_idx, position).
-            mask (torch.Tensor): Mask tensor of shape (sample, task_idx, position).
+            sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
+                unbatched tensor (num_variants, 4, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
+                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
+            mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Transformed input, target, and mask.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Transformed sequence, methylation, target, and mask.
         """
-        if self.batch_wise:
+        if self.batch_wise or sequence.dim() == 3:
             if random.random() < self.probability:
                 # reverse batch
-                input = input.flip(dims=[-1])
+                sequence = sequence.flip(dims=[-1])
+                methylation = methylation.flip(dims=[-1])
                 target = target.flip(dims=[-1])
                 mask = mask.flip(dims=[-1])
                 # complement batch
-                input = self._apply_complement(input)
+                sequence = self._apply_sequence_complement(sequence)
+                methylation = self._apply_methylation_complement(methylation)
 
         else:
-            for i in range(input.shape[0]):
+            for i in range(sequence.shape[0]):
                 if random.random() < self.probability:
                     # reverse sample
-                    input[i] = input[i].flip(dims=[-1])
+                    sequence[i] = sequence[i].flip(dims=[-1])
+                    methylation[i] = methylation[i].flip(dims=[-1])
                     target[i] = target[i].flip(dims=[-1])
                     mask[i] = mask[i].flip(dims=[-1])
                     # complement sample
-                    input[i:i+1,:,:] = self._apply_complement(input[i:i+1,:,:])
+                    sequence[i:i+1] = self._apply_sequence_complement(sequence[i:i+1])
+                    methylation[i:i+1] = self._apply_methylation_complement(methylation[i:i+1])
 
-        return input, target, mask
+        return sequence, methylation, target, mask
 
-    def _apply_complement(self, seq):
-        """Swap A <-> T, C <-> G, and forward_strand_mC <-> reverse_strand_mC in the input sequence."""
-        seq = seq.clone()
-        seq[:,[0, 3],:] = seq[:,[3, 0],:]  # Swap onehotA with onehotT
-        seq[:,[1, 2],:] = seq[:,[2, 1],:]  # Swap onehotC with onehotG
-        seq[:,[4, 5],:] = seq[:,[5, 4],:]  # Swap methylationfracfwd with methylationfracrev
-        return seq
+    def _apply_sequence_complement(self, sequence):
+        """Swap A <-> T, C <-> G."""
+        sequence = sequence.clone()
+        sequence[...,[0, 3],:] = sequence[...,[3, 0],:]  # Swap onehotA with onehotT
+        sequence[...,[1, 2],:] = sequence[...,[2, 1],:]  # Swap onehotC with onehotG
+        return sequence
+
+    def _apply_methylation_complement(self, methylation):
+        """Swap forward_strand_mC <-> reverse_strand_mC"""
+        methylation = methylation.clone()
+        methylation[..., [0, 1], :] = methylation[..., [1, 0], :]  # Swap methylationfwd with methylationrev
+        return methylation
 
 @gin.register
 @gin.configurable
@@ -222,24 +241,31 @@ class SequenceJitter(LoaderTransform):
         self.max_jitter = max_jitter
         self.batch_wise = batch_wise
 
-    def __call__(self, input, target, mask):
+    def __call__(self, sequence, methylation, target, mask):
         """
         Args:
-            input (torch.Tensor): Input tensor of shape (num_samples, num_channels, seq_length).
-            target (torch.Tensor): Target tensor of shape (sample, task_idx, position).
-            mask (torch.Tensor): Mask tensor of shape (sample, task_idx, position).
+            sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
+                unbatched tensor (num_variants, 4, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
+                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
+            mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
+                unbatched tensor (num_tasks, track_length)
         Returns:
-            Tuple[torch.Tensor, torch.Tensor, torch.Tensor]: Jittered input, target, and mask.
+            Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Transformed sequence, methylation, target, and mask.
         """
-        if self.batch_wise:
+        if self.batch_wise or sequence.dim() == 3:
             jitter_amount = self._draw_jitter()
-            input = self._apply_jitter(input, jitter_amount)
+            sequence = self._apply_jitter(sequence, jitter_amount)
+            methylation = self._apply_jitter(methylation, jitter_amount)
         else:
-            for i in range(input.shape[0]):
+            for i in range(sequence.shape[0]):
                 jitter_amount = self._draw_jitter()
-                input[i] = self._apply_jitter(input[i], jitter_amount)
+                sequence[i] = self._apply_jitter(sequence[i], jitter_amount)
+                methylation[i] = self._apply_jitter(methylation[i], jitter_amount)
 
-        return input, target, mask
+        return sequence, methylation, target, mask
 
     def _draw_jitter(self):
         """

@@ -92,11 +92,12 @@ class BaseHDF5Writer(ABC):
         f["specifier"][batch_indices] = specifiers
 
     def _input_target_from_batch(self, batch, pl_module):
-        inputs = batch[0]
-        targets = batch[1]
+        sequence = batch['sequence'].squeeze(1)
+        targets = batch['target'].squeeze(1)
         # TODO: make this work in the case where inputs contains embeddings for pretrained
-        targets = pl_module.trim_targets(inputs,targets)
-        return inputs, targets
+        # TODO: adjust for variants
+        targets = pl_module.trim_targets(sequence,targets)
+        return sequence, targets
 
     def __del__(self):
         self._close_all()
@@ -167,7 +168,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
 
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
-        predictions = outputs["predictions"]
+        predictions = outputs["predictions"].squeeze(1) # TODO: adjust for variants
         batch_size = predictions.shape[0]
         if self.metrics_per_sample:
             for i in range(batch_size):
@@ -181,8 +182,8 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                                 metric_value = metric(sample_targets, sample_predictions)
                                 self.metric_values_dict[metric_name][data_type].append(metric_value.item())
                 else:
-                    sample_predictions = predictions[i,:,:].detach().cpu()
-                    sample_targets = targets[i,:,:].detach().cpu()
+                    sample_predictions = predictions[i].detach().cpu()
+                    sample_targets = targets[i].detach().cpu()
                     for metric in self.metrics:
                         metric_name = metric.__class__.__name__
                         metric_value = metric(sample_targets, sample_predictions)
@@ -399,22 +400,22 @@ class HaplotypedPredLogger(Callback):
         end: int,
     ):
         device = pl_module.device
-        hp1_input = self._construct_input_tensor(
+        hp1_sequence, hp1_methylation_encoding = self._construct_input_tensor(
             pileup_file=self.hp1_cpg_bedgz,
             chromosome=chromosome,
             start=start,
             end=end,
             device=device,
         )
-        hp2_input = self._construct_input_tensor(
+        hp2_sequence, hp2_methylation_encoding = self._construct_input_tensor(
             pileup_file=self.hp2_cpg_bedgz,
             chromosome=chromosome,
             start=start,
             end=end,
             device=device,
         )
-        hp1_methylation = self.input_to_methylation(hp1_input).squeeze().cpu().numpy()
-        hp2_methylation = self.input_to_methylation(hp2_input).squeeze().cpu().numpy()
+        hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
+        hp2_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
         hp1_target = self._construct_target_tensor(
             pileup_file=self.hp1_accessibility_bedgz,
             chromosome=chromosome,
@@ -440,13 +441,13 @@ class HaplotypedPredLogger(Callback):
             else:
                 pl_module.mode = 'pretrained-only'
             pl_module.true_methyl_rep_weight = 1.0
-            hp1_pred = pl_module(hp1_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_pred = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
                 else np.ones_like(hp1_methylation)
             )
-            hp2_pred = pl_module(hp2_input)[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_pred = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
@@ -475,7 +476,7 @@ class HaplotypedPredLogger(Callback):
             crop=0,
         )
         exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
-        return torch.permute(
+        x_methylseq = torch.permute(
             torch.tensor(
                 dna_io.one_hot_encode_dna(
                     dna_strand=self.genome.fetch(chromosome,start,end), 
@@ -487,6 +488,9 @@ class HaplotypedPredLogger(Callback):
             ).unsqueeze(0),
             (0,2,1),
         )
+        sequence = x_methylseq[:, :4, :]
+        methylation = x_methylseq[:, 4:, :]
+        return sequence, methylation
     
     def _exaggerate_methylation(self, cpg_ratio, non_zero_mask, eps=1e-7) -> np.ndarray:
         if self.methylation_exaggeration==1.0:
