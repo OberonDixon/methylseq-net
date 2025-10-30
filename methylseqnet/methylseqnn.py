@@ -1014,14 +1014,16 @@ class MethylSeqNN(L.LightningModule):
         if self.crop_off_final:
             x_methyl_pseudobatch = x_methyl_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final] 
         batch_size = sequence.size(0)
-        x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(batch_size, self.num_cell_types, *x_methyl_pseudobatch.shape[1:])
         
         if methylation.shape[1]>1:
+            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(batch_size, self.num_cell_types, *x_methyl_pseudobatch.shape[1:])
             for cell_type_idx, cell_type in enumerate(self.input_to_outputs_dict.keys()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_methyl_pseudobatch[start:end]
                 x_methyl_allchannels[:, cell_type, :, :] = x_cell_type
+        else:
+            x_methyl_allchannels = x_methyl_pseudobatch.unsqueeze(1)
         x_methyl_allchannels = self.capture_true_methyl_rep(x_methyl_allchannels)
         return x_methyl_allchannels
 

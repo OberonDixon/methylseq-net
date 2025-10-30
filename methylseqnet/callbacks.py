@@ -224,8 +224,8 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                         pl_module.log(f"val/{metric_name}_accross_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
 
                 # empty the lists for next epoch
-                pl_module.predictions_list = []
-                pl_module.targets_list = []
+                self.predictions_list = []
+                self.targets_list = []
             else:
                 # first close all of the file handles to flush everything to disk
                 self._close_all()
@@ -416,7 +416,7 @@ class HaplotypedPredLogger(Callback):
             device=device,
         )
         hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp2_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
+        hp2_methylation = self.input_to_methylation(torch.cat([hp2_sequence, hp2_methylation_encoding],dim=1)).squeeze().cpu().numpy()
         hp1_target = self._construct_target_tensor(
             pileup_file=self.hp1_accessibility_bedgz,
             chromosome=chromosome,

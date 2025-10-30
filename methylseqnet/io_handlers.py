@@ -853,7 +853,31 @@ class MultiBedMethylLabelHandler(LabelHandler):
             return bin_means
 
     def load_labels_batch(self,sample_list):
-        return [self.load_labels(**sample) for sample in sample_list]    
+        return [self.load_labels(**sample) for sample in sample_list]  
+
+@gin.register
+@gin.configurable
+class BamCovLabelHandler(LabelHandler):
+    """
+    This LabelHandler pysam to load read coverage information, then repurposes it
+    to create label vectors for a sequence-to-coverage model. 
+    """
+    def __init__(
+            self,
+            bam_files: list,
+            label_bin_size: int,
+            combine_operation='mean',
+            normalize_counts=False,
+            scale=1,
+            clip=1024,
+            ):
+        self.bam_files = [str(bam_file) for bam_file in bam_files]
+        self.label_bin_size = label_bin_size
+        self.combine_operation = combine_operation
+        self.normalize_counts = normalize_counts
+        self.scale=scale
+        self.clip=clip
+    
         
 
 ################################################################################################################
