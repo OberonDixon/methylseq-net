@@ -428,6 +428,7 @@ class MultiBigWigCpGHandler(CpGHandler):
             if os.path.isfile(bigwig_file):
                 try:
                     bw = pyBigWig.open(str(bigwig_file))
+                    self.chroms = bw.chroms()
                     bw.close()
                 except:
                     raise ValueError(f"{bigwig_file} cannot be opened by pyBigWig.")
@@ -442,11 +443,16 @@ class MultiBigWigCpGHandler(CpGHandler):
         num_bws = len(bws)
         aggregated_valid_cpgs = np.zeros(end - start)
         for bw in bws:
-            start_pad = 0 - min(start,0)
+            start_pad = max(-start,0)
+            end_pad = max(end,self.chroms[source]) - self.chroms[source]
             try:
-                raw_values = np.array(start_pad*[0] + bw.values(source,max(start,0),end))
-            except:
-                raise RuntimeError(f"Error in CpG bigwig loading for {source}:{start}-{end}")
+                raw_values = np.array(start_pad*[0] + bw.values(
+                    source,
+                    max(start,0),
+                    min(end,self.chroms[source])
+                    ) + end_pad*[0])
+            except Exception as e:
+                raise RuntimeError(f"Error in bigwig loading for {source}:{start}-{end}. contig length {self.chroms[source]}") from e
             # interpolate -1 values
             raw_values[raw_values < 0] = 1
             valid_mask = ~np.isnan(raw_values)
@@ -611,6 +617,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             if os.path.isfile(bigwig_file):
                 try:
                     bw = pyBigWig.open(str(bigwig_file))
+                    self.chroms = bw.chroms()
                     if self.normalize_counts:
                         sample_values = bw.values('chr1',0,200000000)
                         sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
@@ -629,10 +636,18 @@ class MultiBigWigLabelHandler(LabelHandler):
         if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
             raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") 
         for bw in bws:
-            start_pad = 0 - min(start,0)
-            raw_values = start_pad*[0] + bw.values(source,max(start+self.trim_off_ends,0),end-self.trim_off_ends)
-            # set nan to zero
-            values_list.append(np.nan_to_num(raw_values,nan=0.0))
+            start_pad = max(-(start+self.trim_off_ends),0)
+            end_pad = max(end-self.trim_off_ends,self.chroms[source]) - self.chroms[source]
+            try:
+                raw_values = start_pad*[0] + bw.values(
+                    source,
+                    max(start+self.trim_off_ends,0),
+                    min(end-self.trim_off_ends,self.chroms[source])
+                    ) + end_pad*[0]
+                # set nan to zero
+                values_list.append(np.nan_to_num(raw_values,nan=0.0))
+            except Exception as e:
+                raise RuntimeError(f"Error in bigwig loading for {source}:{start}-{end}. contig length {self.chroms[source]}") from e
         if self.combine_operation=='mean':
             # Stack the arrays along a new axis (0) and compute the mean along this axis
             stacked_values = np.stack(values_list, axis=0)
@@ -883,6 +898,7 @@ class BamCovLabelHandler(LabelHandler):
                 if os.path.isfile(bam_file):
                     try:
                         bam = pysam.AlignmentFile(bam_file)
+                        self.chroms = dict(zip(bam.references, bam.lengths))
                         total_reads += bam.mapped
                         bam.close()
                     except:
@@ -898,8 +914,25 @@ class BamCovLabelHandler(LabelHandler):
         values_list = []
         for bam_file in self.bam_files:
             bam = pysam.AlignmentFile(bam_file)
-            values = np.array([sum(x) for x in zip(*(bam.count_coverage(source, start, end)))])
-            values_list.append(self.read_depth_scaling * values)
+            start_pad = max(-start,0)
+            end_pad = max(end,self.chroms[source]) - self.chroms[source]
+            try:
+                values = np.array(
+                    start_pad*[0] + 
+                    [
+                        sum(x) for x in zip(
+                            *(
+                                bam.count_coverage(
+                                    source,
+                                    max(start,0),
+                                    min(end,self.chroms[source])
+                                )
+                            )
+                        )
+                    ] + end_pad*[0])
+                values_list.append(self.read_depth_scaling * values)
+            except Exception as e:
+                raise RuntimeError(f"Error in coverage loading for {source}:{start}-{end} from {bam_file}. contig length {self.chroms[source]}") from e
         if self.combine_operation=='mean':
             # Stack the arrays along a new axis (0) and compute the mean along this axis
             stacked_values = np.stack(values_list, axis=0)

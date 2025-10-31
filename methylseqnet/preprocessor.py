@@ -26,8 +26,8 @@ class PreprocessingPipeline:
             sample_generator,
             multitask_io_handler,
             dataset_writer_class,
+            output_directory,
             samples_per_batch=1,
-            output_directory=None,
             ):
         # run sampler
         # create dataset_writer
