@@ -13,7 +13,7 @@ mA_pileup, _ = parse_bam.pileup(
     thresh = 190,
 )
 
-whole genome pileup for cpg model
+# whole genome pileup for cpg model
 cpg_pileup, _ = parse_bam.pileup(
     input_file = cpg_bam_filepath,
     output_name = 'cpg_bam_whole_genome_v2',

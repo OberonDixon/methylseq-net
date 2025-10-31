@@ -877,6 +877,38 @@ class BamCovLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.scale=scale
         self.clip=clip
+        if self.normalize_counts and self.bam_files:
+            total_reads = 0
+            for bam_file in self.bam_files:   
+                if os.path.isfile(bam_file):
+                    try:
+                        bam = pysam.AlignmentFile(bam_file)
+                        total_reads += bam.mapped
+                        bam.close()
+                    except:
+                        raise ValueError(f"{bam_file} cannot be opened by pysam AlignmentFile.")
+                else:
+                    raise OSError(f"{bam_file} does not exist.")
+            self.read_depth_scaling = 1e6 / total_reads
+        else:
+            self.read_depth_scaling = 1
+    def load_labels(self,source,start,end):
+        if (end - start)%self.label_bin_size != 0:
+            raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.")
+        values_list = []
+        for bam_file in self.bam_files:
+            bam = pysam.AlignmentFile(bam_file)
+            values = np.array([sum(x) for x in zip(*(bam.count_coverage(source, start, end)))])
+            values_list.append(self.read_depth_scaling * values)
+        if self.combine_operation=='mean':
+            # Stack the arrays along a new axis (0) and compute the mean along this axis
+            stacked_values = np.stack(values_list, axis=0)
+            aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
+        else:
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)
+    def load_labels_batch(self,sample_list):
+        return [self.load_labels(**sample) for sample in sample_list]
     
         
 
@@ -1669,6 +1701,167 @@ class BedMethylIO(MultitaskIOHandler):
                 label_list,
                 mask_list,
             )
+
+@gin.register
+@gin.configurable
+class PhasedFiberRNA(MultitaskIOHandler):
+    """
+    This IOHandler can map from phased CpG methylation to phased Fiber-seq and RNA-seq
+
+    Phasing is handled along the variants axis of the dataset, which is of shape
+    (num_samples, num_variants, num_channels, length) for sequence and label tracks
+    and (num_samples, num_variants, num_cell_types, 3, length) for methylation
+    """
+    def __init__(
+            self,
+            ref_genome,
+            methylation_bedmethyls_by_phase,
+            fiberseq_bigwigs_by_phase,
+            rna_bams_by_phase,     
+            label_bin_size,
+            label_num_bins,
+            unphased_rna_bams: list[str] = [],
+            scale_clip_dict: dict = {
+                'fiberseq': {'scale':1, 'clip':1024},
+                'rna': {'scale':1, 'clip':1024},
+            },
+            max_chunks_in_mem: int=1000,
+            normalize_label_counts: bool=False,
+    ):
+        assert len(methylation_bedmethyls_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_bams_by_phase), \
+            "The number of phases must be the same for methylation, fiber-seq, and RNA-seq data."
+        self.max_chunks_in_mem = max_chunks_in_mem
+        self.label_num_bins = label_num_bins
+        self.label_bin_size = label_bin_size
+
+        self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
+        self.cpg_handlers = [
+            MultiBedMethylModHandler(bedmethyl_files = [bedmethyl_file])
+            for bedmethyl_file in methylation_bedmethyls_by_phase
+            ]
+        self.fiber_label_handlers = [
+            MultiBigWigLabelHandler(
+                bigwig_files = [bigwig_file],
+                label_bin_size=label_bin_size,
+                normalize_counts=normalize_label_counts,
+                normalize_gc=False,
+                binarize=False,
+                threshold=None,
+                scale=scale_clip_dict['fiberseq']['scale'],
+                clip=scale_clip_dict['fiberseq']['clip'],
+            )
+            for bigwig_file in fiberseq_bigwigs_by_phase
+        ]
+        self.rna_label_handlers = [
+            BamCovLabelHandler(
+                bam_files = [bam_file],
+                label_bin_size = label_bin_size,
+                normalize_counts=True,
+                scale=scale_clip_dict['rna']['scale'],
+                clip=scale_clip_dict['rna']['clip'],
+            )
+            for bam_file in rna_bams_by_phase
+        ]
+        self.unphased_rna_loader = BamCovLabelHandler(
+            bam_files = unphased_rna_bams,
+            label_bin_size = label_bin_size,
+            normalize_counts=True,
+            scale=scale_clip_dict['rna']['scale'],
+            clip=scale_clip_dict['rna']['clip'],
+        )
+        self.num_phases = len(methylation_bedmethyls_by_phase)
+        self.num_tracks = 2
+        self.io_mappings_list = [
+            {
+                'channel':0,
+                'cell_type':0,
+                'data_type':'Fiber-seq',
+                'genome':ref_genome,
+                'methylation_files':methylation_bedmethyls_by_phase,
+                'label_files':fiberseq_bigwigs_by_phase,
+            },
+            {
+                'channel':1,
+                'cell_type':0,
+                'data_type':'RNA-seq',
+                'genome':ref_genome,
+                'methylation_files':methylation_bedmethyls_by_phase,
+                'label_files':rna_bams_by_phase,
+            },
+        ]
+
+    def process_batch(
+        self,
+        indices_list,
+        sample_list,
+        dataset_writer,
+        lock,
+    ):
+        sequence_list = self.sequence_handler.load_sequence_batch(sample_list)
+
+        sample_specifier_list = [
+            f"{sample['source']}:{sample['start']}-{sample['end']}|all_tasks" 
+            for sample in sample_list 
+            for _ in range(len(sequence_list)//len(sample_list))
+        ]
+
+        onehot_dna_phases_list = []
+        fiber_phases_list = []   
+        rna_phases_list = []   
+
+        for phase in range(self.num_phases):
+            methylation_fractions_list,valid_cpgs_list = self.cpg_handlers[phase].load_cpg_batch(sample_list)
+            onehot_dna_phases_list.append(
+                [
+                    one_hot_encode_dna(
+                        dna_strand=sequence,
+                        cpg_methylation=cpg,
+                        valid_cpgs=valid_cpgs) for 
+                                    sequence,cpg,valid_cpgs in zip(
+                                        sequence_list,
+                                        methylation_fractions_list,
+                                        valid_cpgs_list
+                    )
+                ]
+            )
+            fiber_phases_list.append(self.fiber_label_handlers[phase].load_labels_batch(sample_list))
+            rna_phases_list.append(self.rna_label_handlers[phase].load_labels_batch(sample_list))
+
+        onehot_dna_list = [
+            np.stack([onehot_dna_phases_list[phase][sample_idx][:,0:4] for phase in range(self.num_phases)])
+            for sample_idx in range(len(sample_list))
+        ]
+        methylation_info_list = [
+            np.stack([onehot_dna_phases_list[phase][sample_idx][:,4:] for phase in range(self.num_phases)])
+            for sample_idx in range(len(sample_list))
+        ]
+        fiber_list = [
+            np.stack([fiber_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
+            for sample_idx in range(len(sample_list))
+        ]
+        rna_list = [
+            np.stack([rna_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
+            for sample_idx in range(len(sample_list))
+        ]
+        label_list = [
+            np.stack([fiber_list[sample_idx], rna_list[sample_idx]], axis=-1)
+            for sample_idx in range(len(sample_list))
+        ]
+        mask_list = [np.ones_like(labels,dtype=bool) for labels in label_list]
+
+        with lock: # we need the lock so allow parallel threads to all write to the same output file
+            dataset_writer.write_chunk(
+                indices_list,
+                sample_specifier_list,
+                onehot_dna_list,
+                methylation_info_list,
+                label_list,
+                mask_list,
+            )        
+            
+
+
+
 
 ################################################################################################################
 ####                           MultimethylMultitaskIOHandler implementations                                ####
