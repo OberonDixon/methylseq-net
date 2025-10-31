@@ -431,6 +431,10 @@ class MethylSeqNN(L.LightningModule):
         embeddings = batch.get('embeddings',None)
         targets_all_variants = batch['target']
         mask_all_variants = batch.get('mask',torch.ones_like(targets_all_variants,dtype=torch.bool))
+
+        io_mappings_df = self.get_io_mappings_df()
+        output_tracks_slice = io_mappings_df[io_mappings_df['dataset_key']==batch['dataset_key'][0]]['model_channel'].tolist()
+
         all_variants_loss_terms = []
         outputs_list = []
         for variant_idx in range(sequence_all_variants.shape[1]):
@@ -439,14 +443,14 @@ class MethylSeqNN(L.LightningModule):
             targets = targets_all_variants[:,variant_idx]
             mask = mask_all_variants[:,variant_idx]
 
-            outputs = self(sequence, methylation, embeddings)  
+            outputs = self(sequence, methylation, embeddings)
+            outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
 
             targets = self.trim_targets(sequence,targets)
             mask = self.trim_targets(sequence,mask) 
             # additionally mask out tasks that aren't in the data_types_subset, if provided
             if self.data_types_subset is not None:
-                io_mappings_df = self.get_io_mappings_df()
                 subset_indices = io_mappings_df[io_mappings_df['data_type'].isin(self.data_types_subset)]['channel'].tolist()
                 subset_mask = torch.zeros_like(targets,dtype=torch.bool)
                 subset_mask[:,subset_indices,:] = 1

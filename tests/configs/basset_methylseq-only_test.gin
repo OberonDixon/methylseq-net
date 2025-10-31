@@ -40,12 +40,12 @@ methylseqnet.layers.ConvBlock.dilation=1
 
 seq_model/methylseqnet.layers.ConvFinal.in_channels=1920
 seq_model/methylseqnet.layers.ConvFinal.shared_head=False
-seq_model/methylseqnet.layers.ConvFinal.filters=63
+seq_model/methylseqnet.layers.ConvFinal.filters=65
 seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 
 methylseq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
-methylseq_model/methylseqnet.layers.ConvFinal.filters=63
+methylseq_model/methylseqnet.layers.ConvFinal.filters=65
 
 methylseqnet.optimizers.AdamOptimizer.lr=0.001
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
@@ -63,13 +63,15 @@ methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=155648
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.batch_size=2
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
+methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
 methylseqnet.trainer.MethylSeqDataModule.epoch_size=1
