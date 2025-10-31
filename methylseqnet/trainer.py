@@ -9,6 +9,7 @@ import numpy as np
 import json
 import gin
 from datetime import datetime as dt
+import time
 from pathlib import Path
 import argparse
 from methylseqnet.activations import *
@@ -134,6 +135,7 @@ def main(
     gpus,
     batch_size,
     max_epochs,
+    random_seed = 42,
     samples_per_step = -1,
     samples_per_log = 64,
     start_from_checkpoint = None,
@@ -161,6 +163,8 @@ def main(
     
     TODO: refactor logic for resume from requeue vs starting from a possibly-differently-configured checkpoint to increase clarity and who handles what
     """
+    seed_everything(random_seed, workers=True)
+
     gin.parse_config_file(config)
     
     model = MethylSeqNN()
@@ -287,6 +291,8 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                     accumulate_grad_batches=accumulate_grad_batches,
                     log_every_n_steps=samples_per_log//accumulate_grad_batches,
                 )  
+                # Check if Lightning set any seed internally
+                print(f"PyTorch seed after Trainer init: {torch.initial_seed()}")
                 trainer.fit(
                     model,
                     datamodule=data_module,
@@ -402,6 +408,7 @@ if __name__ == '__main__':
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
     parser.add_argument('--no-haplotype-metrics', action='store_true', help='If set, enable haplotype-specific metrics logging during training.')
     parser.add_argument('--track-gradients-for-modules', nargs='+', type=str, required=False, default=['embeddings_to_methyl_rep','embeddings_to_methyl_indep_seq_rep','embeddings_to_methyl_dep_seq_rep','factorized_rep_to_output'], help='If provided, track gradients for the named module(s). Can be specified multiple times.')
+    parser.add_argument('--seed', type=int, required=False, default=(int(time.time() * 1_000_000) + os.getpid()) % (2**32), help='Random seed for reproducibility.')
     parser.add_argument(
         "--logging-level",
         type=str,
@@ -427,6 +434,7 @@ if __name__ == '__main__':
         max_epochs=args.max_epochs,
         samples_per_step=args.samples_per_step,
         samples_per_log=64,
+        random_seed=args.seed,
         start_from_checkpoint=args.start_from_checkpoint,
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,
