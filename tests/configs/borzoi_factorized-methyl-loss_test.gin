@@ -100,3 +100,4 @@ methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.trainer.MethylSeqDataModule.epoch_size=1

@@ -16,6 +16,7 @@ from methylseqnet.activations import *
 from methylseqnet.dataset import *
 from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
 from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.datamodule import MultiKeyDataset
 from collections import defaultdict
 import pynvml
 from lightning.pytorch import LightningDataModule
@@ -39,53 +40,77 @@ class MethylSeqDataModule(LightningDataModule):
         predict_dataset_file=None,
         batch_size=32, 
         transforms=[], 
+        epoch_size=10000,
+        dataset_weights=None,
         dataset_class=MethylSeqDataset,
         pow=False, # temporarily restored for backwards compatibility; does nothing
         num_workers=4,
     ):
         super().__init__()
-        self.train_dataset_file = train_dataset_file
-        self.validation_dataset_file = validation_dataset_file
-        self.predict_dataset_file = predict_dataset_file
+        self.train_dataset_dict = train_dataset_file if isinstance(train_dataset_file, dict) else {"dataset":train_dataset_file} if train_dataset_file is not None else None
+        self.validation_dataset_dict = validation_dataset_file if isinstance(validation_dataset_file, dict) else {"dataset":validation_dataset_file} if validation_dataset_file is not None else None
+        self.predict_dataset_dict = predict_dataset_file if isinstance(predict_dataset_file, dict) else {"dataset":predict_dataset_file} if predict_dataset_file is not None else None
         self.batch_size = batch_size
         self.transforms = transforms
+        self.epoch_size = epoch_size
+        self.dataset_weights = dataset_weights
         self.dataset_class = dataset_class
         self.num_workers = num_workers
 
+    def _create_datasets_from_dict(self, dataset_dict, transforms=None, **kwargs):
+        """Create dataset instances from a dict of {key: file_path(s)}."""
+        return {
+            key: self.dataset_class(files, transforms=transforms or [], **kwargs)
+            for key, files in dataset_dict.items()
+        }
+
     def setup(self, stage=None):
         if stage in (None, "fit"):
-            if self.train_dataset_file:
-                self.train_dataset = self.dataset_class(
-                    self.train_dataset_file,
+            if self.train_dataset_dict:
+                train_datasets = self._create_datasets_from_dict(
+                    self.train_dataset_dict,
                     transforms=self.transforms,
                     batch_size=None,
                 )
-            if self.validation_dataset_file:
-                self.val_dataset = self.dataset_class(
-                    self.validation_dataset_file,
+                self.train_dataset = MultiKeyDataset(
+                    train_datasets,
+                    sample_with_replacement=True,
+                    epoch_size=self.epoch_size,
+                    weights=self.dataset_weights,
+                )
+            if self.validation_dataset_dict:
+                val_datasets = self._create_datasets_from_dict(
+                    self.validation_dataset_dict,
                     batch_size=None,
                 )
-
-        if stage in (None, "predict") and self.predict_dataset_file:
-            if self.predict_dataset_file:
-                self.predict_dataset = self.dataset_class(
-                    self.predict_dataset_file,
+                self.val_dataset = MultiKeyDataset(
+                    val_datasets,
+                    sample_with_replacement=False,
+                )
+        if stage in (None, "predict"):
+            if self.predict_dataset_dict:
+                predict_datasets = self._create_datasets_from_dict(
+                    self.predict_dataset_dict,
                     batch_size=None,
                     return_specifiers=True,
                 )
+                self.predict_dataset = MultiKeyDataset(
+                    predict_datasets,
+                    sample_with_replacement=False,
+                )
 
     def train_dataloader(self):
-        if self.train_dataset_file is None:
+        if self.train_dataset_dict is None:
             raise ValueError("Train dataset is not set. Provide `train_dataset_file`.")
-        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.num_workers)
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
     def val_dataloader(self):
-        if self.validation_dataset_file is None:
+        if self.validation_dataset_dict is None:
             raise ValueError("Validation dataset is not set. Provide `validation_dataset_file`.")
         return DataLoader(self.val_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
     def predict_dataloader(self):
-        if self.predict_dataset_file is None:
+        if self.predict_dataset_dict is None:
             raise ValueError("Prediction dataset is not set. Provide `predict_dataset_file`.")
         return DataLoader(self.predict_dataset, batch_size=self.batch_size, shuffle=False, num_workers=self.num_workers)
 
@@ -196,15 +221,12 @@ def main(
     else:
         accumulate_grad_batches = 1
 
-    # Try to retrieve the io_mappings string from the train dataset, silently skipping if missing
+    # Try to retrieve the io_mappings string from the train dataset
     # The value here lies in the fact that the task structure is dynamically created from the
     # preprocessor matches file, so having a record of what the mappings is for a given model
     # may be useful when trying different datasets, etc
-    try:
-        dataset = data_module.dataset_class(data_module.train_dataset_file)
-        model.set_io_mappings(dataset.get_io_mappings_str())
-    except AttributeError:
-        print(f"No 'io_mappings' attribute found in {data_module.train_dataset_file}.")
+    data_module.setup(stage='fit')
+    model.set_io_mappings(data_module.get_io_mappings_str())
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
