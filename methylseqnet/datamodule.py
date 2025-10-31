@@ -77,6 +77,13 @@ class MultiKeyDataset(Dataset):
         return sample
 
     def get_io_mappings_str(self):
-        if len(self.datasets) == 1:
-            io_mappings_str = self.datasets[0].get_io_mappings_str()
-            return io_mappings_str
+        dfs = []
+        channel_offset = 0
+        for key, dataset in self.dataset_dict.items():
+            df = dataset.get_io_mappings_df()
+            df.insert(0, 'dataset_key', key)
+            df.insert(1, 'model_channel', df['channel'] + channel_offset)
+            dfs.append(df)
+            channel_offset += df['channel'].max() + 1
+        combined_df = pd.concat(dfs, ignore_index=True)
+        return combined_df.to_csv(sep='\t', index=False)
