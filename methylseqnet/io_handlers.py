@@ -387,6 +387,8 @@ class MultiFastaHandler(SequenceHandler):
         """
         Load all sequences from the specified FASTA file in the order they appear. 
         This method supports non-indexed FASTA files as well as indexed ones.
+
+        TODO: Implement checks for start and end against contig extent
         """
         if os.path.isfile(source):  
             if start and end:
