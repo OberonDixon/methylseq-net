@@ -322,7 +322,7 @@ class MethylSeqNN(L.LightningModule):
                 modulelist.append(layer())
         return modulelist
     
-    def forward(self, sequence, methylation, embeddings=None):
+    def forward(self, sequence, methylation, embeddings=None, dataset_key="all"):
         """
         MethylSeqNN forward supports two types of inputs:
             standard input: a single x tensor (sample, channel, position) with 4 sequence channels and 3 methylation channels
@@ -342,35 +342,35 @@ class MethylSeqNN(L.LightningModule):
             - residual-w/-pretrained-embeddings: run full residual model combined with pretrained output head from cached embeddings.
             - residual-only-w/-pretrained-embeddings: run only residual model, with cached embeddings available for concatenation.
         """
-        if methylation.shape[1] > 1 and methylation.shape[1]!=self.num_cell_types:
-            raise ValueError(f"MethylSeqNN residual forward received methylation input with {methylation.shape[1]} cell types, but expected either 1 (shared methylation) or {self.num_cell_types}.")
+        if methylation.shape[1] > 1 and methylation.shape[1]!=self.num_cell_types[dataset_key]:
+            raise ValueError(f"MethylSeqNN residual forward received methylation input with {methylation.shape[1]} cell types, but expected either 1 (shared methylation) or {self.num_cell_types[dataset_key] if dataset_key in self.num_cell_types else self.num_cell_types}.")
         match self.mode:
             # run both the pretrained and residual models, including their outputs heads. Full prediction.
             case 'full-model':
                 embeddings = self._pretrained_embedder_forward(sequence)
                 x_seq = self._pretrained_head_forward(embeddings)
-                x_res = self._residual_forward(sequence, methylation, embeddings)
+                x_res = self._residual_forward(sequence, methylation, embeddings, dataset_key)
                 x = self._merge_submodels(x_res, x_seq)
                 x = self._merged_output_forward(x)
                 return x
             # run pretrained model to get embeddings, then run factorization to get outputs
             case 'factorized-from-pretrained':
                 embeddings = self._pretrained_embedder_forward(sequence)
-                x = self._embeddings_factorization_forward(sequence, methylation, embeddings)
+                x = self._embeddings_factorization_forward(sequence, methylation, embeddings, dataset_key)
                 return x
             # factorization on top of cached embeddings
             case 'factorized-from-pretrained-embeddings':
                 if embeddings is None:
                     raise ValueError("MethylSeqNN forward in 'factorized-from-pretrained-embeddings' mode requires embeddings input.")
-                x = self._embeddings_factorization_forward(x, embeddings)
+                x = self._embeddings_factorization_forward(sequence, methylation, embeddings, dataset_key)
                 return x
             # run only the residual model; outputs may not reflect true labels    
             case 'residual-only':
                 if self.concat_pretrained_embeddings_at:
                     embeddings = self._pretrained_embedder_forward(sequence)
-                    x_res = self._residual_forward(sequence, methylation, embeddings)
+                    x_res = self._residual_forward(sequence, methylation, embeddings, dataset_key)
                 else:
-                    x_res = self._residual_forward(sequence, methylation, embeddings)
+                    x_res = self._residual_forward(sequence, methylation, embeddings, dataset_key)
                 return x_res
             # run only the pretrained model, including its output head. Outputs still predict true labels.    
             case 'pretrained-only':
@@ -390,7 +390,7 @@ class MethylSeqNN(L.LightningModule):
                 if embeddings is None:
                     raise ValueError("MethylSeqNN forward in 'residual-w/-pretrained-embeddings' mode requires embeddings input.")
                 x_seq = self._pretrained_head_forward(embeddings)
-                x_res = self._residual_forward(sequence, methylation, embeddings)
+                x_res = self._residual_forward(sequence, methylation, embeddings, dataset_key)
                 x = self._merge_submodels(x_res, x_seq)
                 x = self._merged_output_forward(x)
                 return x
@@ -398,7 +398,7 @@ class MethylSeqNN(L.LightningModule):
             case 'residual-only-w/-pretrained-embeddings':
                 if embeddings is None:
                     raise ValueError("MethylSeqNN forward in 'residual-only-w/-pretrained-embeddings' mode requires embeddings input.")
-                x_res = self._residual_forward(x, embeddings)
+                x_res = self._residual_forward(sequence, methylation, embeddings, dataset_key)
                 return x_res
             case _:
                 raise ValueError(f"Invalid MethylSeqNN.mode='{self.mode}'. Check documentation for valid modes.")
@@ -433,7 +433,8 @@ class MethylSeqNN(L.LightningModule):
         mask_all_variants = batch.get('mask',torch.ones_like(targets_all_variants,dtype=torch.bool))
 
         io_mappings_df = self.get_io_mappings_df()
-        output_tracks_slice = io_mappings_df[io_mappings_df['dataset_key']==batch['dataset_key'][0]]['model_channel'].tolist()
+        dataset_key = batch['dataset_key'][0]
+        output_tracks_slice = io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['absolute_channel'].tolist()
 
         all_variants_loss_terms = []
         outputs_list = []
@@ -443,8 +444,9 @@ class MethylSeqNN(L.LightningModule):
             targets = targets_all_variants[:,variant_idx]
             mask = mask_all_variants[:,variant_idx]
 
-            outputs = self(sequence, methylation, embeddings)
-            outputs = outputs[:,output_tracks_slice,:]
+            outputs = self(sequence, methylation, embeddings, dataset_key)
+            if outputs.shape[1] > len(output_tracks_slice):
+                outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
 
             targets = self.trim_targets(sequence,targets)
@@ -802,14 +804,30 @@ class MethylSeqNN(L.LightningModule):
         self.io_mappings_str = io_mappings_str
         subsets = self.get_loss_subsets_from_io_mappings()
         self.apply_subsets_to_losses(subsets)
-        self.input_to_outputs_dict = defaultdict(list)
-        for _,io_mappings_row in self.get_io_mappings_df().iterrows():
-            self.input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
-        self.num_cell_types = len(self.input_to_outputs_dict)
+        io_mappings_df = self.get_io_mappings_df()
+        self.num_cell_types = {}
+        self.cell_type_list_per_dataset = {}
+        cell_type_idx_offset = 0
+        for dataset_key in io_mappings_df['dataset_key'].unique():
+            input_to_outputs_dict_dataset = self.get_input_to_outputs_dict_relative(dataset_key)
+            self.num_cell_types[dataset_key] = len(input_to_outputs_dict_dataset)
+            self.cell_type_list_per_dataset[dataset_key] = [cell_type_idx+cell_type_idx_offset for cell_type_idx in input_to_outputs_dict_dataset.keys()]
+            cell_type_idx_offset += self.num_cell_types[dataset_key]
+        self.num_cell_types['all'] = sum([cell_types for cell_types in self.num_cell_types.values()])
+        self.cell_type_list_per_dataset['all'] = [cell_type for cell_types in self.cell_type_list_per_dataset.values() for cell_type in cell_types]
     
     def get_io_mappings_df(self):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
         return io_mappings_df
+    
+    def get_input_to_outputs_dict_relative(self, dataset_key):
+        input_to_outputs_dict = defaultdict(list)
+        for _,io_mappings_row in self.get_io_mappings_df().iterrows():
+            if dataset_key == 'all':
+                input_to_outputs_dict[int(io_mappings_row['absolute_cell_type'])].append(int(io_mappings_row['absolute_channel']))
+            elif io_mappings_row['dataset_key']==dataset_key:
+                input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
+        return input_to_outputs_dict
 
     def apply_subsets_to_losses(self, subsets: list[list[int]]):
         """
@@ -873,7 +891,7 @@ class MethylSeqNN(L.LightningModule):
                 x = layer(x) 
         return x
     
-    def _residual_forward(self, sequence, methylation, embeddings=None):
+    def _residual_forward(self, sequence, methylation, embeddings, dataset_key):
         x_pseudobatch_list = []
         for cell_type_idx in range(methylation.shape[1]):
             x_methylseq = torch.cat(
@@ -898,7 +916,7 @@ class MethylSeqNN(L.LightningModule):
         if pseudobatch_scaleup==1:
             x_methylseq_allchannels = x_pseudobatch
         else:
-            for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
+            for cell_type_idx, (cell_type, channels) in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).items()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_pseudobatch[start:end]
@@ -940,27 +958,27 @@ class MethylSeqNN(L.LightningModule):
 
         return x
 
-    def _embeddings_factorization_forward(self, sequence, methylation, embeddings):
+    def _embeddings_factorization_forward(self, sequence, methylation, embeddings, dataset_key):
         methyl_indep_seq_rep = self._embeddings_to_methyl_indep_seq_rep_forward(embeddings)
         methyl_dep_seq_rep = self._embeddings_to_methyl_dep_seq_rep_forward(embeddings)
-        true_methyl_rep = self._input_to_methyl_rep_forward(sequence, methylation, embeddings)
+        true_methyl_rep = self._input_to_methyl_rep_forward(sequence, methylation, embeddings, dataset_key)
         if math.isclose(self.true_methyl_rep_weight,1.0) and self.methyl_rep_loss_weight==0:
             imputed_methyl_rep = torch.zeros_like(true_methyl_rep)
         else:
-            imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings)
+            imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings, dataset_key)
         match self.interpolate_methyl_reps_location:
             case 'output':
                 if math.isclose(self.true_methyl_rep_weight,1.0):
-                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep)
+                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep, dataset_key)
                 elif math.isclose(self.true_methyl_rep_weight,0.0):
-                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep)
+                    return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep, dataset_key)
                 else:
-                    x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep)
-                    x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep)
+                    x_true_component = self.true_methyl_rep_weight * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, true_methyl_rep, dataset_key)
+                    x_imputed_component = (1 - self.true_methyl_rep_weight) * self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, imputed_methyl_rep, dataset_key)
                     return x_true_component + x_imputed_component
             case 'rep':
                 interpolated_rep = self.true_methyl_rep_weight * true_methyl_rep + (1 - self.true_methyl_rep_weight) * imputed_methyl_rep
-                return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, interpolated_rep)
+                return self._factorized_reps_to_output_forward(methyl_indep_seq_rep, methyl_dep_seq_rep, interpolated_rep, dataset_key)
             case _:
                 raise NotImplementedError(f"interpolate_methyl_reps_location={self.interpolate_methyl_reps_location} not implemented.")
         
@@ -978,15 +996,16 @@ class MethylSeqNN(L.LightningModule):
         self.capture_methyl_dep_seq_rep(seq_rep)
         return seq_rep
 
-    def _embeddings_to_methyl_rep_forward(self, embeddings):
+    def _embeddings_to_methyl_rep_forward(self, embeddings, dataset_key):
         methyl_rep = embeddings
         for layer in self.embeddings_to_methyl_rep:
             methyl_rep = layer(methyl_rep)
-        methyl_rep = methyl_rep.view(methyl_rep.shape[0],self.num_cell_types,-1,methyl_rep.shape[2])
-        self.capture_imputed_methyl_rep(methyl_rep)
-        return methyl_rep
+        methyl_rep = methyl_rep.view(methyl_rep.shape[0],self.num_cell_types['all'],-1,methyl_rep.shape[2])
+        methyl_rep_sliced = methyl_rep[:,self.cell_type_list_per_dataset[dataset_key],:,:]
+        self.capture_imputed_methyl_rep(methyl_rep_sliced)
+        return methyl_rep_sliced
 
-    def _input_to_methyl_rep_forward(self, sequence, methylation, embeddings=None):
+    def _input_to_methyl_rep_forward(self, sequence, methylation, embeddings, dataset_key):
         """
         Extract methylation channels from x and run through input_to_methyl_rep layers.
         This should always return a representation of shape (N,num_cell_types,rep_dim,L')
@@ -1020,8 +1039,8 @@ class MethylSeqNN(L.LightningModule):
         batch_size = sequence.size(0)
         
         if methylation.shape[1]>1:
-            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(batch_size, self.num_cell_types, *x_methyl_pseudobatch.shape[1:])
-            for cell_type_idx, cell_type in enumerate(self.input_to_outputs_dict.keys()):
+            x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(batch_size, self.num_cell_types[dataset_key], *x_methyl_pseudobatch.shape[1:])
+            for cell_type_idx, cell_type in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).keys()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_methyl_pseudobatch[start:end]
@@ -1031,9 +1050,9 @@ class MethylSeqNN(L.LightningModule):
         x_methyl_allchannels = self.capture_true_methyl_rep(x_methyl_allchannels)
         return x_methyl_allchannels
 
-    def _factorized_reps_to_output_forward(self, methyl_indep_seq_rep, methyl_dep_seq_rep, methyl_rep):
+    def _factorized_reps_to_output_forward(self, methyl_indep_seq_rep, methyl_dep_seq_rep, methyl_rep, dataset_key):
         if self.factorized_reps_to_output_submodel_per_task:
-            for cell_type_idx, (cell_type, channels) in enumerate(self.input_to_outputs_dict.items()):
+            for cell_type_idx, (cell_type, channels) in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).items()):
                 # this is slow! I assume. Something more like the pseudobatching above should be much quicker
                 for task_index in channels:
                     celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]

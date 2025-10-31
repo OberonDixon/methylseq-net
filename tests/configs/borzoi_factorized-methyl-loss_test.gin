@@ -19,7 +19,7 @@ embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
 embeddings_to_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.filters=42
+embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.filters=43
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.kernel_size=1
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_size=4
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
@@ -81,7 +81,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':1,
             },
         }
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
+methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
 methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
@@ -91,12 +91,14 @@ methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=()
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset

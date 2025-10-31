@@ -34,11 +34,11 @@ penultimate_block/methylseqnet.layers.ConvBlock.kernel_size=1
 
 methylseq_model/methylseqnet.layers.ConvFinal.in_channels=3456
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
-methylseq_model/methylseqnet.layers.ConvFinal.filters=63
+methylseq_model/methylseqnet.layers.ConvFinal.filters=65
 
 seq_model/methylseqnet.layers.ConvFinal.in_channels=1920
 seq_model/methylseqnet.layers.ConvFinal.shared_head=False
-seq_model/methylseqnet.layers.ConvFinal.filters=63
+seq_model/methylseqnet.layers.ConvFinal.filters=65
 seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 
 methylseqnet.optimizers.AdamOptimizer.lr=0.002
@@ -80,7 +80,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':1
             },
         }
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
+methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
 methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
@@ -89,12 +89,14 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163520
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=[
-    "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
-]
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
+methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+    "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
+    "longread":"./tests/data/longread_fold0-downsampled.h5",
+}
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset

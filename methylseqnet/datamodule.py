@@ -32,7 +32,6 @@ class MultiKeyDataset(Dataset):
         self.cumulative_sizes = self._cumsum([len(d) for d in self.datasets])
         
         if sample_with_replacement:
-            print("initializing sampling with replacement multi-key dataset")
             # Random sampling mode
             self.epoch_size = epoch_size or self.cumulative_sizes[-1]
             if weights is None:
@@ -57,12 +56,10 @@ class MultiKeyDataset(Dataset):
     
     def __getitem__(self, idx):
         if self.sample_with_replacement:
-            print("sampling with replacement multi-key dataset __getitem__")
             # Random sampling mode - ignore idx
             chosen_key = random.choices(self.keys, weights=self.weights, k=1)[0]
             dataset_idx = self.keys.index(chosen_key)
             sample_idx = random.randint(0, len(self.datasets[dataset_idx]) - 1)
-            print("chosen_key:", chosen_key, "dataset_idx:", dataset_idx, "sample_idx:", sample_idx)
         else:
             # Concatenation mode - use idx deterministically
             dataset_idx = bisect.bisect_right(self.cumulative_sizes, idx)
@@ -79,11 +76,14 @@ class MultiKeyDataset(Dataset):
     def get_io_mappings_str(self):
         dfs = []
         channel_offset = 0
+        cell_type_offset = 0
         for key, dataset in self.dataset_dict.items():
             df = dataset.get_io_mappings_df()
             df.insert(0, 'dataset_key', key)
-            df.insert(1, 'model_channel', df['channel'] + channel_offset)
+            df.insert(1, 'absolute_channel', df['channel'] + channel_offset)
+            df.insert(2, 'absolute_cell_type', df['cell_type'] + cell_type_offset)
             dfs.append(df)
             channel_offset += df['channel'].max() + 1
+            cell_type_offset += df['cell_type'].max() + 1
         combined_df = pd.concat(dfs, ignore_index=True)
         return combined_df.to_csv(sep='\t', index=False)

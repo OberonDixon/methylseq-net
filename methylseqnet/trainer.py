@@ -50,6 +50,12 @@ class MethylSeqDataModule(LightningDataModule):
         self.train_dataset_dict = train_dataset_file if isinstance(train_dataset_file, dict) else {"dataset":train_dataset_file} if train_dataset_file is not None else None
         self.validation_dataset_dict = validation_dataset_file if isinstance(validation_dataset_file, dict) else {"dataset":validation_dataset_file} if validation_dataset_file is not None else None
         self.predict_dataset_dict = predict_dataset_file if isinstance(predict_dataset_file, dict) else {"dataset":predict_dataset_file} if predict_dataset_file is not None else None
+        if (
+                (self.train_dataset_dict and "all" in self.train_dataset_dict)
+                or (self.validation_dataset_dict and "all" in self.validation_dataset_dict)
+                or (self.predict_dataset_dict and "all" in self.predict_dataset_dict)
+        ):
+            raise ValueError("'all' is a reserved keyword and cannot be used as a dataset label.")
         self.batch_size = batch_size
         self.transforms = transforms
         self.epoch_size = epoch_size
