@@ -100,7 +100,7 @@ class PreprocessingPipeline:
             self.dataset_writer = self.initialize_dataset_writer(split)  
             if mode=='sequential':
                 for indices_list,sample_list in tqdm(batches,
-                                                      desc=f'processing and writing {split} to {self.dataset_writer.output_path}'):
+                                                      desc=f'processing and writing {split} to {self.dataset_writer.output_path.name}'):
                     self.multitask_io_handler.process_batch(
                         indices_list,
                         sample_list,
@@ -117,7 +117,7 @@ class PreprocessingPipeline:
                         self.lock,
                     ) for indices_list,sample_list in batches]
                     for future in tqdm(as_completed(futures), total=len(futures), 
-                                       desc=f"processing and writing {split} to {self.dataset_writer.output_path}"):
+                                       desc=f"processing and writing {split} to {self.dataset_writer.output_path.name}"):
                         try:
                             future.result()
                         except Exception as e:
