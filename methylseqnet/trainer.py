@@ -38,7 +38,7 @@ class MethylSeqDataModule(LightningDataModule):
         train_dataset_file=None, 
         validation_dataset_file=None, 
         predict_dataset_file=None,
-        batch_size=32, 
+        batch_size=1, 
         transforms=[], 
         epoch_size=10000,
         dataset_weights=None,
@@ -56,7 +56,9 @@ class MethylSeqDataModule(LightningDataModule):
                 or (self.predict_dataset_dict and "all" in self.predict_dataset_dict)
         ):
             raise ValueError("'all' is a reserved keyword and cannot be used as a dataset label.")
-        self.batch_size = batch_size
+        if batch_size!=1:
+            warnings.warn(f"Batch size must be 1, you picked {batch_size}. This will be overridden. To get higher effective batch size use accumulate_grad_batches.")
+        self.batch_size = 1
         self.transforms = transforms
         self.epoch_size = epoch_size
         self.dataset_weights = dataset_weights
