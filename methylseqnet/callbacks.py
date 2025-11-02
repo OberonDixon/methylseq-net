@@ -225,16 +225,15 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                     else:
                         metric_value = metric(targets, predictions)
                         pl_module.log(f"val/{metric_name}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
-
-                # empty the lists for next epoch
-                self.predictions_list = []
-                self.targets_list = []
             else:
                 # first close all of the file handles to flush everything to disk
                 self._close_all()
                 # then load from the h5 file(s) and compute metrics
                 raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
-
+                    
+        # empty the lists for next epoch
+        self.predictions_list = []
+        self.targets_list = []
 
 class GPUMemoryLogger(Callback):
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
