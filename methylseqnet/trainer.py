@@ -412,6 +412,7 @@ def create_callbacks(
             hp2_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
             ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
             regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
+            model_outputs_slice = [0],
             crop_for_accessibility = 163840,
             label_bin_size = 128,
             log_stats = True,

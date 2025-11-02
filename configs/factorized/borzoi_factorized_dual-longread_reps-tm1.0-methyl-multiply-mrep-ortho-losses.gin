@@ -100,7 +100,8 @@ methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight=1.0
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
-    "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/fold0.h5",
+    "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/fold2.h5",
+    "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/fold4.h5",
     "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/chrX_fold0.h5"
 ]
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/chrX_fold1.h5"
