@@ -132,29 +132,6 @@ class MethylSeqDataModule(LightningDataModule):
         else:
             return ''
 
-# def print_random_seed_and_trainer_info(trainer, model):
-#     # Print the random seed being used (if set)
-#     seed = torch.initial_seed()
-#     print(f"PyTorch random seed: {seed}")
-
-#     # # Get Lightning's random seed (after Trainer.seed_everything() call)
-#     # print(f"Lightning random seed: {trainer.global_seed}")
-
-#     # # Print whether the Trainer is set to deterministic mode
-#     # print(f"Deterministic mode: {trainer.deterministic}")
-
-#     # # Check model's trainer for random seed initialization
-#     # print(f"Trainer's `deterministic`: {trainer._deterministic}")
-    
-#     # Other randomness factors (like CUDA deterministic)
-#     if torch.backends.cudnn.deterministic:
-#         print("CUDNN is set to deterministic.")
-#     else:
-#         print("CUDNN is not set to deterministic.")
-    
-#     if torch.backends.cudnn.benchmark:
-#         print("CUDNN benchmark is enabled.")
-
 def get_current_epoch(ckpt_path):
     if ckpt_path and os.path.isfile(ckpt_path):
         checkpoint = torch.load(ckpt_path, map_location='cpu')
