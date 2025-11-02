@@ -42,7 +42,7 @@ methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = None
-methylseqnet.methylseqnn.MethylSeqNN.data_types_subset=['Fiber-seq']
+# methylseqnet.methylseqnn.MethylSeqNN.data_types_subset=['Fiber-seq']
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
 methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingSelector]
@@ -93,7 +93,7 @@ methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
-# methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
+methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0

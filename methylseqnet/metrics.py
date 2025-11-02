@@ -41,11 +41,11 @@ class MultitaskMetric(ABC):
 class PearsonAcrossPositions(MultitaskMetric):
     def __call__(self, targets, predictions):
         self._check_shapes(targets, predictions)
-        targets_centered = targets - targets.mean(dim=0, keepdim=True)  # center over channels
-        predictions_centered = predictions - predictions.mean(dim=0, keepdim=True)
+        targets_centered = targets - targets.mean(dim=1, keepdim=True)  # center over channels
+        predictions_centered = predictions - predictions.mean(dim=1, keepdim=True)
 
-        numerator = (targets_centered * predictions_centered).sum(dim=0)
-        denominator = torch.sqrt((targets_centered ** 2).sum(dim=0) * (predictions_centered ** 2).sum(dim=0))
+        numerator = (targets_centered * predictions_centered).sum(dim=1)
+        denominator = torch.sqrt((targets_centered ** 2).sum(dim=1) * (predictions_centered ** 2).sum(dim=1))
 
         r = numerator / (denominator + 1e-8)
         return torch.mean(r)
@@ -55,11 +55,11 @@ class PearsonAcrossTasks(MultitaskMetric):
         self._check_shapes(targets, predictions)
         targets = targets.T
         predictions = predictions.T
-        targets_centered = targets - targets.mean(dim=0, keepdim=True)  # center over positions
-        predictions_centered = predictions - predictions.mean(dim=0, keepdim=True)
+        targets_centered = targets - targets.mean(dim=1, keepdim=True)  # center over positions
+        predictions_centered = predictions - predictions.mean(dim=1, keepdim=True)
 
-        numerator = (targets_centered * predictions_centered).sum(dim=0)
-        denominator = torch.sqrt((targets_centered ** 2).sum(dim=0) * (predictions_centered ** 2).sum(dim=0))
+        numerator = (targets_centered * predictions_centered).sum(dim=1)
+        denominator = torch.sqrt((targets_centered ** 2).sum(dim=1) * (predictions_centered ** 2).sum(dim=1))
 
         r = numerator / (denominator + 1e-8)
         return torch.mean(r)
