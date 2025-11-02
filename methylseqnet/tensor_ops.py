@@ -129,7 +129,7 @@ def interpolate_collapsed_methylation(x: torch.Tensor) -> torch.Tensor:
 
     interpolated = interp(all_idx.float(), xp, fp, dim=-1, extrapolate='constant')
 
-    output_one_strand = torch.zeros((B,1,L))
+    output_one_strand = torch.zeros((B,1,L), device=x.device)
     output_one_strand[:, 0, :] = interpolated
 
     return output_one_strand
