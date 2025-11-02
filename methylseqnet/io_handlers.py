@@ -621,10 +621,11 @@ class MultiBigWigLabelHandler(LabelHandler):
                     bw = pyBigWig.open(str(bigwig_file))
                     self.chroms = bw.chroms()
                     if self.normalize_counts:
+                        warnings.warn("Normalizing counts for bigwig label handler is not tested and may not work right.")
                         sample_values = bw.values('chr1',0,200000000)
                         sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
                         if combine_operation=='mean':
-                            self.counts_normalization+=sample_values_sum/(200000000+len(bigwig_files))
+                            self.counts_normalization+=sample_values_sum/(200000000*len(bigwig_files))
                         else:
                             raise NotImplementedError(f"No implementation for {self.combine_operation}.")
                     bw.close()
@@ -660,7 +661,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             # This may in future be replaced with a more sophisticated calculation
             aggregated_values = aggregated_values/(gc_content + 0.1)
         if self.normalize_counts:
-            aggregated_values = 1000*aggregated_values/self.counts_normalization
+            aggregated_values = aggregated_values/self.counts_normalization
         if self.binarize:
             return aggregated_values>self.threshold
         else:
@@ -1756,9 +1757,9 @@ class PhasedFiberRNA(MultitaskIOHandler):
             label_bin_size,
             label_num_bins,
             unphased_rna_bams: list[str] = [],
-            scale_clip_dict: dict = {
-                'fiberseq': {'scale':1, 'clip':1024},
-                'rna': {'scale':1, 'clip':1024},
+            kwargs_by_data_type: dict = {
+                'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
+                'rna': {'normalize_counts':True,'scale':1, 'clip':384},
             },
             max_chunks_in_mem: int=1000,
             normalize_label_counts: bool=False,
@@ -1778,12 +1779,10 @@ class PhasedFiberRNA(MultitaskIOHandler):
             MultiBigWigLabelHandler(
                 bigwig_files = [bigwig_file],
                 label_bin_size=label_bin_size,
-                normalize_counts=normalize_label_counts,
                 normalize_gc=False,
                 binarize=False,
                 threshold=None,
-                scale=scale_clip_dict['fiberseq']['scale'],
-                clip=scale_clip_dict['fiberseq']['clip'],
+                **kwargs_by_data_type['fiberseq'],
             )
             for bigwig_file in fiberseq_bigwigs_by_phase
         ]
@@ -1791,18 +1790,14 @@ class PhasedFiberRNA(MultitaskIOHandler):
             BamCovLabelHandler(
                 bam_files = [bam_file],
                 label_bin_size = label_bin_size,
-                normalize_counts=True,
-                scale=scale_clip_dict['rna']['scale'],
-                clip=scale_clip_dict['rna']['clip'],
+                **kwargs_by_data_type['rna'],
             )
             for bam_file in rna_bams_by_phase
         ]
         self.unphased_rna_loader = BamCovLabelHandler(
             bam_files = unphased_rna_bams,
             label_bin_size = label_bin_size,
-            normalize_counts=True,
-            scale=scale_clip_dict['rna']['scale'],
-            clip=scale_clip_dict['rna']['clip'],
+            **kwargs_by_data_type['rna'],
         )
         self.num_phases = len(methylation_bedmethyls_by_phase)
         self.num_tracks = 2

@@ -31,7 +31,6 @@ PhasedFiberRNA.fiberseq_bigwigs_by_phase = %fiberseq_bigwigs_by_phase
 PhasedFiberRNA.rna_bams_by_phase = %rna_bams_by_phase
 PhasedFiberRNA.label_bin_size = %label_bin_size
 PhasedFiberRNA.label_num_bins = %label_num_bins
-PhasedFiberRNA.normalize_label_counts = True
 
 PreprocessingPipeline.sample_generator = @RegionBedParser()
 PreprocessingPipeline.multitask_io_handler = @PhasedFiberRNA()
