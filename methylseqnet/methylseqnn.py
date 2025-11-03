@@ -501,7 +501,7 @@ class MethylSeqNN(L.LightningModule):
         else:
             loss = loss_fn(*args,mask=mask)
         if log_name:
-            self.log(log_name,loss,sync_dist=True)            
+            self.log(log_name,loss,sync_dist=False)            
         return weight*loss
 
     def _calculate_auxiliary_losses(self, log_descriptor, effective_mask, targets):
