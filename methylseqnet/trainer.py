@@ -383,13 +383,13 @@ def create_callbacks(
         callbacks.extend([temp_checkpoint,best_val_checkpoint,reset_best_score])
     if not no_haplotype_metrics:
         haplotyped_pred_logger = HaplotypedPredLogger(
-            hp1_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
-            hp2_cpg_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
-            hp1_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
-            hp2_accessibility_bedgz='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
+            hp1_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
+            hp2_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
+            hp1_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
+            hp2_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
             ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
             regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
-            model_outputs_slice = [0],
+            accessibility_outputs_slice = [0],
             crop_for_accessibility = 163840,
             label_bin_size = 128,
             log_stats = True,

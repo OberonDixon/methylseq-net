@@ -282,39 +282,46 @@ class SubmodulesGradientNormLogger(Callback):
 class HaplotypedPredLogger(Callback):
     def __init__(
         self,
-        hp1_cpg_bedgz: str,
-        hp2_cpg_bedgz: str,
-        hp1_accessibility_bedgz: str,
-        hp2_accessibility_bedgz: str,
+        hp1_cpg_file: str,
+        hp2_cpg_file: str,
+        hp1_accessibility_file: str,
+        hp2_accessibility_file: str,
         ref_genome_fasta : str,
         regions: list[tuple[str, int, int]],
-        model_outputs_slice: slice | list = slice(None),
+        hp1_rna_file: str = None,
+        hp2_rna_file: str = None,
+        accessibility_outputs_slice: slice | list = slice(None),
+        rna_outputs_slice: slice | list = slice(None),
         crop_for_accessibility: int = 163840,
         label_bin_size: int = 128,
         log_stats: bool = True,
         upload_plots: bool = False,
         plot_methylation: bool = False,
+        plot_rna: bool = False,
         methylation_exaggeration: float = 1.0,
         ):
         super().__init__()
-        self.hp1_cpg_bedgz = hp1_cpg_bedgz
-        self.hp2_cpg_bedgz = hp2_cpg_bedgz
-        self.hp1_accessibility_bedgz = hp1_accessibility_bedgz
-        self.hp2_accessibility_bedgz = hp2_accessibility_bedgz
+        self.hp1_cpg_file = hp1_cpg_file
+        self.hp2_cpg_file = hp2_cpg_file
+        self.hp1_accessibility_file = hp1_accessibility_file
+        self.hp2_accessibility_file = hp2_accessibility_file
+        self.hp1_rna_file = hp1_rna_file
+        self.hp2_rna_file = hp2_rna_file
         self.genome = pysam.FastaFile(ref_genome_fasta)
         self.regions = regions
-        self.model_outputs_slice = model_outputs_slice
+        self.accessibility_outputs_slice = accessibility_outputs_slice
+        self.rna_outputs_slice = rna_outputs_slice
         self.crop_for_accessibility = crop_for_accessibility
         self.label_bin_size = label_bin_size
         self.log_stats = log_stats
         self.upload_plots = upload_plots
         self.plot_methylation = plot_methylation
         self.methylation_exaggeration = methylation_exaggeration
-        if not (os.path.exists(hp1_cpg_bedgz) and os.path.exists(hp2_cpg_bedgz) and os.path.exists(ref_genome_fasta)):
+        if not (os.path.exists(hp1_cpg_file) and os.path.exists(hp2_cpg_file) and os.path.exists(ref_genome_fasta)):
             raise ValueError("One of the provided haplotype-specific cpg bed files or reference genome fasta does not exist.")
-        if (hp1_accessibility_bedgz is not None) != (hp2_accessibility_bedgz is not None):
+        if (hp1_accessibility_file is not None) != (hp2_accessibility_file is not None):
             raise ValueError("Either both or neither haplotype-specific accessibility bed files must be provided.")
-        if (hp1_accessibility_bedgz is not None) and (not (os.path.exists(hp1_accessibility_bedgz) and os.path.exists(hp2_accessibility_bedgz))):
+        if (hp1_accessibility_file is not None) and (not (os.path.exists(hp1_accessibility_file) and os.path.exists(hp2_accessibility_file))):
             raise ValueError("One of the provided haplotype-specific accessibility bed files does not exist.")
 
         self.input_to_methylation = nn.Sequential(
@@ -330,10 +337,23 @@ class HaplotypedPredLogger(Callback):
             if run is not None and hasattr(run, "log"):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
-                    hp1_target, hp2_target, hp1_pred, hp2_pred, hp1_methylation, hp2_methylation, hp1_pred_methylation, hp2_pred_methylation = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
+                    (
+                        hp1_accessibility_target,
+                        hp2_accessibility_target,
+                        hp1_accessibility_pred,
+                        hp2_accessibility_pred,
+                        hp1_methylation,
+                        hp2_methylation,
+                        hp1_pred_methylation,
+                        hp2_pred_methylation,
+                        hp1_rna_target,
+                        hp2_rna_target,
+                        hp1_rna_pred,
+                        hp2_rna_pred,
+                    ) = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
                     if hp1_pred_methylation is not None and hp2_pred_methylation is not None:
                         assert len(hp1_methylation) == len(hp2_methylation), f"methylation lengths do not match for {chromosome}:{start}-{end}"
-                        pred_len = len(hp1_pred)
+                        pred_len = len(hp1_accessibility_pred)
                         methyl_len = len(hp1_methylation)
                         if methyl_len > pred_len:
                             crop_off_each_end = (methyl_len - pred_len) // 2
@@ -342,7 +362,7 @@ class HaplotypedPredLogger(Callback):
                     if self.upload_plots:
                         region_str = f"{chromosome}:{start}-{end}"
                         center_coord = (start + end) // 2
-                        num_bins = len(hp1_pred)
+                        num_bins = len(hp1_accessibility_pred)
                         start_pos = center_coord - (num_bins * self.label_bin_size) // 2
                         positions = start_pos + np.arange(num_bins) * self.label_bin_size
 
@@ -406,48 +426,47 @@ class HaplotypedPredLogger(Callback):
                             haplo_diff_true_idx = 4
                             methyl_true_idx = 5
                         else:
-                            num_subplot = 4
+                            num_subplots = 4
                             haplo_pred_idx = 0
                             haplo_diff_pred_idx = 1 
                             haplo_true_idx = 2
                             haplo_diff_true_idx = 3                           
-                        fig, axes = plt.subplots(6,1,figsize=(30,10), sharex=True)
+                        fig, axes = plt.subplots(num_subplots,1,figsize=(30,10), sharex=True)
                         fig.suptitle(f"{region_str}, epoch={epoch}")
-                        axes[haplo_pred_idx].plot(positions,hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
-                        axes[haplo_pred_idx].plot(positions,-hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
-                        axes[haplo_pred_idx].set_ylabel("Haplo 1/2 Prediction")
-                        axes[haplo_diff_pred_idx].plot(positions,hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
-                        axes[haplo_diff_pred_idx].set_ylabel("hp1 minus\hp2 Prediction")
+                        axes[haplo_pred_idx].plot(positions,hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                        axes[haplo_pred_idx].plot(positions,-hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
+                        axes[haplo_pred_idx].set_ylabel("hp1,2\npred")
+                        axes[haplo_diff_pred_idx].plot(positions,hp1_accessibility_pred - hp2_accessibility_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
+                        axes[haplo_diff_pred_idx].set_ylabel("hp1-2\npredn")
                         if self.plot_methylation:
-                            axes[methyl_pred_idx].plot(positions,hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
-                            axes[methyl_pred_idx].plot(positions,-hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
-                            axes[methyl_pred_idx].set_ylabel("hp1/2\nMethylation")
-                        if hp1_target is not None:
-                            axes[haplo_true_idx].plot(positions,hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
-                            axes[haplo_true_idx].plot(positions,-hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
-                            axes[haplo_true_idx].set_ylabel("hp1/2\nTarget")
-                            axes[haplo_diff_true_idx].plot(positions,hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
-                            axes[haplo_diff_true_idx].set_ylabel("hp1 minus hp2 Target")
-                            if self.plot_methylation:
-                                axes[methyl_true_idx].plot(positions,hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
-                                axes[methyl_true_idx].plot(positions,-hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
-                                axes[methyl_true_idx].set_ylabel("hp1/2\nImputed Methylation")
+                            axes[methyl_pred_idx].plot(positions,hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
+                            axes[methyl_pred_idx].plot(positions,-hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
+                            axes[methyl_pred_idx].set_ylabel("hp1/2\nimp methyl")
+                            axes[methyl_true_idx].plot(positions,hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
+                            axes[methyl_true_idx].plot(positions,-hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
+                            axes[methyl_true_idx].set_ylabel("hp1,2\ntru methyl")
+                        if hp1_accessibility_target is not None:
+                            axes[haplo_true_idx].plot(positions,hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                            axes[haplo_true_idx].plot(positions,-hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                            axes[haplo_true_idx].set_ylabel("hp1/2\ntarget")
+                            axes[haplo_diff_true_idx].plot(positions,hp1_accessibility_target - hp2_accessibility_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                            axes[haplo_diff_true_idx].set_ylabel("hp1-hp2\ntarget")
                         axes[-1].set_xlabel("Position (binned)")
                         fig.canvas.draw()  # guarantee the figure is rendered NOW
                         w, h = fig.canvas.get_width_height()
                         run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
                         plt.close(fig)
-                    if self.log_stats and (hp1_target is not None):
+                    if self.log_stats and (hp1_accessibility_target is not None):
                         # run.log({
                         #     f"haplo_{region_str}_haplo1_pearson": pearsonr(hp1_target, hp1_pred)[0],
                         #     f"haplo_{region_str}_haplo2_pearson": pearsonr(hp2_target, hp2_pred)[0],
                         #     f"haplo_{region_str}_haplo_differential_pearson": pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0],
                         #     "epoch": epoch,
                         # })
-                        hp1_pearsons.append(pearsonr(hp1_target, hp1_pred)[0])
-                        hp2_pearsons.append(pearsonr(hp2_target, hp2_pred)[0])
-                        differential_pearsons.append(pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0])
-                if self.log_stats and (hp1_target is not None):
+                        hp1_pearsons.append(pearsonr(hp1_accessibility_target, hp1_accessibility_pred)[0])
+                        hp2_pearsons.append(pearsonr(hp2_accessibility_target, hp2_accessibility_pred)[0])
+                        differential_pearsons.append(pearsonr(hp1_accessibility_target - hp2_accessibility_target, hp1_accessibility_pred - hp2_accessibility_pred)[0])
+                if self.log_stats and (hp1_accessibility_target is not None):
                     run.log({
                         "haplo/haplo1_pearson": np.mean(hp1_pearsons),
                         "haplo/haplo2_pearson": np.mean(hp2_pearsons),
@@ -466,14 +485,14 @@ class HaplotypedPredLogger(Callback):
     ):
         device = pl_module.device
         hp1_sequence, hp1_methylation_encoding = self._construct_input_tensor(
-            pileup_file=self.hp1_cpg_bedgz,
+            genome_track_file=self.hp1_cpg_file,
             chromosome=chromosome,
             start=start,
             end=end,
             device=device,
         )
         hp2_sequence, hp2_methylation_encoding = self._construct_input_tensor(
-            pileup_file=self.hp2_cpg_bedgz,
+            genome_track_file=self.hp2_cpg_file,
             chromosome=chromosome,
             start=start,
             end=end,
@@ -481,20 +500,34 @@ class HaplotypedPredLogger(Callback):
         )
         hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
         hp2_methylation = self.input_to_methylation(torch.cat([hp2_sequence, hp2_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp1_target = self._construct_target_tensor(
-            pileup_file=self.hp1_accessibility_bedgz,
+        hp1_accessibility_target = self._construct_target_tensor(
+            genome_track_file=self.hp1_accessibility_file,
             chromosome=chromosome,
             start=start,
             end=end,
             device=device,
-        ).squeeze().cpu().numpy() if self.hp1_accessibility_bedgz is not None else None
-        hp2_target = self._construct_target_tensor(
-            pileup_file=self.hp2_accessibility_bedgz,
+        ).squeeze().cpu().numpy() if self.hp1_accessibility_file is not None else None
+        hp2_accessibility_target = self._construct_target_tensor(
+            genome_track_file=self.hp2_accessibility_file,
             chromosome=chromosome,
             start=start,
             end=end,
             device=device,
-        ).squeeze().cpu().numpy() if self.hp2_accessibility_bedgz is not None else None
+        ).squeeze().cpu().numpy() if self.hp2_accessibility_file is not None else None
+        hp1_rna_target = self._construct_target_tensor(
+            genome_track_file=self.hp1_rna_file,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        ).squeeze().cpu().numpy() if self.hp1_rna_file is not None else None
+        hp2_rna_target = self._construct_target_tensor(
+            genome_track_file=self.hp2_rna_file,
+            chromosome=chromosome,
+            start=start,
+            end=end,
+            device=device,
+        ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
         with torch.no_grad():
             training_mode = pl_module.mode
             training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
@@ -506,13 +539,17 @@ class HaplotypedPredLogger(Callback):
             else:
                 pl_module.mode = 'pretrained-only'
             pl_module.true_methyl_rep_weight = 1.0
-            hp1_pred = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
+            hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy() if self.hp1_rna_file is not None else None
             hp1_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
                 else np.ones_like(hp1_methylation)
             )
-            hp2_pred = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))[:, self.model_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_output = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))
+            hp2_accessibility_pred = hp2_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
             hp2_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
@@ -520,19 +557,32 @@ class HaplotypedPredLogger(Callback):
             )
             pl_module.mode = training_mode
             pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
-        return hp1_target, hp2_target, hp1_pred, hp2_pred, hp1_methylation, hp2_methylation, hp1_pred_methylation, hp2_pred_methylation
+        return (
+            hp1_accessibility_target,
+            hp2_accessibility_target,
+            hp1_accessibility_pred,
+            hp2_accessibility_pred,
+            hp1_methylation,
+            hp2_methylation,
+            hp1_pred_methylation,
+            hp2_pred_methylation,
+            hp1_rna_target,
+            hp2_rna_target,
+            hp1_rna_pred,
+            hp2_rna_pred,
+        )
 
 
     def _construct_input_tensor(
         self,
-        pileup_file,
+        genome_track_file,
         chromosome,
         start,
         end,
         device,
     ) -> torch.Tensor:
-        cpg_ratio, non_zero_mask = self._load_methyl_ratio_from_bedgz(
-            pileup_file=pileup_file,
+        cpg_ratio, non_zero_mask = self._load_track_from_file(
+            genome_track_file=genome_track_file,
             motif="CG,0",
             chromosome=chromosome,
             start=start,
@@ -572,14 +622,14 @@ class HaplotypedPredLogger(Callback):
 
     def _construct_target_tensor(
         self,
-        pileup_file,
+        genome_track_file,
         chromosome,
         start,
         end,
         device,
     ) -> torch.Tensor:
-        accessibility_ratio, non_zero_mask = self._load_methyl_ratio_from_bedgz(
-            pileup_file=pileup_file,
+        accessibility_ratio, _ = self._load_track_from_file(
+            genome_track_file=genome_track_file,
             motif="A,0",
             chromosome=chromosome,
             start=start,
@@ -593,9 +643,9 @@ class HaplotypedPredLogger(Callback):
             device=device,
         ).unsqueeze(0).unsqueeze(0)
 
-    def _load_methyl_ratio_from_bedgz(
+    def _load_track_from_file(
         self,
-        pileup_file,
+        genome_track_file,
         motif,
         chromosome,
         start,
@@ -603,15 +653,33 @@ class HaplotypedPredLogger(Callback):
         bin_size=1,
         crop=0,
     ) -> np.ndarray:
-        mod_vector, val_vector = load_processed.pileup_vectors_from_bedmethyl(
-            bedmethyl_file = pileup_file,
-            motif = motif,
-            regions = f'{chromosome}:{start+crop}-{end-crop}',
-            quiet=True,
-        )
-        mod_vector_binned = mod_vector.reshape(-1, bin_size).sum(axis=1)
-        val_vector_binned = val_vector.reshape(-1, bin_size).sum(axis=1)
-        non_zero_mask = val_vector_binned != 0
-        methylated_ratio = np.zeros_like(mod_vector_binned, dtype=float)
-        methylated_ratio[non_zero_mask] = mod_vector_binned[non_zero_mask] / val_vector_binned[non_zero_mask]
-        return methylated_ratio, non_zero_mask
+        if genome_track_file.endswith(".bed.gz"):
+            mod_vector, val_vector = load_processed.pileup_vectors_from_bedmethyl(
+                bedmethyl_file = genome_track_file,
+                motif = motif,
+                regions = f'{chromosome}:{start+crop}-{end-crop}',
+                quiet=True,
+            )
+            mod_vector_binned = mod_vector.reshape(-1, bin_size).sum(axis=1)
+            val_vector_binned = val_vector.reshape(-1, bin_size).sum(axis=1)
+            non_zero_mask = val_vector_binned != 0
+            methylated_ratio = np.zeros_like(mod_vector_binned, dtype=float)
+            methylated_ratio[non_zero_mask] = mod_vector_binned[non_zero_mask] / val_vector_binned[non_zero_mask]
+            return methylated_ratio, non_zero_mask
+        elif genome_track_file.endswith(".bw") or genome_track_file.endswith(".bigwig"):
+            bw = pyBigWig.open(genome_track_file)
+            values = np.array(bw.values(chromosome, start+crop, end-crop, numpy=True))
+            bw.close()
+            values[np.isnan(values)] = 0.0
+            values_binned = values.reshape(-1, bin_size).mean(axis=1)
+            non_zero_mask = values_binned != 0
+            return values, non_zero_mask
+        elif genome_track_file.endswith(".bam"):
+            bam = pysam.AlignmentFile(genome_track_file, "rb")
+            coverage = np.array([sum(x) for x in zip(*(bam.count_coverage(chromosome,start,end,)))])
+            bam.close()
+            coverage_binned = coverage.reshape(-1, bin_size).mean(axis=1)
+            non_zero_mask = coverage_binned != 0
+            return coverage_binned, non_zero_mask
+        else:
+            raise ValueError(f"Unsupported genome track file format: {genome_track_file}")
