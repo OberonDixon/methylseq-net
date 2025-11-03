@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=train_methylseqnet_factorized_2gpu
 #SBATCH --account=fc_nilah
-#SBATCH --partition=savio4_gpu
+#SBATCH --partition=savio3_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
@@ -11,7 +11,8 @@
 #SBATCH --time=48:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/train_methylseqnet_%A_%a.err
-#SBATCH --array=0-6 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --exclude=n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
+#SBATCH --array=1,3-6 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 # Command(s) to run:
 # Define an array of config files
 CONFIG_FILES=(

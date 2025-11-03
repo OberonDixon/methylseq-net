@@ -364,6 +364,9 @@ class HaplotypedPredLogger(Callback):
                             crop_off_each_end = (methyl_len - pred_len) // 2
                             hp1_methylation = hp1_methylation[crop_off_each_end:crop_off_each_end+pred_len]
                             hp2_methylation = hp2_methylation[crop_off_each_end:crop_off_each_end+pred_len]
+                        if len(hp1_pred_methylation) > pred_len:
+                            hp1_pred_methylation = hp1_pred_methylation[crop_off_each_end:crop_off_each_end+pred_len]
+                            hp2_pred_methylation = hp2_pred_methylation[crop_off_each_end:crop_off_each_end+pred_len]
                     if self.upload_plots:
                         region_str = f"{chromosome}:{start}-{end}"
                         center_coord = (start + end) // 2
