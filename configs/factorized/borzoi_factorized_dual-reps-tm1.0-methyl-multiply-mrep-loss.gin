@@ -65,8 +65,6 @@ methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
 ]
 methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe=[@methyl_reps_probe/Conv1d]
 methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe=[@methyl_reps_probe/Conv1d]
-methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe_upstream_grad_scale=-1
-methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe_upstream_grad_scale=0
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output/ConvFinal,
     @Softplus,
@@ -98,10 +96,16 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
 methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
 methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
 methylseqnet.methylseqnn.MethylSeqNN.methyl_rep_loss_weight=1.0
-methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight=0.0
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
+methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold2.h5",
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold4.h5",
+    "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold6.h5",
+]
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.trainer.MethylSeqDataModule.epoch_size=5000

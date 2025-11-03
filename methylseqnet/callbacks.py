@@ -15,6 +15,7 @@ from torch import nn
 import wandb
 import pandas as pd
 import pyBigWig
+import gin
 
 from dimelo import load_processed
 from methylseqnet import dna_io
@@ -280,6 +281,8 @@ class SubmodulesGradientNormLogger(Callback):
             grad_norm = norm_sq ** 0.5
             pl_module.log(f"train/grad_norm_{submodule_name}", grad_norm, prog_bar=False)
 
+@gin.register
+@gin.configurable
 class HaplotypedPredLogger(Callback):
     def __init__(
         self,
@@ -291,8 +294,8 @@ class HaplotypedPredLogger(Callback):
         regions: list[tuple[str, int, int]],
         hp1_rna_file: str = None,
         hp2_rna_file: str = None,
-        accessibility_outputs_slice: slice | list = slice(None),
-        rna_outputs_slice: slice | list = slice(None),
+        accessibility_outputs_slice: slice | list = [0],
+        rna_outputs_slice: slice | list = [-1],
         crop_for_accessibility: int = 163840,
         label_bin_size: int = 128,
         log_stats: bool = True,

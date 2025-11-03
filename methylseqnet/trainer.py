@@ -382,13 +382,7 @@ def create_callbacks(
             )
         callbacks.extend([temp_checkpoint,best_val_checkpoint,reset_best_score])
     if not no_haplotype_metrics:
-        haplotyped_pred_logger = HaplotypedPredLogger(
-            # hp1_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
-            # hp2_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
-            # hp1_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
-            # hp2_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
-            # ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
-            # regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
+        haplotyped_pred_logger_fiber = HaplotypedPredLogger(
             hp1_cpg_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hap2_chrX/pileup.sorted.bed.gz",
             hp2_cpg_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hap1_chrX/pileup.sorted.bed.gz",
             hp1_accessibility_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap2.acc.bw",
@@ -397,8 +391,6 @@ def create_callbacks(
             hp2_rna_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.bam",
             ref_genome_fasta = "/clusterfs/nilah/oberon/genomes/hg38.fa",
             regions = [('chrX',131789298-262_144,131789298+262_144),('chrX',149575782-262_144,149575782+262_144)],
-            accessibility_outputs_slice = [0],
-            rna_outputs_slice = [1],
             crop_for_accessibility = 163840,
             label_bin_size = 128,
             log_stats = True,
@@ -406,7 +398,21 @@ def create_callbacks(
             plot_methylation = True,   
             plot_rna = True,
         )
-        callbacks.append(haplotyped_pred_logger)
+        haplotyped_pred_logger_dimelo = HaplotypedPredLogger(
+            hp1_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_cpg/pileup.sorted.bed.gz',
+            hp2_cpg_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_cpg/pileup.sorted.bed.gz',
+            hp1_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp1_ma/pileup.sorted.bed.gz',
+            hp2_accessibility_file='/clusterfs/nilah/oberon/datasets/deep_ctcf/phased/megalodon/hp2_ma/pileup.sorted.bed.gz',
+            ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
+            regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
+            crop_for_accessibility = 163840,
+            label_bin_size = 128,
+            log_stats = True,
+            upload_plots = True,    
+            plot_methylation = True,   
+            plot_rna = True,
+        )
+        callbacks.extend([haplotyped_pred_logger_fiber,haplotyped_pred_logger_dimelo])
     if track_gradients_for_modules:
         callbacks.append(SubmodulesGradientNormLogger(track_gradients_for_modules))
 
