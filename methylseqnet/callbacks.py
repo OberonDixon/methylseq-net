@@ -14,6 +14,7 @@ import torch
 from torch import nn
 import wandb
 import pandas as pd
+import pyBigWig
 
 from dimelo import load_processed
 from methylseqnet import dna_io
@@ -695,10 +696,10 @@ class HaplotypedPredLogger(Callback):
             values[np.isnan(values)] = 0.0
             values_binned = values.reshape(-1, bin_size).mean(axis=1)
             non_zero_mask = values_binned != 0
-            return values, non_zero_mask
+            return values_binned, non_zero_mask
         elif genome_track_file.endswith(".bam"):
             bam = pysam.AlignmentFile(genome_track_file, "rb")
-            coverage = np.array([sum(x) for x in zip(*(bam.count_coverage(chromosome,start,end,)))])
+            coverage = np.array([sum(x) for x in zip(*(bam.count_coverage(chromosome,start+crop,end-crop)))])
             bam.close()
             coverage_binned = coverage.reshape(-1, bin_size).mean(axis=1)
             non_zero_mask = coverage_binned != 0
