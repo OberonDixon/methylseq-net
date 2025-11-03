@@ -390,11 +390,13 @@ def create_callbacks(
             ref_genome_fasta='/clusterfs/nilah/oberon/jupyter/chm13.draft_v1.0.fasta',
             regions = [('chrX',130_113_536-262_144,130_113_536+262_144),('chrX',147_841_536-262_144,147_841_536+262_144)],
             accessibility_outputs_slice = [0],
+            rna_outputs_slice = [1],
             crop_for_accessibility = 163840,
             label_bin_size = 128,
             log_stats = True,
             upload_plots = True,    
             plot_methylation = True,   
+            plot_rna = True,
         )
         callbacks.append(haplotyped_pred_logger)
     if track_gradients_for_modules:

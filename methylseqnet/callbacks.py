@@ -316,6 +316,7 @@ class HaplotypedPredLogger(Callback):
         self.log_stats = log_stats
         self.upload_plots = upload_plots
         self.plot_methylation = plot_methylation
+        self.plot_rna = plot_rna
         self.methylation_exaggeration = methylation_exaggeration
         if not (os.path.exists(hp1_cpg_file) and os.path.exists(hp2_cpg_file) and os.path.exists(ref_genome_fasta)):
             raise ValueError("One of the provided haplotype-specific cpg bed files or reference genome fasta does not exist.")
@@ -417,41 +418,62 @@ class HaplotypedPredLogger(Callback):
                         #         ),
                         #         "epoch": epoch
                         #     })
-                        if self.plot_methylation:
-                            num_subplots = 6
-                            haplo_pred_idx = 0
-                            haplo_diff_pred_idx = 1
-                            methyl_pred_idx = 2
-                            haplo_true_idx = 3
-                            haplo_diff_true_idx = 4
-                            methyl_true_idx = 5
-                        else:
-                            num_subplots = 4
-                            haplo_pred_idx = 0
-                            haplo_diff_pred_idx = 1 
-                            haplo_true_idx = 2
-                            haplo_diff_true_idx = 3                           
-                        fig, axes = plt.subplots(num_subplots,1,figsize=(30,10), sharex=True)
+                        
+                        fig, axes = plt.subplots(4, 2, figsize=(30, 15), sharex=True)
                         fig.suptitle(f"{region_str}, epoch={epoch}")
-                        axes[haplo_pred_idx].plot(positions,hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
-                        axes[haplo_pred_idx].plot(positions,-hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
-                        axes[haplo_pred_idx].set_ylabel("hp1,2\npred")
-                        axes[haplo_diff_pred_idx].plot(positions,hp1_accessibility_pred - hp2_accessibility_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
-                        axes[haplo_diff_pred_idx].set_ylabel("hp1-2\npredn")
-                        if self.plot_methylation:
-                            axes[methyl_pred_idx].plot(positions,hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
-                            axes[methyl_pred_idx].plot(positions,-hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
-                            axes[methyl_pred_idx].set_ylabel("hp1/2\nimp methyl")
-                            axes[methyl_true_idx].plot(positions,hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
-                            axes[methyl_true_idx].plot(positions,-hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
-                            axes[methyl_true_idx].set_ylabel("hp1,2\ntru methyl")
+                        
+                        # Row 0: Accessibility
                         if hp1_accessibility_target is not None:
-                            axes[haplo_true_idx].plot(positions,hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
-                            axes[haplo_true_idx].plot(positions,-hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
-                            axes[haplo_true_idx].set_ylabel("hp1/2\ntarget")
-                            axes[haplo_diff_true_idx].plot(positions,hp1_accessibility_target - hp2_accessibility_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
-                            axes[haplo_diff_true_idx].set_ylabel("hp1-hp2\ntarget")
-                        axes[-1].set_xlabel("Position (binned)")
+                            axes[0, 0].plot(positions, hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                            axes[0, 0].plot(positions, -hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                            axes[0, 0].set_ylabel("hp1,2\ntarget")
+                            axes[0, 0].set_title("True Accessibility")
+                        
+                        axes[0, 1].plot(positions, hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                        axes[0, 1].plot(positions, -hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
+                        axes[0, 1].set_ylabel("hp1,2\npred")
+                        axes[0, 1].set_title("Predicted Accessibility")
+                        
+                        # Row 1: Differential Accessibility
+                        if hp1_accessibility_target is not None:
+                            axes[1, 0].plot(positions, hp1_accessibility_target - hp2_accessibility_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                            axes[1, 0].set_ylabel("hp1-hp2\ntarget")
+                            axes[1, 0].set_title("True Differential Accessibility")
+                        
+                        axes[1, 1].plot(positions, hp1_accessibility_pred - hp2_accessibility_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
+                        axes[1, 1].set_ylabel("hp1-2\npred")
+                        axes[1, 1].set_title("Predicted Differential Accessibility")
+                        
+                        # Row 2: Methylation (only if plot_methylation is True)
+                        if self.plot_methylation:
+                            axes[2, 0].plot(positions, hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
+                            axes[2, 0].plot(positions, -hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
+                            axes[2, 0].set_ylabel("hp1,2\ntru methyl")
+                            axes[2, 0].set_title("True Methylation")
+                            
+                            axes[2, 1].plot(positions, hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
+                            axes[2, 1].plot(positions, -hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
+                            axes[2, 1].set_ylabel("hp1/2\nimp methyl")
+                            axes[2, 1].set_title("Imputed Methylation")
+
+                        if self.plot_rna:
+                            # Row 3: RNA
+                            if hp1_rna_target is not None:
+                                axes[3, 0].plot(positions, hp1_rna_target, label="Haplo 1 RNA Target", color='blue', alpha=0.5)
+                                axes[3, 0].plot(positions, -hp2_rna_target, label="Haplo 2 RNA Target", color='orange', alpha=0.5)
+                                axes[3, 0].set_ylabel("hp1,2\nRNA target")
+                                axes[3, 0].set_title("True RNA Expression")
+                            
+                            if hp1_rna_pred is not None:
+                                axes[3, 1].plot(positions, hp1_rna_pred, label="Haplo 1 RNA Prediction", color='blue', alpha=0.5)
+                                axes[3, 1].plot(positions, -hp2_rna_pred, label="Haplo 2 RNA Prediction", color='orange', alpha=0.5)
+                                axes[3, 1].set_ylabel("hp1,2\nRNA pred")
+                                axes[3, 1].set_title("Predicted RNA Expression")
+                        
+                        # Set x-label only on bottom row
+                        axes[-1, 0].set_xlabel("Position (binned)")
+                        axes[-1, 1].set_xlabel("Position (binned)")
+                        
                         fig.canvas.draw()  # guarantee the figure is rendered NOW
                         w, h = fig.canvas.get_width_height()
                         run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
@@ -541,7 +563,7 @@ class HaplotypedPredLogger(Callback):
             pl_module.true_methyl_rep_weight = 1.0
             hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
             hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy() if self.hp1_rna_file is not None else None
+            hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
@@ -549,7 +571,7 @@ class HaplotypedPredLogger(Callback):
             )
             hp2_output = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))
             hp2_accessibility_pred = hp2_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
+            hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred_methylation = (
                 pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
