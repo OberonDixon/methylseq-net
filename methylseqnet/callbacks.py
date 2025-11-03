@@ -428,12 +428,12 @@ class HaplotypedPredLogger(Callback):
                             axes[0, 0].plot(positions, hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
                             axes[0, 0].plot(positions, -hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
                             axes[0, 0].set_ylabel("hp1,2\ntarget")
-                            axes[0, 0].set_title("True Accessibility")
+                        axes[0, 0].set_title(r'$\mathbf{GROUND\ TRUTH}$' + '\n\nTrue Accessibility')
                         
                         axes[0, 1].plot(positions, hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
                         axes[0, 1].plot(positions, -hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
                         axes[0, 1].set_ylabel("hp1,2\npred")
-                        axes[0, 1].set_title("Predicted Accessibility")
+                        axes[0, 1].set_title(r'$\mathbf{PREDICTIONS}$' + '\n\nPredicted Accessibility')
                         
                         # Row 1: Differential Accessibility
                         if hp1_accessibility_target is not None:

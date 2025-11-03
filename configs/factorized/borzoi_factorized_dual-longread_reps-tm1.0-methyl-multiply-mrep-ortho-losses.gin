@@ -147,6 +147,6 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
 ]
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/chrX_fold1.h5"
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.epoch_size=1000
+methylseqnet.trainer.MethylSeqDataModule.epoch_size=10000
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
