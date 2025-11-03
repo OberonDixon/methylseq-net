@@ -809,7 +809,7 @@ class MethylSeqNN(L.LightningModule):
         self.cell_type_list_per_dataset = {}
         cell_type_idx_offset = 0
         for dataset_key in io_mappings_df['dataset_key'].unique():
-            input_to_outputs_dict_dataset = self.get_input_to_outputs_dict_relative(dataset_key)
+            input_to_outputs_dict_dataset = self.get_input_to_outputs_dict(dataset_key)
             self.num_cell_types[dataset_key] = len(input_to_outputs_dict_dataset)
             self.cell_type_list_per_dataset[dataset_key] = [cell_type_idx+cell_type_idx_offset for cell_type_idx in input_to_outputs_dict_dataset.keys()]
             cell_type_idx_offset += self.num_cell_types[dataset_key]
@@ -820,13 +820,46 @@ class MethylSeqNN(L.LightningModule):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
         return io_mappings_df
     
-    def get_input_to_outputs_dict_relative(self, dataset_key):
+    def get_input_to_outputs_dict(
+        self,
+        dataset_key,
+        absolute_and_relative_cell_types=False,
+        absolute_and_relative_channels=False,
+        ):
         input_to_outputs_dict = defaultdict(list)
         for _,io_mappings_row in self.get_io_mappings_df().iterrows():
             if dataset_key == 'all':
-                input_to_outputs_dict[int(io_mappings_row['absolute_cell_type'])].append(int(io_mappings_row['absolute_channel']))
+                if absolute_and_relative_cell_types:
+                    cell_type = (
+                        int(io_mappings_row['cell_type']),
+                        int(io_mappings_row['absolute_cell_type']),
+                        )
+                else:
+                    cell_type = int(io_mappings_row['absolute_cell_type'])
+                if absolute_and_relative_channels:
+                    channel = (
+                        int(io_mappings_row['channel']),
+                        int(io_mappings_row['absolute_channel']),
+                        )
+                else:
+                    channel = int(io_mappings_row['absolute_channel'])
+                input_to_outputs_dict[cell_type].append(channel)
             elif io_mappings_row['dataset_key']==dataset_key:
-                input_to_outputs_dict[int(io_mappings_row['cell_type'])].append(int(io_mappings_row['channel']))
+                if absolute_and_relative_cell_types:
+                    cell_type = (
+                        int(io_mappings_row['cell_type']),
+                        int(io_mappings_row['absolute_cell_type']),
+                        )
+                else:
+                    cell_type = int(io_mappings_row['cell_type'])
+                if absolute_and_relative_channels:
+                    channel = (
+                        int(io_mappings_row['channel']),
+                        int(io_mappings_row['absolute_channel']),
+                        )
+                else:
+                    channel = int(io_mappings_row['channel'])
+                input_to_outputs_dict[cell_type].append(channel)
         return input_to_outputs_dict
 
     def apply_subsets_to_losses(self, subsets: list[list[int]]):
@@ -916,7 +949,7 @@ class MethylSeqNN(L.LightningModule):
         if pseudobatch_scaleup==1:
             x_methylseq_allchannels = x_pseudobatch
         else:
-            for cell_type_idx, (cell_type, channels) in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).items()):
+            for cell_type_idx, (cell_type, channels) in enumerate(self.get_input_to_outputs_dict(dataset_key).items()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_pseudobatch[start:end]
@@ -1040,7 +1073,7 @@ class MethylSeqNN(L.LightningModule):
         
         if methylation.shape[1]>1:
             x_methyl_allchannels = x_methyl_pseudobatch.new_zeros(batch_size, self.num_cell_types[dataset_key], *x_methyl_pseudobatch.shape[1:])
-            for cell_type_idx, cell_type in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).keys()):
+            for cell_type_idx, cell_type in enumerate(self.get_input_to_outputs_dict(dataset_key).keys()):
                 start = cell_type_idx*batch_size
                 end = (cell_type_idx+1)*batch_size
                 x_cell_type = x_methyl_pseudobatch[start:end]
@@ -1053,18 +1086,18 @@ class MethylSeqNN(L.LightningModule):
     def _factorized_reps_to_output_forward(self, methyl_indep_seq_rep, methyl_dep_seq_rep, methyl_rep, dataset_key):
         if self.factorized_reps_to_output_submodel_per_task:
             x_output_allchannels = methyl_indep_seq_rep.new_zeros(methyl_indep_seq_rep.size(0), self.out_tracks, methyl_indep_seq_rep.size(2))
-            for cell_type_idx, (cell_type, channels) in enumerate(self.get_input_to_outputs_dict_relative(dataset_key).items()):
+            for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):
                 # this is slow! I assume. Something more like the pseudobatching above should be much quicker
-                for task_index in channels:
+                for relative_task_index, absolute_task_index in channel_tuples:
                     celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
                     if self.embeddings_to_methyl_dep_seq_rep:
                         methyl_dep_seq_rep_task = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
                         x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_task], dim=1)
                     else:
                         x_methylseq_rep = torch.cat([methyl_indep_seq_rep, celltype_methyl_rep], dim=1)
-                    for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{task_index}"]:
+                    for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{absolute_task_index}"]:
                         x_methylseq_rep = layer(x_methylseq_rep)
-                    x_output_allchannels[:, task_index:task_index+1, :] = x_methylseq_rep
+                    x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_methylseq_rep
             return x_output_allchannels
         else:
             raise NotImplementedError("factorized_reps_to_output_submodel_per_task=False not implemented.")
