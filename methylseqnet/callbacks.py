@@ -341,6 +341,62 @@ class HaplotypedPredLogger(Callback):
                             hp2_methylation = hp2_methylation[crop_off_each_end:crop_off_each_end+pred_len]
                     if self.upload_plots:
                         region_str = f"{chromosome}:{start}-{end}"
+                        center_coord = (start + end) // 2
+                        num_bins = len(hp1_pred)
+                        start_pos = center_coord - (num_bins * self.label_bin_size) // 2
+                        positions = start_pos + np.arange(num_bins) * self.label_bin_size
+
+                        # signal_ys = [hp1_pred, -hp2_pred]
+                        # signal_keys = ["Haplo 1 Prediction", "Haplo 2 Prediction"]
+                        # if hp1_target is not None:
+                        #     signal_ys.extend([hp1_target, -hp2_target])
+                        #     signal_keys.extend(["Haplo 1 Target", "Haplo 2 Target"])
+
+                        # run.log({
+                        #     f"haplo_{region_str}/signals": wandb.plot.line_series(
+                        #         xs=positions,
+                        #         ys=signal_ys,
+                        #         keys=signal_keys,
+                        #         title=f"{region_str} - Signals",
+                        #         xname="Position (binned)"
+                        #     ),
+                        #     "epoch": epoch
+                        # })
+
+                        # diff_ys = [hp1_pred - hp2_pred]
+                        # diff_keys = ["Haplo 1 - Haplo 2 Prediction"]
+                        # if hp1_target is not None:
+                        #     diff_ys.append(hp1_target - hp2_target)
+                        #     diff_keys.append("Haplo 1 - Haplo 2 Target")
+                        
+                        # run.log({
+                        #     f"haplo_{region_str}/differentials": wandb.plot.line_series(
+                        #         xs=positions,
+                        #         ys=diff_ys,
+                        #         keys=diff_keys,
+                        #         title=f"{region_str} - Differentials",
+                        #         xname="Position (binned)"
+                        #     ),
+                        #     "epoch": epoch
+                        # })
+
+                        # if self.plot_methylation:
+                        #     methyl_ys = [hp1_methylation, -hp2_methylation]
+                        #     methyl_keys = ["Haplo 1 Methylation", "Haplo 2 Methylation"]
+                        #     if hp1_target is not None:
+                        #         methyl_ys.extend([hp1_pred_methylation, -hp2_pred_methylation])
+                        #         methyl_keys.extend(["Haplo 1 Imputed Methylation", "Haplo 2 Imputed Methylation"])
+                            
+                        #     run.log({
+                        #         f"haplo_{region_str}/methylation": wandb.plot.line_series(
+                        #             xs=positions,
+                        #             ys=methyl_ys,
+                        #             keys=methyl_keys,
+                        #             title=f"{region_str} - Methylation",
+                        #             xname="Position (binned)"
+                        #         ),
+                        #         "epoch": epoch
+                        #     })
                         if self.plot_methylation:
                             num_subplots = 6
                             haplo_pred_idx = 0
@@ -357,31 +413,37 @@ class HaplotypedPredLogger(Callback):
                             haplo_diff_true_idx = 3                           
                         fig, axes = plt.subplots(6,1,figsize=(30,10), sharex=True)
                         fig.suptitle(f"{region_str}, epoch={epoch}")
-                        axes[haplo_pred_idx].plot(hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
-                        axes[haplo_pred_idx].plot(hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
+                        axes[haplo_pred_idx].plot(positions,hp1_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                        axes[haplo_pred_idx].plot(positions,-hp2_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
                         axes[haplo_pred_idx].set_ylabel("Haplo 1/2 Prediction")
-                        axes[haplo_diff_pred_idx].plot(hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
-                        axes[haplo_diff_pred_idx].set_ylabel("Haplo 1 minus Haplo 2 Prediction")
+                        axes[haplo_diff_pred_idx].plot(positions,hp1_pred - hp2_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
+                        axes[haplo_diff_pred_idx].set_ylabel("hp1 minus\hp2 Prediction")
                         if self.plot_methylation:
-                            axes[methyl_pred_idx].plot(hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
-                            axes[methyl_pred_idx].plot(hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
-                            axes[methyl_pred_idx].set_ylabel("Haplo 1/2 Methylation")
+                            axes[methyl_pred_idx].plot(positions,hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
+                            axes[methyl_pred_idx].plot(positions,-hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
+                            axes[methyl_pred_idx].set_ylabel("hp1/2\nMethylation")
                         if hp1_target is not None:
-                            axes[haplo_true_idx].plot(hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
-                            axes[haplo_true_idx].plot(hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
-                            axes[haplo_true_idx].set_ylabel("Haplo 1/2 Target")
-                            axes[haplo_diff_true_idx].plot(hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
-                            axes[haplo_diff_true_idx].set_ylabel("Haplo 1 minus Haplo 2 Target")
+                            axes[haplo_true_idx].plot(positions,hp1_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                            axes[haplo_true_idx].plot(positions,-hp2_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                            axes[haplo_true_idx].set_ylabel("hp1/2\nTarget")
+                            axes[haplo_diff_true_idx].plot(positions,hp1_target - hp2_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                            axes[haplo_diff_true_idx].set_ylabel("hp1 minus hp2 Target")
                             if self.plot_methylation:
-                                axes[methyl_true_idx].plot(hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
-                                axes[methyl_true_idx].plot(hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
-                                axes[methyl_true_idx].set_ylabel("Haplo 1/2 Imputed Methylation")
+                                axes[methyl_true_idx].plot(positions,hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
+                                axes[methyl_true_idx].plot(positions,-hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
+                                axes[methyl_true_idx].set_ylabel("hp1/2\nImputed Methylation")
                         axes[-1].set_xlabel("Position (binned)")
                         fig.canvas.draw()  # guarantee the figure is rendered NOW
                         w, h = fig.canvas.get_width_height()
                         run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
                         plt.close(fig)
                     if self.log_stats and (hp1_target is not None):
+                        # run.log({
+                        #     f"haplo_{region_str}_haplo1_pearson": pearsonr(hp1_target, hp1_pred)[0],
+                        #     f"haplo_{region_str}_haplo2_pearson": pearsonr(hp2_target, hp2_pred)[0],
+                        #     f"haplo_{region_str}_haplo_differential_pearson": pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0],
+                        #     "epoch": epoch,
+                        # })
                         hp1_pearsons.append(pearsonr(hp1_target, hp1_pred)[0])
                         hp2_pearsons.append(pearsonr(hp2_target, hp2_pred)[0])
                         differential_pearsons.append(pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0])
