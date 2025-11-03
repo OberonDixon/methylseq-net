@@ -1089,7 +1089,10 @@ class MethylSeqNN(L.LightningModule):
             for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):
                 # this is slow! I assume. Something more like the pseudobatching above should be much quicker
                 for relative_task_index, absolute_task_index in channel_tuples:
-                    celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
+                    if methyl_rep.shape[1]>1:
+                        celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
+                    else:
+                        celltype_methyl_rep = methyl_rep[:, 0, :, :]
                     if self.embeddings_to_methyl_dep_seq_rep:
                         methyl_dep_seq_rep_task = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
                         x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_task], dim=1)
