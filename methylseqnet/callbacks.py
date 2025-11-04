@@ -4,6 +4,7 @@ from abc import ABC, abstractmethod
 import tempfile
 from collections import defaultdict
 from io import StringIO
+import psutil
 
 import numpy as np
 import matplotlib.pyplot as plt

@@ -14,7 +14,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.activations import *
 from methylseqnet.dataset import *
-from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
+from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from methylseqnet.datamodule import MultiKeyDataset
 from collections import defaultdict
