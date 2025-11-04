@@ -438,6 +438,8 @@ class MethylSeqNN(L.LightningModule):
 
         all_variants_loss_terms = []
         outputs_list = []
+
+        dataset_log_descriptor = log_descriptor + "_" + dataset_key if log_descriptor else None
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
             methylation = methylation_all_variants[:,variant_idx]
@@ -478,11 +480,11 @@ class MethylSeqNN(L.LightningModule):
                             (outputs,targets),
                             mask=effective_mask,
                             weight=1,
-                            log_name=f"{log_descriptor}/prediction_loss" if log_descriptor else None,
+                            log_name=f"{dataset_log_descriptor}/prediction_loss" if dataset_log_descriptor else None,
                         )
                 ]
-                + self._calculate_auxiliary_losses(log_descriptor, effective_mask, targets)
-                + self._calculate_probe_losses(log_descriptor, effective_mask, targets)
+                + self._calculate_auxiliary_losses(dataset_log_descriptor, effective_mask, targets)
+                + self._calculate_probe_losses(dataset_log_descriptor, effective_mask, targets)
             )
 
         loss = sum(all_variants_loss_terms)
