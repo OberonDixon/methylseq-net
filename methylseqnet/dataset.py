@@ -12,6 +12,7 @@ import tempfile
 import gin
 import os
 import inspect
+import gc
 
 @gin.register
 @gin.configurable
@@ -126,7 +127,7 @@ class MultiMethylDataset(Dataset):
         
         # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
         self.file_path = create_virtual_h5_with_attributes(self.file_paths)
-        
+
         # Check dataset details
         with h5py.File(self.file_path, 'r') as f:
             # Determine the length of the dataset
@@ -201,6 +202,9 @@ class MultiMethylDataset(Dataset):
                     target = target.squeeze(0)
                     mask = mask.squeeze(0) if mask is not None else mask
         
+                if idx%50==0:
+                    gc.collect()
+                
                 return {
                     'sequence': sequence,
                     'methylation': methylation,
