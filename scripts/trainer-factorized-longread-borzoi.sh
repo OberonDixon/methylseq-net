@@ -5,7 +5,7 @@
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=2
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:2
 #SBATCH --requeue
 #SBATCH --time=48:00:00

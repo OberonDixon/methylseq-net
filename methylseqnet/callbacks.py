@@ -238,6 +238,9 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         self.targets_list = []
 
 class GPUMemoryLogger(Callback):
+    def __init__(self, log_interval=10):
+        super().__init__()
+        self.log_interval = log_interval
     def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
@@ -245,7 +248,8 @@ class GPUMemoryLogger(Callback):
     def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6  # MB
-            pl_module.log("train/gpu_peak_MB", peak_mem, prog_bar=False)
+            if batch_idx % self.log_interval == 0:
+                pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
     def on_validation_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
@@ -254,7 +258,8 @@ class GPUMemoryLogger(Callback):
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
-            pl_module.log("val/gpu_peak_MB", peak_mem, prog_bar=False)
+            if batch_idx % self.log_interval == 0:
+                pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
     def on_test_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
@@ -263,7 +268,23 @@ class GPUMemoryLogger(Callback):
     def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
-            pl_module.log("test/gpu_peak_MB", peak_mem, prog_bar=False)
+            if batch_idx % self.log_interval == 0:
+                pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
+
+class CPUMemoryLogger(Callback):
+    def __init__(self, log_interval=10):
+        super().__init__()
+        self.log_interval = log_interval
+        
+    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+        if batch_idx % self.log_interval == 0:
+            mem = psutil.virtual_memory()
+            pl_module.log("memory/train_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
+    
+    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        if batch_idx % self.log_interval == 0:
+            mem = psutil.virtual_memory()
+            pl_module.log("memory/val_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
 
 class SubmodulesGradientNormLogger(Callback):
     def __init__(self, submodule_names: list[str]):

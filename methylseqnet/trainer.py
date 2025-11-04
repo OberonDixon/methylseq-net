@@ -356,7 +356,7 @@ def create_callbacks(
         starting_from_best: if True, reset best score tracking in ConditionalBestScoreReset callback
         track_gradients_for_modules: list of module names for which to log gradient norms
     """
-    callbacks = [GPUMemoryLogger(),ValidationMetricsLogger()]
+    callbacks = [GPUMemoryLogger(),ValidationMetricsLogger(),CPUMemoryLogger()]
     if not no_checkpoints:
         suffix = f"-{stage_name}" if stage_name is not None else ""
         # Temporary checkpoint written every epoch
