@@ -439,7 +439,7 @@ class MethylSeqNN(L.LightningModule):
         all_variants_loss_terms = []
         outputs_list = []
 
-        dataset_log_descriptor = log_descriptor + "_" + dataset_key if log_descriptor else None
+        dataset_log_descriptor = log_descriptor + "/" + dataset_key if log_descriptor else None
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
             methylation = methylation_all_variants[:,variant_idx]
@@ -470,7 +470,7 @@ class MethylSeqNN(L.LightningModule):
             active_pos_mask = (targets >= self.peak_subset_threshold).any(dim=1, keepdim=True)
             fraction_true = active_pos_mask.float().mean()
             if log_descriptor and self.peak_subset_threshold>0:
-                self.log(f"{log_descriptor}/sites",fraction_true,sync_dist=True)
+                self.log(f"{dataset_log_descriptor}/sites",fraction_true,sync_dist=True)
             effective_mask = mask & active_pos_mask if mask is not None else active_pos_mask
 
             all_variants_loss_terms.extend(
