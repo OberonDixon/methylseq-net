@@ -208,23 +208,18 @@ class ReverseComplement(LoaderTransform):
                     target[i] = target[i].flip(dims=[-1])
                     mask[i] = mask[i].flip(dims=[-1])
                     # complement sample
-                    sequence[i:i+1] = self._apply_sequence_complement(sequence[i:i+1])
-                    methylation[i:i+1] = self._apply_methylation_complement(methylation[i:i+1])
+                    sequence[i:i+1] = self._apply_sequence_complement(sequence[i:i+1]).clone()
+                    methylation[i:i+1] = self._apply_methylation_complement(methylation[i:i+1]).clone()
 
         return sequence, methylation, target, mask
 
     def _apply_sequence_complement(self, sequence):
         """Swap A <-> T, C <-> G."""
-        sequence = sequence.clone()
-        sequence[...,[0, 3],:] = sequence[...,[3, 0],:]  # Swap onehotA with onehotT
-        sequence[...,[1, 2],:] = sequence[...,[2, 1],:]  # Swap onehotC with onehotG
-        return sequence
+        return sequence[..., [3, 2, 1, 0], :] # Swap: A<->T (0<->3), C<->G (1<->2)
 
     def _apply_methylation_complement(self, methylation):
         """Swap forward_strand_mC <-> reverse_strand_mC"""
-        methylation = methylation.clone()
-        methylation[..., [0, 1], :] = methylation[..., [1, 0], :]  # Swap methylationfwd with methylationrev
-        return methylation
+        return methylation[..., [1, 0, 2], :] # Swap strands
 
 @gin.register
 @gin.configurable
@@ -283,7 +278,6 @@ class SequenceJitter(LoaderTransform):
     
     def _apply_jitter(self, seq, jitter_amount):
         """Shift the sequence forward or backward and pad with zeros."""
-        seq = seq.clone()
         if jitter_amount > 0:
             seq = torch.cat([torch.zeros(seq.shape[:-1] + (jitter_amount,)), seq[..., :-jitter_amount]], dim=-1)
         elif jitter_amount < 0:

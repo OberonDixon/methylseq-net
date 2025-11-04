@@ -152,37 +152,39 @@ class MultiMethylDataset(Dataset):
         end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
-                with h5py.File(self.file_path, 'r') as f:
-                    sequence = f['sequence'][start_idx:end_idx]
-                    methylation = f['methylation'][start_idx:end_idx]
-                    target = f['tracks'][start_idx:end_idx]
+                with h5py.File(self.file_path, 'r', rdcc_nbytes=1024*1024, rdcc_nslots=1) as f:
+                    sequence_np = f['sequence'][start_idx:end_idx]
+                    methylation_np = f['methylation'][start_idx:end_idx]
+                    target_np = f['tracks'][start_idx:end_idx]
 
                     # Backward compatibility: expand dimensions if needed
-                    if sequence.ndim == 3:
+                    if sequence_np.ndim == 3:
                         # Old format: (batch, 4, seq_length) -> (batch, 1, 4, seq_length)
-                        sequence = sequence[:, np.newaxis, :, :]
+                        sequence_np = sequence_np[:, np.newaxis, :, :]
 
-                    if target.ndim == 3:
+                    if target_np.ndim == 3:
                         # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
-                        target = target[:, np.newaxis, :, :]
+                        target_np = target_np[:, np.newaxis, :, :]
 
-                    if methylation.ndim == 3:
+                    if methylation_np.ndim == 3:
                         # Old format: (batch, 3*num_cell_types, seq_length) -> (batch, 1, num_cell_types, 3, seq_length)
-                        batch_size = methylation.shape[0]
-                        seq_length = methylation.shape[2]
-                        num_cell_types = methylation.shape[1] // 3
-                        methylation = methylation.reshape(batch_size, num_cell_types, 3, seq_length)
-                        methylation = methylation[:, np.newaxis, :, :, :]
+                        batch_size = methylation_np.shape[0]
+                        seq_length = methylation_np.shape[2]
+                        num_cell_types = methylation_np.shape[1] // 3
+                        methylation_np = methylation_np.reshape(batch_size, num_cell_types, 3, seq_length)
+                        methylation_np = methylation_np[:, np.newaxis, :, :, :]
 
-                    sequence = torch.tensor(sequence, dtype=torch.float32)
-                    methylation = torch.tensor(methylation, dtype=torch.float32)
-                    target = torch.tensor(target, dtype=torch.float32)
+                    sequence = torch.tensor(sequence_np, dtype=torch.float32)
+                    methylation = torch.tensor(methylation_np, dtype=torch.float32)
+                    target = torch.tensor(target_np, dtype=torch.float32)
+                    del sequence_np, methylation_np, target_np  # free memory
                     if self.mask:
-                        mask = f['mask'][start_idx:end_idx]
-                        if mask.ndim == 3:
+                        mask_np = f['mask'][start_idx:end_idx]
+                        if mask_np.ndim == 3:
                             # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
-                            mask = mask[:, np.newaxis, :, :]
-                        mask = torch.tensor(mask, dtype=torch.bool)
+                            mask_np = mask_np[:, np.newaxis, :, :]
+                        mask = torch.tensor(mask_np, dtype=torch.bool)
+                        del mask_np  # free memory
                     else:
                         mask = None
                     specifiers = f['specifier'].asstr()[start_idx:end_idx]
