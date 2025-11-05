@@ -46,17 +46,19 @@ class PearsonAcrossPositions(MultitaskMetric):
 
         num_variants, channels, positions = targets.shape
 
-        if positions == 1:
-            return torch.tensor(float('nan'))  # Cannot compute Pearson correlation with only one position
-
         targets = targets.reshape(num_variants * channels, positions)
         predictions = predictions.reshape(num_variants * channels, positions)
 
         active_mask = (targets > self.min_counts)
+
+        if positions == 1 or active_mask.sum() == 0:
+            # Cannot compute Pearson correlation with no active positions
+            return torch.tensor(float('nan'),device=targets.device)
+
         targets_nanmasked = torch.where(active_mask, targets, torch.nan)
         predictions_nanmasked = torch.where(active_mask, predictions, torch.nan)
 
-        targets_centered = targets_nanmasked - torch.nanmean(targets_nanmasked, dim=1, keepdim=True)  # center over channels
+        targets_centered = targets_nanmasked - torch.nanmean(targets_nanmasked, dim=1, keepdim=True)  # center over positions
         predictions_centered = predictions_nanmasked - torch.nanmean(predictions_nanmasked, dim=1, keepdim=True)
 
         numerator = torch.nansum(targets_centered * predictions_centered, dim=1)
@@ -73,13 +75,15 @@ class PearsonAcrossTasks(MultitaskMetric):
 
         num_variants, channels, positions = targets.shape
 
-        if channels == 1:
-            return torch.tensor(float('nan'))  # Cannot compute Pearson correlation with only one channel
-
-        targets = targets.reshape(channels, num_variants * positions)
-        predictions = predictions.reshape(channels, num_variants * positions)
+        targets = targets.permute(1,0,2).reshape(channels, num_variants * positions)
+        predictions = predictions.permute(1,0,2).reshape(channels, num_variants * positions)
 
         active_mask = (targets > self.min_count).any(dim=0)
+
+        if channels == 1 or active_mask.sum() == 0:
+            # Cannot compute Pearson correlation with only one channel or not active positions
+            return torch.tensor(float('nan'),device=targets.device)
+
         targets = targets[:, active_mask]
         predictions = predictions[:, active_mask]
 
@@ -91,6 +95,46 @@ class PearsonAcrossTasks(MultitaskMetric):
         denominator = torch.sqrt((targets_centered ** 2).sum(dim=0) * (predictions_centered ** 2).sum(dim=0))
 
         r = numerator / (denominator + 1e-8)
-        return (r * position_variance).sum() / (position_variance.sum() + 1e-8) if active_mask.sum() > 0 else torch.tensor(0.0)
-        
+        return (r * position_variance).sum() / (position_variance.sum() + 1e-8)     
 
+class CCCAcrossVariants(MultitaskMetric):
+    def __init__(self, min_counts=5):
+        self.min_counts = min_counts
+    
+    def __call__(self, targets, predictions):
+        self._check_shapes(targets, predictions)
+
+        num_variants, channels, positions = targets.shape
+
+        targets = targets.reshape(num_variants, channels * positions)
+        predictions = predictions.reshape(num_variants, channels * positions)
+
+        active_mask = (targets >= self.min_counts).any(dim=0)
+
+        if num_variants == 1 or active_mask.sum() == 0:
+            # Cannot compute CCC with only one variant or no active positions
+            return torch.tensor(float('nan'),device=targets.device)
+
+        targets = targets[:, active_mask]
+        predictions = predictions[:, active_mask]
+
+        mean_targets = targets.mean(dim=0, keepdim=True)
+        mean_predictions = predictions.mean(dim=0, keepdim=True)
+        
+        targets_centered = targets - mean_targets
+        predictions_centered = predictions - mean_predictions
+        
+        # Compute Pearson correlation coefficient ρ for each channel×position
+        numerator_pearson = (targets_centered * predictions_centered).mean(dim=0)
+        std_targets = torch.sqrt((targets_centered ** 2).mean(dim=0))
+        std_predictions = torch.sqrt((predictions_centered ** 2).mean(dim=0))
+        rho = numerator_pearson / (std_targets * std_predictions + 1e-8)
+        
+        # Compute CCC: ρc = 2ρσxσy / (σx² + σy² + (μx - μy)²)
+        var_targets = std_targets ** 2
+        var_predictions = std_predictions ** 2
+        mean_diff_sq = (mean_targets.squeeze() - mean_predictions.squeeze()) ** 2
+        
+        ccc = (2 * rho * std_targets * std_predictions) / (var_targets + var_predictions + mean_diff_sq + 1e-8)
+        
+        return ccc.mean()

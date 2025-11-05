@@ -20,7 +20,7 @@ import gin
 
 from dimelo import load_processed
 from methylseqnet import dna_io
-from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks
+from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
 
 class ConditionalBestScoreReset(Callback):
@@ -138,7 +138,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
     def __init__(
         self,
         split_by_target_type=True,
-        metrics=[PearsonAcrossPositions(), PearsonAcrossTasks()],
+        metrics=[PearsonAcrossPositions(), PearsonAcrossTasks(),CCCAcrossVariants()],
         in_memory=True,
         metrics_per_sample=True,
         metrics_across_dataset=False,
