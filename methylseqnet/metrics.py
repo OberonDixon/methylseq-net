@@ -28,7 +28,7 @@ class MultitaskMetric(ABC):
     @abstractmethod
     def __call__(self, targets, predictions):
         """
-        Take in two 2D tensors of shape (channels, positions) and return a scalar value.
+        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
         Both tensors must have the same shape.
         """
         pass
@@ -39,9 +39,19 @@ class MultitaskMetric(ABC):
             raise ValueError("Targets and predictions must have the same shape.")
 
 class PearsonAcrossPositions(MultitaskMetric):
+    """
+    Computes Pearson correlation across positions for each variant×channel pair, then returns the mean.
+    
+    Filtering: Positions with counts ≤ min_counts are NaN-masked within each variant×channel.
+    Returns: Mean correlation across all variant×channel pairs, or NaN if positions=1 or no active data.
+    """
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
     def __call__(self, targets, predictions):
+        """
+        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
+        Both tensors must have the same shape.
+        """
         self._check_shapes(targets, predictions)
 
         num_variants, channels, positions = targets.shape
@@ -68,9 +78,21 @@ class PearsonAcrossPositions(MultitaskMetric):
         return torch.nanmean(r)
 
 class PearsonAcrossTasks(MultitaskMetric):
-    def __init__(self, min_count=5):
-        self.min_count = min_count
+    """
+    Computes Pearson correlation across channels for each variant×position pair , then returns 
+    variance-weighted mean.
+    
+    Filtering: Drops variant×position pairs where all channels have counts ≤ min_counts.
+    Scaling: Correlations weighted by target variance at each variant×position.
+    Returns: Variance-weighted mean, or NaN if channels=1 or no active data.
+    """
+    def __init__(self, min_counts=5):
+        self.min_counts = min_counts
     def __call__(self, targets, predictions):
+        """
+        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
+        Both tensors must have the same shape.
+        """
         self._check_shapes(targets, predictions)
 
         num_variants, channels, positions = targets.shape
@@ -78,7 +100,7 @@ class PearsonAcrossTasks(MultitaskMetric):
         targets = targets.permute(1,0,2).reshape(channels, num_variants * positions)
         predictions = predictions.permute(1,0,2).reshape(channels, num_variants * positions)
 
-        active_mask = (targets > self.min_count).any(dim=0)
+        active_mask = (targets > self.min_counts).any(dim=0)
 
         if channels == 1 or active_mask.sum() == 0:
             # Cannot compute Pearson correlation with only one channel or not active positions
@@ -98,10 +120,21 @@ class PearsonAcrossTasks(MultitaskMetric):
         return (r * position_variance).sum() / (position_variance.sum() + 1e-8)     
 
 class CCCAcrossVariants(MultitaskMetric):
+    """
+    Computes concordance correlation coefficient (CCC) across variants for each channel×position 
+    feature, then returns the mean.
+    
+    Filtering: Drops channel×position features where all variants have counts < min_counts.
+    Returns: Mean CCC across all features, or NaN if num_variants=1 or no active data.
+    """
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
     
     def __call__(self, targets, predictions):
+        """
+        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
+        Both tensors must have the same shape.
+        """
         self._check_shapes(targets, predictions)
 
         num_variants, channels, positions = targets.shape
