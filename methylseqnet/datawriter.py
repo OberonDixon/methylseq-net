@@ -4,6 +4,7 @@ import numpy as np
 import gin
 import pandas as pd
 from tqdm.auto import tqdm
+import warnings
 
 @gin.register
 @gin.configurable
@@ -32,6 +33,8 @@ class DatasetWriter:
             mask: True if some tasks are masked out for some samples
             io_mappings_list: the task identification for each output task - what cell type, etc
         """
+        warnings.warn("DatasetWriter is deprecated; please use MultiMethylWriter instead for new datasets.")
+
         # The length of the input sequence
         self.seq_length = seq_length
         # True if we are going to provide CpG methylation in the input encoding
@@ -203,11 +206,18 @@ class MultiMethylWriter:
         self.track_length = track_length
 
         self.num_tracks = num_tracks
-        if self.num_tracks != max([io_mapping["channel"] for io_mapping in io_mappings_list]) + 1:
-            raise ValueError(f"num_tracks unexpected value: calculated {max([io_mapping['channel'] for io_mapping in io_mappings_list]) + 1} from io_mappings_list but {self.num_tracks} was provided instead.")
-        self.num_cell_types = max([io_mapping["cell_type"] for io_mapping in io_mappings_list]) + 1
+        if io_mappings_list:
+            if self.num_tracks != max([io_mapping["channel"] for io_mapping in io_mappings_list]) + 1:
+                raise ValueError(f"num_tracks unexpected value: calculated {max([io_mapping['channel'] for io_mapping in io_mappings_list]) + 1} from io_mappings_list but {self.num_tracks} was provided instead.")
+            self.num_cell_types = max([io_mapping["cell_type"] for io_mapping in io_mappings_list]) + 1
+        else:
+            warnings.warn("io_mappings_list is empty; setting num_cell_types to 1 by default.")
+            self.num_cell_types = 1
+        
         
         self.num_variants = num_variants
+
+        self.samples_per_region = None
         
         # The path for the output hdf5 file
         if Path(output_path).suffix in ['.h5','.hdf5']:
@@ -389,8 +399,14 @@ class MultiMethylWriter:
             else:
                 current_mask_size = 0
 
-            start_index = min(indices_list)
-            end_index = max(indices_list) + 1
+            samples_per_region = int(len(onehot_seq_list)/len(indices_list))
+            start_index = np.min(np.array(indices_list))*samples_per_region
+            end_index = (np.max(np.array(indices_list)) + 1)*samples_per_region
+            if self.samples_per_region is None:
+                self.samples_per_region = samples_per_region
+            else:
+                if self.samples_per_region != samples_per_region:
+                    raise ValueError(f"Inconsistent samples per write_chunk operation: previously {self.samples_per_region}, now {samples_per_region}. Check MultitaskIOHandler process_batch to see what it is sending.")
 
             if (
                 current_specifier_size==current_seq_size 

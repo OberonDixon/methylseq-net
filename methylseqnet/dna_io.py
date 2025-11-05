@@ -22,7 +22,7 @@ def one_hot_encode_dna(dna_strand=None, cpg_methylation=None, valid_cpgs=None):
 
     if dna_strand is not None:
         encoded_strand = np.zeros((len(dna_strand), 7), dtype=float)
-        dna_strand = np.char.upper(np.array(list(dna_strand)))
+        dna_strand = np.char.upper(np.array(list(dna_strand),dtype="U1"))
         nucleotide_to_index = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
         for nucleotide, index in nucleotide_to_index.items():
             encoded_strand[dna_strand == nucleotide, index] = 1       

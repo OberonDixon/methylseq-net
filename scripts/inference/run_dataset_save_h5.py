@@ -10,6 +10,9 @@ def main(model_identifier):
             dataset_path={
                 "atlas":f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold{fold}.h5",
             },
+            # dataset_path={
+            #     "all":"/clusterfs/nilah/oberon/datasets/motif_insertion_test/pred.h5",
+            # },
             dataset_type='multimethyl',
             output_path=f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/inference/{model_identifier}/fold{fold}",
             gpus = 1,

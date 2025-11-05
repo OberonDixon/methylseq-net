@@ -1136,7 +1136,6 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
     def __init__(self,num_tracks=1):
         self.num_tracks = num_tracks
         self.multi_fasta_handler = MultiFastaHandler()
-        self.synthetic_cpg_handler = SyntheticCpGHandler()
         self.io_mappings_list = []
     def process_batch(
         self,
@@ -1146,23 +1145,12 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
         lock,
     ):    
         sequence_list = self.multi_fasta_handler.load_sequence_batch(sample_list)
-        # the synthetic methylation class currently just returns zeros; we need to implement some pattern generation
-        methylation_fractions_list,valid_cpgs_list = self.synthetic_cpg_handler.load_cpg_batch(sample_list,sequence_list)
 
-        onehot_dna_list = [one_hot_encode_dna(
-                dna_strand=sequence,
-                cpg_methylation=cpg,
-                valid_cpgs=valid_cpgs) for 
-                              sequence,cpg,valid_cpgs in zip(
-                                  sequence_list,
-                                  methylation_fractions_list,
-                                  valid_cpgs_list,
-                              )
-                             ]
+        onehot_dna_list = [one_hot_encode_dna(dna_strand=sequence)[:,0:4] for sequence in sequence_list if len(sequence)>0]
 
         sample_specifier_list = [f"{sample['source']}:{sample['start']}-{sample['end']}|{sequence_idx}" 
                                  for sample in sample_list 
-                                 for sequence_idx in range(len(sequence_list)//len(sample_list))
+                                 for sequence_idx in range(len(onehot_dna_list)//len(sample_list))
                                 ]
         
         with lock:
