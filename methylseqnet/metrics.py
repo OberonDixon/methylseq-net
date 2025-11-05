@@ -79,7 +79,7 @@ class PearsonAcrossPositions(MultitaskMetric):
 
 class PearsonAcrossTasks(MultitaskMetric):
     """
-    Computes Pearson correlation across channels for each variant×position pair , then returns 
+    Computes Pearson correlation across channels for each variant×position pair, then returns 
     variance-weighted mean.
     
     Filtering: Drops variant×position pairs where all channels have counts ≤ min_counts.
