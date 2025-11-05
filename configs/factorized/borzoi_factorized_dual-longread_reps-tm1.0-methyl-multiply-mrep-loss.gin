@@ -148,6 +148,7 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
     ],
 }
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+    # "longread":"../tests/data/longread_fold0-downsampled.h5"
     "longread":"/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/chrX_fold1.h5",
 }
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1

@@ -153,7 +153,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         if not self.metrics_across_dataset and not self.in_memory:
             raise ValueError("if metrics_across_dataset is False, nothing gets saved between batches, so in_memory must be True.")
 
-        self.metric_values_dict = defaultdict(lambda: defaultdict(list))
+        self.metric_values_dict = defaultdict(dict)
         self.targets_list = []
         self.predictions_list = []
 
@@ -169,6 +169,12 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
             raise ValueError("split_by_target_type is True but no data types found in io_mappings.")
         return channels_dict
 
+    def on_validation_epoch_start(self, trainer, pl_module):
+        for data_type in pl_module.get_io_mappings_df()['data_type'].unique():
+            for metric in self.metrics:
+                metric_name = metric.__class__.__name__
+                self.metric_values_dict[metric_name][data_type] = [float('nan')]  # initialize with nan to sync_dist issues
+    
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
         targets = targets.detach().cpu()
@@ -187,16 +193,14 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                                 for metric in self.metrics:
                                     metric_name = metric.__class__.__name__
                                     metric_value = metric(sample_targets, sample_predictions)
-                                    if not torch.isnan(metric_value):
-                                        self.metric_values_dict[metric_name][data_type].append(metric_value.item())
+                                    self.metric_values_dict[metric_name][data_type].append(metric_value.item())
                 else:
                     sample_predictions = predictions[i]
                     sample_targets = targets[i]
                     for metric in self.metrics:
                         metric_name = metric.__class__.__name__
                         metric_value = metric(sample_targets, sample_predictions)
-                        if not torch.isnan(metric_value):
-                            self.metric_values_dict[metric_name]['all'].append(metric_value.item())
+                        self.metric_values_dict[metric_name]['all'].append(metric_value.item())
         if self.metrics_across_dataset:
             if self.in_memory:
                 self.predictions_list.extend([predictions[i] for i in range(batch_size)])
@@ -211,9 +215,11 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                 for data_type, metric_values in self.metric_values_dict[metric_name].items():
                     # log the mean
                     if len(metric_values) > 0:
-                        if metric_values:
-                            mean_metric_value = np.mean(metric_values)
-                            pl_module.log(f"val/{metric_name}_mean_per_sample_{data_type}", mean_metric_value, prog_bar=True, sync_dist=True)
+                        mean_metric_value = np.nanmean(metric_values)
+                        # valid_values = [v for v in metric_values if not np.isnan(v)]
+                        # if len(valid_values) == 0:
+                        #     print(f"[Rank {trainer.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
+                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_type}", mean_metric_value, prog_bar=True, sync_dist=True)
         if self.metrics_across_dataset:
             if self.in_memory:
                 # first concatenate everything into tensors to operate upon
@@ -226,12 +232,10 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                         for data_type, channels in self._get_channels_dict(pl_module).items():
                             if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
                                 metric_value = metric(targets[...,channels,:], predictions[...,channels,:])
-                                if not torch.isnan(metric_value):
-                                    pl_module.log(f"val/{metric_name}_across_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
+                                pl_module.log(f"val/{metric_name}_across_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
                     else:
                         metric_value = metric(targets, predictions)
-                        if not torch.isnan(metric_value):
-                            pl_module.log(f"val/{metric_name}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
+                        pl_module.log(f"val/{metric_name}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
             else:
                 # first close all of the file handles to flush everything to disk
                 self._close_all()
@@ -241,7 +245,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         # empty the lists for next epoch
         self.predictions_list = []
         self.targets_list = []
-        self.metric_values_dict = defaultdict(lambda: defaultdict(list))
+        self.metric_values_dict = defaultdict(dict)
 
 class GPUMemoryLogger(Callback):
     def __init__(self, log_interval=10):
