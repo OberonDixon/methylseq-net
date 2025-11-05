@@ -38,6 +38,13 @@ def run_dataset_save_h5(
     model.mode=mode
     
     match dataset_type:
+        case 'multimethyl':
+            data_module = MethylSeqDataModule(
+                predict_dataset_file = dataset_path,
+                batch_size = 1,
+                dataset_class = MultiMethylDataset,
+                num_workers = num_workers,
+            )
         case 'multimethyl-and-embeddings':
             data_module = MethylSeqDataModule(
                 predict_dataset_file = dataset_path,
@@ -54,7 +61,7 @@ def run_dataset_save_h5(
             )
     
     data_module.setup(stage="predict")
-    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch",io_mappings_str=data_module.get_io_mappings_str())
+    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch")
 
     trainer = Trainer(
         accelerator="auto",

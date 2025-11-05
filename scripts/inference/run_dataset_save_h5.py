@@ -5,13 +5,12 @@ def main(model_identifier):
     for fold in range(8):
         print(f"Running through fold{fold}.")
         run_dataset_save_h5(
-            model_path=f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/best-checkpoint-train-residual-only.ckpt',
-            mode='residual-w/-pretrained-embeddings',
-            dataset_path=(
-                f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold{fold}.h5",
-                f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold{fold}.h5",
-            ),
-            dataset_type='multimethyl-and-embeddings',
+            model_path=f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/temp-checkpoint.ckpt',
+            mode='factorized-from-pretrained',
+            dataset_path={
+                "atlas":f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold{fold}.h5",
+            },
+            dataset_type='multimethyl',
             output_path=f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/inference/{model_identifier}/fold{fold}",
             gpus = 1,
             num_workers = 4,

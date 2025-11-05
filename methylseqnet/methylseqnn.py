@@ -417,11 +417,18 @@ class MethylSeqNN(L.LightningModule):
         methylation_all_variants = batch['methylation']
         embeddings = batch.get('embeddings',None)
         specifiers = batch['specifiers']
+        io_mappings_df = self.get_io_mappings_df()
+        dataset_key = batch['dataset_key'][0]
+        output_tracks_slice = io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['absolute_channel'].tolist()
+
         outputs_list = []
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
             methylation = methylation_all_variants[:,variant_idx]
-            outputs_list.append(self(sequence, methylation, embeddings).unsqueeze(1))
+            outputs = self(sequence, methylation, embeddings, dataset_key)
+            if outputs.shape[1] > len(output_tracks_slice):
+                outputs = outputs[:,output_tracks_slice,:]
+            outputs_list.append(outputs.unsqueeze(1))
         self.hooked_activations.clear()
         return {"predictions":torch.cat(outputs_list,dim=1),"specifiers":specifiers}
     
@@ -694,7 +701,7 @@ class MethylSeqNN(L.LightningModule):
             checkpoint["pretrained_model_module"] = external_model.__class__.__module__
 
     def on_load_checkpoint(self, checkpoint):
-        self.io_mappings_str = checkpoint.get("io_mappings_str","")
+        self.set_io_mappings(checkpoint.get("io_mappings_str",""))
      
     @classmethod
     def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
