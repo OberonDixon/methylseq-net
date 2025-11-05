@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from collections import defaultdict
+import warnings
 
 ################################################################################################################
 ####                                         Abstract Base Classes                                          ####
@@ -278,12 +279,22 @@ class DirectoryIndexer(SampleGenerator):
             files = list(self.directory.glob(f'*.{self.suffix}'))
         
         for file_path in files:
-            file_dict = {
-                'source': str(file_path),
-                'start': self.start,
-                'end': self.end,
-            }
-            samples_by_split[self.split].append(file_dict)
+            if self.suffix in ["fasta","fa"]:
+                if ">" in str(file_path):
+                    raise ValueError(f"Disallowed character `:` in file path {file_path}")
+                if not file_path.with_suffix(".fai").exists():
+                    pysam.faidx(str(file_path))
+                fasta = pysam.FastaFile(str(file_path))
+                for record, length in zip(fasta.references,fasta.lengths):
+                    if self.end is not None and self.end > length:
+                        warnings.warn(f"Specified end {self.end} is greater than length {length} of record {record} in file {file_path}. Omitting.")
+                    else:
+                        file_dict = {
+                            'source': f"{str(file_path)}>{record}",
+                            'start': self.start,
+                            'end': self.end,
+                        }
+                        samples_by_split[self.split].append(file_dict)
         
         return samples_by_split
 
@@ -385,27 +396,27 @@ class MultiFastaHandler(SequenceHandler):
     
     def load_sequences(self,source,start,end):
         """
-        Load all sequences from the specified FASTA file in the order they appear. 
-        This method supports non-indexed FASTA files as well as indexed ones.
+        Load specified record from FASTA. 
+        This method only supports indexed FASTA files.
 
         TODO: Implement checks for start and end against contig extent
         """
-        if os.path.isfile(source):  
-            if start and end:
-                sequences = [str(record.seq)[start:end] for record in SeqIO.parse(source, "fasta")]
+        file_path = source.split(">")[0]
+        if os.path.isfile(file_path):  
+            if start is not None and end is not None:
+                sequence = pysam.FastaFile(file_path).fetch(source.split(">")[1],start,end)
             else:
-                sequences = [str(record.seq) for record in SeqIO.parse(source, "fasta")]
+                sequence = pysam.FastaFile(file_path).fetch(source.split(">")[1])
         else:
-            raise OSError(f"{source} does not exist.")
-        return sequences
+            raise OSError(f"{file_path} in {source} does not exist.")
+        return sequence
         
     
     def load_sequence_batch(self, sample_list):
         """
-        Load a batch of samples, where each sample refers to a FASTA file.
-        Each file's sequences are loaded in full and returned as a list.
+        Load a batch of samples, where each sample refers to a record in a FASTA file.
         """
-        return [sequence for sample in sample_list for sequence in self.load_sequences(**sample)]
+        return [self.load_sequences(**sample) for sample in sample_list]
 
 ################################################################################################################
 ####                                    CpGHandler implementations                                          ####
@@ -1133,7 +1144,7 @@ class MethylAtacAtlases(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MultiFastaSequenceOnly(MultitaskIOHandler):
-    def __init__(self,num_tracks=1):
+    def __init__(self,num_tracks):
         self.num_tracks = num_tracks
         self.multi_fasta_handler = MultiFastaHandler()
         self.io_mappings_list = []
@@ -1146,13 +1157,13 @@ class MultiFastaSequenceOnly(MultitaskIOHandler):
     ):    
         sequence_list = self.multi_fasta_handler.load_sequence_batch(sample_list)
 
-        onehot_dna_list = [one_hot_encode_dna(dna_strand=sequence)[:,0:4] for sequence in sequence_list if len(sequence)>0]
+        onehot_dna_list = [one_hot_encode_dna(dna_strand=sequence)[:,0:4] for sequence in sequence_list]
 
-        sample_specifier_list = [f"{sample['source']}:{sample['start']}-{sample['end']}|{sequence_idx}" 
-                                 for sample in sample_list 
-                                 for sequence_idx in range(len(onehot_dna_list)//len(sample_list))
-                                ]
-        
+        sample_specifier_list = [
+            f"{sample['source']}:{sample['start']}-{sample['end']}" 
+            for sample in sample_list 
+        ]
+
         with lock:
             dataset_writer.write_chunk(
                 indices_list,

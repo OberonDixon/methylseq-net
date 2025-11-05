@@ -216,8 +216,6 @@ class MultiMethylWriter:
         
         
         self.num_variants = num_variants
-
-        self.samples_per_region = None
         
         # The path for the output hdf5 file
         if Path(output_path).suffix in ['.h5','.hdf5']:
@@ -399,14 +397,8 @@ class MultiMethylWriter:
             else:
                 current_mask_size = 0
 
-            samples_per_region = int(len(onehot_seq_list)/len(indices_list))
-            start_index = np.min(np.array(indices_list))*samples_per_region
-            end_index = (np.max(np.array(indices_list)) + 1)*samples_per_region
-            if self.samples_per_region is None:
-                self.samples_per_region = samples_per_region
-            else:
-                if self.samples_per_region != samples_per_region:
-                    raise ValueError(f"Inconsistent samples per write_chunk operation: previously {self.samples_per_region}, now {samples_per_region}. Check MultitaskIOHandler process_batch to see what it is sending.")
+            start_index = np.min(np.array(indices_list))
+            end_index = np.max(np.array(indices_list)) + 1
 
             if (
                 current_specifier_size==current_seq_size 

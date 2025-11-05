@@ -3,17 +3,19 @@ directory = '/clusterfs/nilah/oberon/genomes/'
 output_directory = '/clusterfs/nilah/oberon/datasets/motif_insertion_test/'
 # output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/motif_insertion_test/'
 label_bin_size = 128
-label_num_bins = 1
-seq_length = 1288
+label_num_bins = 4096
+seq_length = 524288
 
 MultiMethylWriter.track_length = %label_num_bins
 MultiMethylWriter.seq_length = %seq_length
 MultiMethylWriter.mask = False
 
 DirectoryIndexer.directory = %directory
-DirectoryIndexer.subsequence_start = 64892
-DirectoryIndexer.subsequence_end = 66180
+DirectoryIndexer.subsequence_start = 0
+DirectoryIndexer.subsequence_end = 524288
 DirectoryIndexer.recursive = False # recursive will look into sub folders as well
+
+MultiFastaSequenceOnly.num_tracks = 65
 
 PreprocessingPipeline.sample_generator = @DirectoryIndexer()
 PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
