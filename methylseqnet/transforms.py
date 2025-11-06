@@ -5,6 +5,7 @@ import gin
 from abc import ABC, abstractmethod
 import random
 from methylseqnet import tensor_ops
+import warnings
 
 # TODO: move over CpGSparsifier, EncodingSelector. Rename SmoothMethylation too. Keep old versions for now; obsolete at a later point
 
@@ -47,24 +48,43 @@ class LayerTransform(nn.Module):
 
 @gin.register
 @gin.configurable
-class CenteredSyntheticCpG(LoaderTransform):
-    def __init__(self, window_size, center_cpg_frac, background_cpg_frac=None):
+class InsertSyntheticCpG(LoaderTransform):
+    def __init__(
+        self,
+        center_window_size=500,
+        flank_width=1000,
+        offset=0,
+        center_cpg_frac=None,
+        flanking_cpg_frac=None,
+        background_cpg_frac=None,
+        ):
         """
-        Apply a synthetic methylation landscape with one methylation fraction in a centered window 
-        in the middle of the input sequence and another fraction along the rest of the sequence. 
+        Apply a synthetic methylation landscape with specified methylation fractions at every CpG position
+        in each of the following locations:
+         - center window (center_window_size bp centered at seq_len//2 + offset)
+         - flanking regions (flank_width bp on each side of center window)
+         - background (all other CpGs outside center window and flanking regions)
 
-        Returned input tensor will provide info for all CpG sites within the center window and 
-        also in the background if background_cpg_frac is not None.
+
+        The sequence tensor is left untouched and only used to identify CpG locations. The methylation tensor
+        is cloned and modified for each region according to the specified fractions, leaving the existing landscape
+        unchanged where fractions are None.
 
         Args:
-            window_size: the size of the window, in bp, that will get center_cpg_frac. window_size//2 in each
-                direction from seq_len//2
-            center_cpg_frac: a fraction between 0 and 1 for how methylated CpGs in the window will be
-            background_cpg_frac: fraction between 0 and 1 OR None. If None, background methylation landscape is
-                left unchanged. If float, landscape at all background CpGs set to background_cpg_frac.
+            center_window_size (int): Size of the center window in base pairs.
+            flank_width (int): Width of flanking regions on each side of the center window.
+            offset (int): Offset to apply to the center window position.
+            center_cpg_frac (float or None): Methylation fraction to apply at CpGs in the center window.
+            flanking_cpg_frac (float or None): Methylation fraction to apply at CpGs in the flanking regions.
+            background_cpg_frac (float or None): Methylation fraction to apply at CpGs outside center and flanking regions.
         """
-        self.window_size = window_size
+        self.window_size = center_window_size
+        self.flank_width = flank_width
+        self.offset = offset
+        if center_cpg_frac is None and flanking_cpg_frac is None and background_cpg_frac is None:
+            warnings.warn("center_cpg_frac, flanking_cpg_frac, and background_cpg_frac are all None: InsertSyntheticCpG will have no effect.")
         self.center_cpg_frac = center_cpg_frac
+        self.flanking_cpg_frac = flanking_cpg_frac
         self.background_cpg_frac = background_cpg_frac
     def __call__(self, sequence, methylation, target, mask):
         """
@@ -74,91 +94,137 @@ class CenteredSyntheticCpG(LoaderTransform):
             methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
                 unbatched tensor (num_variants, num_cell_types, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
-                unbatched tensor (num_tasks, track_length)
+                unbatched tensor (num_variants, num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
-                unbatched tensor (num_tasks, track_length)
+                unbatched tensor (num_variants, num_tasks, track_length)
         Returns:
             Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]: Transformed sequence, methylation, target, and mask.
         """
-        methylation = methylation.clone()
-
-        if methylation.dim()==4:
-            for i in range(methylation.shape[0]):  # loop over samples
-                for j in range(methylation.shape[1]):  # loop over variants
-                    methylation[i,j] = self._apply_synthetic(methylation[i,j])
-        elif methylation.dim()==3:
-            for j in range(methylation.shape[1]):  # loop over variants
-                methylation[j] = self._apply_synthetic(methylation[j])
-
-        return input, target, mask
-
-    def _apply_synthetic(self,seq):
-        seq_len = seq.shape[-1]
-        center = seq_len // 2
-        half_window = self.window_size // 2
-        window_start = max(center - half_window, 0)
-        window_end = min(center + half_window, seq_len)
-
-        # First apply center_cpg_frac to center window
-        self._apply_synthetic_to_window(seq, (window_start, window_end), self.center_cpg_frac)
-
-        # Then apply background_cpg_frac outside window if specified
-        if self.background_cpg_frac is not None:
-            if window_start > 0:
-                self._apply_synthetic_to_window(seq, (0, window_start), self.background_cpg_frac)
-            if window_end < seq_len:
-                self._apply_synthetic_to_window(seq, (window_end, seq_len), self.background_cpg_frac)
-
-        return seq
+        seq_len = sequence.shape[-1]
+        min_seq_len = self.window_size + 2 * self.flank_width + 2 * abs(self.offset)
         
-    def _apply_synthetic_to_window(self, seq, window, frac):
-        """
-        Apply a methylation fraction to input tensor seq, all methylation channels, within window (start,end)
-        Args:
-            seq (torch.Tensor): (num_channels, seq_length)
-            window (Tuple[int,int]): (start, end) indices
-            frac (float): fraction between 0 and 1
-        """
-        raise NotImplementedError("This is not implemented correctly currently; must fix handling of separate seq and methyl tensors")
-        start, end = window
-        channels = seq.shape[0]
-        seq_len = seq.shape[-1]
-
-        if (channels - 4) % 3 != 0:
-            raise ValueError(
-                f"Unexpected number of channels ({channels}); expected 4 + 3*N channels "
-                "with ACGT first, followed by (mC, mG, CpG_indicator) triplets."
+        if min_seq_len > seq_len:
+            warnings.warn(
+                f"Center window size + 2*flank_width + 2 * abs(offset) ({min_seq_len}) "
+                f"exceeds sequence length ({seq_len})."
             )
+        
+        methylation = methylation.clone()
+        
+        # Identify CpG sites from sequence (vectorized)
+        cpg_c_mask, cpg_g_mask = self._get_cpg_masks(sequence)  # Shape matches sequence batch dims + (seq_len,)
+        
+        # Create region masks
+        center = seq_len // 2 + self.offset
+        half_window = self.window_size // 2
+        
+        # Center window
+        center_start = max(center - half_window, 0)
+        center_end = min(center + half_window, seq_len)
+        
+        # Flanking regions
+        left_flank_start = max(center_start - self.flank_width, 0)
+        left_flank_end = center_start
+        right_flank_start = center_end
+        right_flank_end = min(center_end + self.flank_width, seq_len)
+        
+        # Create position mask for each region
+        positions = torch.arange(seq_len, device=sequence.device)
+        
+        center_mask = (positions >= center_start) & (positions < center_end)
+        left_flank_mask = (positions >= left_flank_start) & (positions < left_flank_end)
+        right_flank_mask = (positions >= right_flank_start) & (positions < right_flank_end)
+        flank_mask = left_flank_mask | right_flank_mask
+        background_mask = ~(center_mask | flank_mask)
+        
+        # Apply methylation fractions to each region
+        if self.background_cpg_frac is not None:
+            self._apply_methylation(methylation, cpg_c_mask & background_mask, 
+                                   cpg_g_mask & background_mask, self.background_cpg_frac)
+        
+        if self.flanking_cpg_frac is not None:
+            self._apply_methylation(methylation, cpg_c_mask & flank_mask, 
+                                   cpg_g_mask & flank_mask, self.flanking_cpg_frac)
+        
+        if self.center_cpg_frac is not None:
+            self._apply_methylation(methylation, cpg_c_mask & center_mask, 
+                                   cpg_g_mask & center_mask, self.center_cpg_frac)
+        
+        return sequence, methylation, target, mask
 
+    def _get_cpg_masks(self, sequence):
+        """
+        Identify CpG dinucleotides from sequence tensor, returning separate masks for C and G positions.
+        
+        Args:
+            sequence: Tensor of shape (..., 4, seq_length) where dim -2 is one-hot ACGT
+        
+        Returns:
+            Tuple of (cpg_c_mask, cpg_g_mask):
+                cpg_c_mask: Boolean tensor marking C positions in CpG sites
+                cpg_g_mask: Boolean tensor marking G positions in CpG sites
+        """
         C_channel = 1
         G_channel = 2
-    
-        padded_start = max(start - 1, 0)
-        padded_end = min(end + 1, seq_len)
-    
-        is_C_full = seq[C_channel, padded_start:padded_end] > 0.5
-        is_G_full = seq[G_channel, padded_start:padded_end] > 0.5
-    
-        cpg_sites_full = is_C_full[:-1] & is_G_full[1:]
-    
-        cpg_mask_full = torch.zeros(padded_end - padded_start, dtype=torch.bool, device=seq.device)
-        cpg_mask_full[:-1] |= cpg_sites_full  # mark 'C' position
-        cpg_mask_full[1:]  |= cpg_sites_full  # mark 'G' position
-    
-        offset = start - padded_start  # offset to align window inside padded
-        cpg_mask = cpg_mask_full[offset:offset + (end - start)]
-        is_C = is_C_full[offset:offset + (end - start)]
-        is_G = is_G_full[offset:offset + (end - start)]
-    
-        for base_channel in range(6, channels, 3):
-            mC_channel = base_channel - 2
-            mG_channel = base_channel - 1
-            CpG_channel = base_channel
-    
-            seq[CpG_channel, start:end][cpg_mask] = 1.0
-    
-            seq[mC_channel, start:end][cpg_mask & is_C] = frac
-            seq[mG_channel, start:end][cpg_mask & is_G] = frac
+        
+        # Get C and G positions
+        is_C = sequence[..., C_channel, :] > 0.5  # (..., seq_length)
+        is_G = sequence[..., G_channel, :] > 0.5  # (..., seq_length)
+        
+        # Check for CpG dinucleotides (C followed by G)
+        is_cpg = is_C[..., :-1] & is_G[..., 1:]  # (..., seq_length-1)
+        
+        # Create separate masks for C and G positions
+        seq_len = sequence.shape[-1]
+        cpg_c_mask = torch.zeros_like(is_C, dtype=torch.bool)
+        cpg_g_mask = torch.zeros_like(is_C, dtype=torch.bool)
+        
+        # Mark C positions (index i where CpG starts)
+        cpg_c_mask[..., :-1] = is_cpg
+        # Mark G positions (index i+1 where CpG continues)
+        cpg_g_mask[..., 1:] = is_cpg
+        
+        return cpg_c_mask, cpg_g_mask
+
+    def _apply_methylation(self, methylation, c_mask, g_mask, frac):
+        """
+        Apply methylation fraction to C and G positions indicated by masks.
+        
+        Args:
+            methylation: Tensor of shape (..., num_cell_types, 3, seq_length)
+                         where dim -2 has channels [mC, mG, CpG_indicator]
+            c_mask: Boolean tensor of shape (..., seq_length) indicating C positions to modify
+            g_mask: Boolean tensor of shape (..., seq_length) indicating G positions to modify
+            frac: Methylation fraction to apply (0 to 1)
+        """
+        # Expand masks to match methylation dimensions
+        while c_mask.ndim < methylation.ndim - 1:
+            c_mask = c_mask.unsqueeze(-2)
+            g_mask = g_mask.unsqueeze(-2)
+        
+        # Set CpG indicator channel (index 2) to 1.0 for both C and G positions
+        combined_mask = (c_mask | g_mask).expand_as(methylation[..., 2, :])
+        methylation[..., 2, :] = torch.where(
+            combined_mask,
+            torch.tensor(1.0, device=methylation.device, dtype=methylation.dtype),
+            methylation[..., 2, :]
+        )
+        
+        # Set mC channel (index 0) to frac ONLY at C positions
+        c_mask_expanded = c_mask.expand_as(methylation[..., 0, :])
+        methylation[..., 0, :] = torch.where(
+            c_mask_expanded,
+            torch.tensor(frac, device=methylation.device, dtype=methylation.dtype),
+            methylation[..., 0, :]
+        )
+        
+        # Set mG channel (index 1) to frac ONLY at G positions
+        g_mask_expanded = g_mask.expand_as(methylation[..., 1, :])
+        methylation[..., 1, :] = torch.where(
+            g_mask_expanded,
+            torch.tensor(frac, device=methylation.device, dtype=methylation.dtype),
+            methylation[..., 1, :]
+        )
         
 @gin.register
 @gin.configurable
