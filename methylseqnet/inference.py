@@ -32,6 +32,7 @@ def run_dataset_save_h5(
     output_path: str | Path,
     gpus: int = 1,
     num_workers: int = 4,
+    no_targets: bool = False,
 ):
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.eval()
@@ -61,7 +62,7 @@ def run_dataset_save_h5(
             )
     
     data_module.setup(stage="predict")
-    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch")
+    pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch", no_targets=no_targets)
 
     trainer = Trainer(
         accelerator="auto",

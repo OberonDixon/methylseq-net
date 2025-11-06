@@ -419,7 +419,11 @@ class MethylSeqNN(L.LightningModule):
         specifiers = batch['specifiers']
         io_mappings_df = self.get_io_mappings_df()
         dataset_key = batch['dataset_key'][0]
-        output_tracks_slice = io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['absolute_channel'].tolist()
+        output_tracks_slice = (
+            io_mappings_df['absolute_channel'].tolist()
+            if dataset_key=='all'
+            else io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['absolute_channel'].tolist()
+        )
 
         outputs_list = []
         for variant_idx in range(sequence_all_variants.shape[1]):

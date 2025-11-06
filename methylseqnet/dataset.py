@@ -187,7 +187,7 @@ class MultiMethylDataset(Dataset):
                         mask = torch.tensor(mask_np, dtype=torch.bool)
                         del mask_np  # free memory
                     else:
-                        mask = None
+                        mask = torch.ones_like(target, dtype=torch.bool)
                     specifiers = f['specifier'].asstr()[start_idx:end_idx]
 
                     if self.batch_size is None:

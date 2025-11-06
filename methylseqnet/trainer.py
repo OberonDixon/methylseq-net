@@ -51,9 +51,11 @@ class MethylSeqDataModule(LightningDataModule):
         self.validation_dataset_dict = validation_dataset_file if isinstance(validation_dataset_file, dict) else {"dataset":validation_dataset_file} if validation_dataset_file is not None else None
         self.predict_dataset_dict = predict_dataset_file if isinstance(predict_dataset_file, dict) else {"dataset":predict_dataset_file} if predict_dataset_file is not None else None
         if (
+                # only prediction datasets can use 'all' as a label
+                # this is because by definition, in training and validation, 'all' refers to the sum of all datasets
+                # we can use all in prediction to get out every task regardless of source dataset
                 (self.train_dataset_dict and "all" in self.train_dataset_dict)
                 or (self.validation_dataset_dict and "all" in self.validation_dataset_dict)
-                or (self.predict_dataset_dict and "all" in self.predict_dataset_dict)
         ):
             raise ValueError("'all' is a reserved keyword and cannot be used as a dataset label.")
         if batch_size!=1:
