@@ -33,6 +33,7 @@ def run_dataset_save_h5(
     gpus: int = 1,
     num_workers: int = 4,
     no_targets: bool = False,
+    **kwargs,
 ):
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.eval()
@@ -45,6 +46,7 @@ def run_dataset_save_h5(
                 batch_size = 1,
                 dataset_class = MultiMethylDataset,
                 num_workers = num_workers,
+                **kwargs,
             )
         case 'multimethyl-and-embeddings':
             data_module = MethylSeqDataModule(
@@ -52,6 +54,7 @@ def run_dataset_save_h5(
                 batch_size = 1,
                 dataset_class = MultiDataset,
                 num_workers = num_workers,
+                **kwargs,
             )
         case 'methylseq':
             data_module = MethylSeqDataModule(
@@ -59,6 +62,7 @@ def run_dataset_save_h5(
                 batch_size = 1,
                 dataset_class = MethylSeqDataset,
                 num_workers = num_workers,
+                **kwargs,
             )
     
     data_module.setup(stage="predict")

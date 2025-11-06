@@ -28,6 +28,7 @@ import signal
 import pprint
 import logging
 import warnings
+import functools
 
 os.environ["SLURM_JOB_NAME"] = "interactive"
 
@@ -98,9 +99,24 @@ class MethylSeqDataModule(LightningDataModule):
                     sample_with_replacement=False,
                 )
         if stage in (None, "predict"):
+            if self.transforms:
+                transform_names = []
+                for t in self.transforms:
+                    if isinstance(t, functools.partial):
+                        # Get the actual function/class from the partial
+                        transform_names.append(t.func.__name__)
+                    else:
+                        transform_names.append(type(t).__name__)
+                
+                warnings.warn(
+                    "The following transforms will be applied to the prediction dataset: " + 
+                    ", ".join(transform_names) + 
+                    ". Make sure this is intended behavior as it may alter predictions."
+                )
             if self.predict_dataset_dict:
                 predict_datasets = self._create_datasets_from_dict(
                     self.predict_dataset_dict,
+                    transforms=self.transforms,
                     batch_size=None,
                     return_specifiers=True,
                 )
