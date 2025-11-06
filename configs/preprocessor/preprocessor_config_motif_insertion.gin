@@ -15,8 +15,6 @@ DirectoryIndexer.subsequence_start = 0
 DirectoryIndexer.subsequence_end = 524288
 DirectoryIndexer.recursive = False # recursive will look into sub folders as well
 
-MultiFastaSequenceOnly.num_tracks = 1
-
 PreprocessingPipeline.sample_generator = @DirectoryIndexer()
 PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter

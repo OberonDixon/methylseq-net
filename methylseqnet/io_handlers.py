@@ -1144,7 +1144,7 @@ class MethylAtacAtlases(MultitaskIOHandler):
 @gin.register
 @gin.configurable
 class MultiFastaSequenceOnly(MultitaskIOHandler):
-    def __init__(self,num_tracks):
+    def __init__(self,num_tracks=1):
         self.num_tracks = num_tracks
         self.multi_fasta_handler = MultiFastaHandler()
         self.io_mappings_list = []
