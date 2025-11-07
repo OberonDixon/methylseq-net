@@ -82,7 +82,7 @@ class PreprocessingPipeline:
     def process_samples(
         self,
         subset = 'all',
-        mode = 'sequential',
+        sequential = False,
         max_workers = 1,
     ):
         self.create_sample_batches()
@@ -98,7 +98,7 @@ class PreprocessingPipeline:
             batches = self.sample_batches_by_split[split]
             # Each key here is a data split that will want its own dataset. Most recent one is stored as class attribute
             self.dataset_writer = self.initialize_dataset_writer(split)  
-            if mode=='sequential':
+            if sequential:
                 for indices_list,sample_list in tqdm(batches,
                                                       desc=f'processing and writing {split} to {self.dataset_writer.output_path.name}'):
                     self.multitask_io_handler.process_batch(
@@ -107,7 +107,7 @@ class PreprocessingPipeline:
                         self.dataset_writer,
                         self.lock,
                     )          
-            elif mode=='parallel':
+            else:
                 with ProcessPoolExecutor(max_workers=max_workers) as executor:
                     futures = [executor.submit(
                         self.multitask_io_handler.process_batch, 
@@ -122,9 +122,7 @@ class PreprocessingPipeline:
                             future.result()
                         except Exception as e:
                             print(f"Parallel processing failed with exception: {e}")
-                            traceback.print_exc()    
-            else:
-                raise NotImplementedError(f"No running mode implemented for {mode}")
+                            traceback.print_exc()
 
 def pretrained_model_embeddings():
     parser = argparse.ArgumentParser(description="Save model embeddings for one or more datasets.")
@@ -246,7 +244,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file. No default.")
     parser.add_argument("--subset", required=False, default='all', help="Subset to process (e.g., train, test, validation, or all). Defaults to all.")
-    parser.add_argument("--mode", required=False, default="sequential", help="Processing mode, sequential or parallel. Defaults to sequential.")
+    parser.add_argument("--sequential", action="store_true", help="Run in sequential mode instead of parallel.")
     parser.add_argument("--workers", required=False, default="all", help="max_workers across which to parallelize. Defaults to all.")
 
     args = parser.parse_args(sys.argv[1:])
@@ -259,7 +257,9 @@ def main():
     
     # Run the pipeline with the specified subset
     cores_avail = multiprocessing.cpu_count()
-    if args.mode=='parallel':
+    if args.sequential:
+        cores=1
+    else:
         if args.workers=='all':
             cores = cores_avail
         else:
@@ -269,10 +269,8 @@ def main():
             except ValueError:
                 print(f"Invalid value for --workers: {args.workers}, defaulting to available cores")
                 cores = cores_avail
-    else:
-        cores=1
-    print(f"running {args.mode}. {cores_avail} available cores, using {cores}")
-    pipeline.process_samples(subset=args.subset,mode=args.mode,max_workers=cores)
+    print(f"running {'sequential' if args.sequential else 'parallel'}. {cores_avail} available cores, using {cores}")
+    pipeline.process_samples(subset=args.subset,sequential=args.sequential,max_workers=cores)
 
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "pretrained_model_embeddings":

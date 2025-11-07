@@ -20,7 +20,7 @@ def test_trainer_integration(config_file):
         gin.parse_config_file(config_file)
         pipeline = preprocessor.PreprocessingPipeline(output_directory=temp_dir)
         cores_avail = multiprocessing.cpu_count()
-        pipeline.process_samples(subset='all',mode='sequential',max_workers=cores_avail)
+        pipeline.process_samples(subset='all',sequential=True,max_workers=cores_avail)
         # Check that output files are created
         output_files = list(Path(temp_dir).glob("**/*.h5"))
         assert len(output_files) > 0, "No output files were created by the preprocessing pipeline."
