@@ -270,7 +270,7 @@ class DirectoryIndexer(SampleGenerator):
         self.end=subsequence_end
         self.split=split
         self.recursive=recursive
-        if self.center_subsequence and self.start!=0:
+        if self.center_subsequence and self.start is not None and self.start!=0:
             warnings.warn(f"When center_subsequence=True, sequence length (subsequence_end - subsequence_start) is centered on each fasta entry. subsequence_end>0 therefore has no function: you set start={self.start} but instead every entry will simply be {self.end-self.start}bp centered on the fasta contig.")
     def create_samples(self):
         """
@@ -284,18 +284,18 @@ class DirectoryIndexer(SampleGenerator):
         else:
             files = list(self.directory.glob(f'*.{self.suffix}'))
         
-        for file_path in files:
+        for file_path in tqdm(files,desc=f"Indexing *.{self.suffix} files in {self.directory}",leave=False):
             if self.suffix in ["fasta","fa"]:
                 if ">" in str(file_path):
                     raise ValueError(f"Disallowed character `:` in file path {file_path}")
                 if not file_path.with_suffix(".fai").exists():
                     pysam.faidx(str(file_path))
                 fasta = pysam.FastaFile(str(file_path))
-                for record, length in zip(fasta.references,fasta.lengths):
+                for record, length in tqdm(zip(fasta.references,fasta.lengths),"Indexing records in {file_path.name}",leave=False,total=len(fasta.references)):
                     if self.end is not None and self.end > length and not self.pad_with_Ns:
-                        warnings.warn(f"Specified end {self.end} is greater than length {length} of record {record} in file {file_path}. Omitting.")
+                        warnings.warn(f"Specified end {self.end} is greater than length {length} of record {record} in file {file_path}. Omitting. Set pad_with_Ns to True to include with N padding.")
                     else:
-                        if self.center_subsequence:
+                        if self.center_subsequence and self.start is not None and self.end is not None:
                             seq_length = self.end - self.start
                             center = length // 2
                             half_length = seq_length // 2
@@ -304,12 +304,19 @@ class DirectoryIndexer(SampleGenerator):
                         else:
                             start_for_contig = self.start
                             end_for_contig = self.end
-                        file_dict = {
-                            'source': f"{str(file_path)}>{record}",
-                            'start': start_for_contig,
-                            'end': end_for_contig,
-                        }
-                        samples_by_split[self.split].append(file_dict)
+                        if (
+                            (start_for_contig is not None and end_for_contig is not None)
+                            and (start_for_contig < 0 or end_for_contig > length)
+                            and not self.pad_with_Ns
+                            ):
+                            warnings.warn(f"Centered subsequence {start_for_contig}-{end_for_contig} goes out of bounds for record {record} in file {file_path}. Omitting. Set pad_with_Ns to True to include with N padding.")
+                        else:
+                            file_dict = {
+                                'source': f"{str(file_path)}>{record}",
+                                'start': start_for_contig,
+                                'end': end_for_contig,
+                            }
+                            samples_by_split[self.split].append(file_dict)
         
         return samples_by_split
 
