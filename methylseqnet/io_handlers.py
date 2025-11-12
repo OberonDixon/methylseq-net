@@ -288,7 +288,7 @@ class DirectoryIndexer(SampleGenerator):
             if self.suffix in ["fasta","fa"]:
                 if ">" in str(file_path):
                     raise ValueError(f"Disallowed character `:` in file path {file_path}")
-                if not file_path.with_suffix(".fai").exists():
+                if not (file_path.with_suffix(".fasta.fai").exists() or file_path.with_suffix(".fa.fai").exists()):
                     pysam.faidx(str(file_path))
                 fasta = pysam.FastaFile(str(file_path))
                 for record, length in tqdm(zip(fasta.references,fasta.lengths),"Indexing records in {file_path.name}",leave=False,total=len(fasta.references)):
