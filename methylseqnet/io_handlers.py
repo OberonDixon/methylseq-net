@@ -1,6 +1,5 @@
 import gin, pyBigWig, pysam
 from Bio import SeqIO
-import dimelo
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
@@ -506,7 +505,6 @@ class MultiBedMethylModHandler(CpGHandler):
             combine_operation='mean',
             binarize=False,
             threshold=0.5):    
-        import dimelo
         if not isinstance(bedmethyl_files,list):
             raise ValueError("bedmethyl_files input is not a list.")
         for bedmethyl_file in bedmethyl_files:   
@@ -522,12 +520,13 @@ class MultiBedMethylModHandler(CpGHandler):
         """
         This cpg loader is actually for any mod type specifier by motif
         """
+        from dimelo import load_processed
         cpg_fractions_list = []
         aggregated_valid_cpgs = np.zeros(end - start)
         for bedmethyl_file in self.bedmethyl_files:
             start_pad = 0 - min(start,0)
             try:
-                modified_base_counts,valid_base_counts = dimelo.load_processed.pileup_vectors_from_bedmethyl(
+                modified_base_counts,valid_base_counts = load_processed.pileup_vectors_from_bedmethyl(
                     bedmethyl_file=bedmethyl_file,
                     motif=self.motif,
                     regions=f'{source}:{max(start,0)}-{end}',

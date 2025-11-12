@@ -168,12 +168,12 @@ def _load_bedmethyl_track(
     bin_size: int,
     motif: str = "CG,0",
 ) -> np.ndarray:
-    import dimelo
+    from dimelo import load_processed
     if start is None or end is None:
         raise ValueError("Start and end must be provided for bedmethyl track loading.")
     start_pad = 0 - min(start,0)
     try:
-        modified_base_counts,valid_base_counts = dimelo.load_processed.pileup_vectors_from_bedmethyl(
+        modified_base_counts,valid_base_counts = load_processed.pileup_vectors_from_bedmethyl(
             bedmethyl_file=file_path,
             motif=motif,
             regions=f'{contig}:{max(start,0)}-{end}',

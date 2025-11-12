@@ -18,7 +18,6 @@ import pandas as pd
 import pyBigWig
 import gin
 
-from dimelo import load_processed
 from methylseqnet import dna_io
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
@@ -719,6 +718,7 @@ class HaplotypedPredLogger(Callback):
         bin_size=1,
         crop=0,
     ) -> np.ndarray:
+        from dimelo import load_processed
         if genome_track_file.endswith(".bed.gz"):
             mod_vector, val_vector = load_processed.pileup_vectors_from_bedmethyl(
                 bedmethyl_file = genome_track_file,
