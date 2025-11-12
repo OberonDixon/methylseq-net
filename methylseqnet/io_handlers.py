@@ -3,6 +3,7 @@ from Bio import SeqIO
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
+from methylseqnet.readers import load_sequence
 from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
@@ -258,13 +259,19 @@ class DirectoryIndexer(SampleGenerator):
         subsequence_end=None,
         split='pred',
         recursive=False,
+        pad_with_Ns=False,
+        center_subsequence=False,
     ):
         self.directory=Path(directory)
         self.suffix=suffix
+        self.pad_with_Ns = pad_with_Ns
+        self.center_subsequence = center_subsequence
         self.start=subsequence_start
         self.end=subsequence_end
         self.split=split
         self.recursive=recursive
+        if self.center_subsequence and self.start!=0:
+            warnings.warn(f"When center_subsequence=True, sequence length (subsequence_end - subsequence_start) is centered on each fasta entry. subsequence_end>0 therefore has no function: you set start={self.start} but instead every entry will simply be {self.end-self.start}bp centered on the fasta contig.")
     def create_samples(self):
         """
         This function will generate the samples dict, with all samples listed under the split key provided
@@ -285,13 +292,22 @@ class DirectoryIndexer(SampleGenerator):
                     pysam.faidx(str(file_path))
                 fasta = pysam.FastaFile(str(file_path))
                 for record, length in zip(fasta.references,fasta.lengths):
-                    if self.end is not None and self.end > length:
+                    if self.end is not None and self.end > length and not self.pad_with_Ns:
                         warnings.warn(f"Specified end {self.end} is greater than length {length} of record {record} in file {file_path}. Omitting.")
                     else:
+                        if self.center_subsequence:
+                            seq_length = self.end - self.start
+                            center = length // 2
+                            half_length = seq_length // 2
+                            start_for_contig = center - half_length
+                            end_for_contig = center + half_length + (seq_length % 2)
+                        else:
+                            start_for_contig = self.start
+                            end_for_contig = self.end
                         file_dict = {
                             'source': f"{str(file_path)}>{record}",
-                            'start': self.start,
-                            'end': self.end,
+                            'start': start_for_contig,
+                            'end': end_for_contig,
                         }
                         samples_by_split[self.split].append(file_dict)
         
@@ -401,13 +417,8 @@ class MultiFastaHandler(SequenceHandler):
         TODO: Implement checks for start and end against contig extent
         """
         file_path = source.split(">")[0]
-        if os.path.isfile(file_path):  
-            if start is not None and end is not None:
-                sequence = pysam.FastaFile(file_path).fetch(source.split(">")[1],start,end)
-            else:
-                sequence = pysam.FastaFile(file_path).fetch(source.split(">")[1])
-        else:
-            raise OSError(f"{file_path} in {source} does not exist.")
+        contig = source.split(">")[1]
+        sequence = load_sequence(file_path,contig,start,end)
         return sequence
         
     

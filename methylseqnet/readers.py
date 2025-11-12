@@ -1,5 +1,6 @@
 from pathlib import Path
 import warnings
+import os
 
 import numpy as np
 
@@ -11,10 +12,13 @@ def load_sequence(
     file_type: str | None = None,
 ) -> str:
     if (isinstance(file_path, str) or isinstance(file_path, Path)):
-        if (Path(file_path).suffix in [".fa", ".fasta", ".fna"] or file_type == "fasta"):
-            return _load_fasta_sequence(file_path, contig, start, end)
-        else:
-            raise NotImplementedError(f"File type for {file_path} not supported.")
+        try:
+            if (Path(file_path).suffix in [".fa", ".fasta", ".fna"] or file_type == "fasta"):
+                return _load_fasta_sequence(file_path, contig, start, end)
+            else:
+                raise NotImplementedError(f"File type for {file_path} not supported.")
+        except Exception as e:
+            raise RuntimeError(f"Error in sequence loading for {contig}:{start}-{end} from {file_path}.") from e
     else:
         if ("fasta" in file_path and "vcf" in file_path) or file_type == "vcf_fasta":
             raise NotImplementedError("VCF + FASTA variant loading not implemented yet.")
