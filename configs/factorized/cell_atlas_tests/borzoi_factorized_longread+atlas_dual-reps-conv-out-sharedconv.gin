@@ -1,5 +1,5 @@
-initial_filters = 400
-dilated_residual_filters = 400
+initial_filters = 1024
+dilated_residual_filters = 1024
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
@@ -181,4 +181,5 @@ methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.trainer.MethylSeqDataModule.epoch_size=5000
+methylseqnet.trainer.MethylSeqDataModule.epoch_size=1000
+methylseqnet.trainer.MethylSeqDataModule.val_epoch_size=(500,500)

@@ -594,16 +594,16 @@ class HaplotypedPredLogger(Callback):
             device=device,
         ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
         with torch.no_grad():
-            training_mode = pl_module.mode
-            training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
+            # training_mode = pl_module.mode
+            # training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
             pl_module.eval()
-            if pl_module.layers:
-                pl_module.mode = 'full-model'
-            elif pl_module.input_to_methyl_rep:
-                pl_module.mode = 'factorized-from-pretrained'
-            else:
-                pl_module.mode = 'pretrained-only'
-            pl_module.true_methyl_rep_weight = 1.0
+            # if pl_module.layers:
+            #     pl_module.mode = 'full-model'
+            # elif pl_module.input_to_methyl_rep:
+            #     pl_module.mode = 'factorized-from-pretrained'
+            # else:
+            #     pl_module.mode = 'pretrained-only'
+            # pl_module.true_methyl_rep_weight = 1.0
             hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
             hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
@@ -620,8 +620,8 @@ class HaplotypedPredLogger(Callback):
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
                 else np.zeros_like(hp2_methylation)
             )
-            pl_module.mode = training_mode
-            pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+            # pl_module.mode = training_mode
+            # pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
         return (
             hp1_accessibility_target,
             hp2_accessibility_target,
