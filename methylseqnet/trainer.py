@@ -42,6 +42,7 @@ class MethylSeqDataModule(LightningDataModule):
         batch_size=1, 
         transforms=[], 
         epoch_size=10000,
+        val_epoch_size=None,
         dataset_weights=None,
         dataset_class=MethylSeqDataset,
         pow=False, # temporarily restored for backwards compatibility; does nothing
@@ -64,6 +65,7 @@ class MethylSeqDataModule(LightningDataModule):
         self.batch_size = 1
         self.transforms = transforms
         self.epoch_size = epoch_size
+        self.val_epoch_size = val_epoch_size
         self.dataset_weights = dataset_weights
         self.dataset_class = dataset_class
         self.num_workers = num_workers
@@ -97,6 +99,7 @@ class MethylSeqDataModule(LightningDataModule):
                 self.val_dataset = MultiKeyDataset(
                     val_datasets,
                     sample_with_replacement=False,
+                    epoch_size=self.val_epoch_size,
                 )
         if stage in (None, "predict"):
             if self.transforms:

@@ -52,6 +52,7 @@ embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=43
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=4
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.shared_head=True
 
 methylseqnet.optimizers.AdamOptimizer.lr=0.002
 methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
@@ -182,4 +183,5 @@ methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.trainer.MethylSeqDataModule.epoch_size=5000
+methylseqnet.trainer.MethylSeqDataModule.epoch_size=200
+methylseqnet.trainer.MethylSeqDataModule.val_epoch_size=(100,100)
