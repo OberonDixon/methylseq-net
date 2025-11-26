@@ -281,7 +281,10 @@ class MethylSeqNN(L.LightningModule):
                         }
                     )
             else:
-                self.factorized_reps_to_output = nn.ModuleList([layer() for layer in factorized_reps_to_output])   
+                if self.factorized_reps_to_output_submodels_shared:
+                    raise ValueError("MethylSeqNN factorized_reps_to_output_submodels_shared=True requires factorized_reps_to_output_submodel_per_task=True.")
+                else:
+                    self.factorized_reps_to_output = self._build_modulelist_with_padding(factorized_reps_to_output) 
         else:
             self.input_to_methyl_rep = nn.ModuleList([])
 
@@ -1097,6 +1100,27 @@ class MethylSeqNN(L.LightningModule):
         return x_methyl_allchannels
 
     def _factorized_reps_to_output_forward(self, methyl_indep_seq_rep, methyl_dep_seq_rep, methyl_rep, dataset_key):
+        """
+        Combine methylation-independent and methylation-dependent sequence representations
+
+        Cases:
+        1) factorized_reps_to_output_submodel_per_task = True
+            For each task, select the appropriate methylation representation and combine with
+            the methylation-dependent sequence representation (if applicable) and methylation-independent
+            sequence representation. Pass through the task-specific output submodel and assemble the outputs
+            into the full output tensor.
+        2) factorized_reps_to_output_submodel_per_task = False
+            For each cell type, select the appropriate methylation representation and combine with
+            the methylation-dependent sequence representation (if applicable) and methylation-independent
+            sequence representation. Create a pseudobatch by stacking all cell types together.
+            Pass through the shared output submodel. Then, reassemble the outputs into the full output tensor.
+
+        Args:
+            methyl_indep_seq_rep: (N, C_indep, L)
+            methyl_dep_seq_rep: (N, C_dep, L)
+            methyl_rep: (N, num_cell_types, C_methyl, L)
+            dataset_key: which dataset is being processed (to select output channels)
+        """
         if self.factorized_reps_to_output_submodel_per_task:
             x_output_allchannels = methyl_indep_seq_rep.new_zeros(methyl_indep_seq_rep.size(0), self.out_tracks, methyl_indep_seq_rep.size(2))
             for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):
@@ -1116,7 +1140,31 @@ class MethylSeqNN(L.LightningModule):
                     x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_methylseq_rep
             return x_output_allchannels
         else:
-            raise NotImplementedError("factorized_reps_to_output_submodel_per_task=False not implemented.")
+            x_methylseq_pseudobatch_list = []
+            for cell_type_idx in range(methyl_rep.shape[1]):
+                celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
+                if self.embeddings_to_methyl_dep_seq_rep:
+                    methyl_dep_seq_rep_celltype = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
+                    x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_celltype], dim=1)
+                else:
+                    x_methylseq_rep = torch.cat([methyl_indep_seq_rep, celltype_methyl_rep], dim=1)
+                x_methylseq_pseudobatch_list.append(x_methylseq_rep)
+            pseudobatch_scaleup = len(x_methylseq_pseudobatch_list)
+            x_methylseq_pseudobatch = torch.cat(x_methylseq_pseudobatch_list, dim=0)
+            for layer in self.factorized_reps_to_output:
+                x_methylseq_pseudobatch = layer(x_methylseq_pseudobatch)
+            if methyl_rep.shape[1]==1:
+                x_output_allchannels = x_methylseq_pseudobatch
+            else:
+                x_output_allchannels = x_methylseq_pseudobatch.new_zeros(methyl_indep_seq_rep.size(0), self.out_tracks, methyl_indep_seq_rep.size(2))
+                batch_size = methyl_indep_seq_rep.size(0)
+                for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):
+                    start = cell_type_idx*batch_size
+                    end = (cell_type_idx+1)*batch_size
+                    x_cell_type = x_methylseq_pseudobatch[start:end]
+                    for relative_task_index, absolute_task_index in channel_tuples:
+                        x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_cell_type[:, absolute_task_index:absolute_task_index+1, :]
+            return x_output_allchannels
     
     def _concat_pretrained_embeddings(self, embeddings, rbs, x, embeddings_pseudobatch_scaleup=1):
         """
