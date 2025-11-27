@@ -1,7 +1,7 @@
 transformer_dim = 1024
-transformer_heads = 2
-transformer_dim_per_head = 512
-transformer_dim_key = 128
+transformer_heads = 4
+transformer_dim_per_head = 256
+transformer_dim_key = 64
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
@@ -27,6 +27,7 @@ methylseqnet.layers.BorzoiTransformerBlock.heads=%transformer_heads
 methylseqnet.layers.BorzoiTransformerBlock.dim_value=%transformer_dim_per_head
 methylseqnet.layers.BorzoiTransformerBlock.dim_key=%transformer_dim_key
 methylseqnet.layers.BorzoiTransformerBlock.flashed=False
+methylseqnet.layers.BorzoiTransformerBlock.use_grad_checkpoint=True
 
 output_head/methylseqnet.layers.ConvFinal.in_channels=%transformer_dim
 output_head/methylseqnet.layers.ConvFinal.filters=63

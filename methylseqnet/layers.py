@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
+from torch.utils.checkpoint import checkpoint
 import gin
 import warnings
 
@@ -302,9 +303,11 @@ class BorzoiTransformerBlock(nn.Module):
     A single Borzoi-style transformer block with self-attention and FFN.
     Implementation follows the pattern here: https://github.com/johahi/borzoi-pytorch/blob/main/borzoi_pytorch/pytorch_borzoi_model.py#L106
 
-    This version maintains (batch, channels, seq_len) interface to be consistent with Conv layers,
-    but internally permutes to (batch, seq_len, channels) for the transformer. Defaults match
-    https://github.com/johahi/borzoi-pytorch/blob/main/borzoi_pytorch/config_borzoi.py defaults.
+    The following modifications have been made compared to what is described for Borzoi:
+     -  we maintain a (batch, channels, seq_len) interface to be consistent with Conv layers,
+        but internally permutes to (batch, seq_len, channels) for the transformer. Defaults match
+        https://github.com/johahi/borzoi-pytorch/blob/main/borzoi_pytorch/config_borzoi.py defaults.
+     -  we implement optional gradient checkpointing for memory efficiency during training
     
     Args:
         dim: Model dimension
@@ -316,6 +319,9 @@ class BorzoiTransformerBlock(nn.Module):
         ffn_dropout: Dropout rate for feed-forward network
         num_rel_pos_features: Number of relative positional features
         use_ffn: Whether to include the feed-forward network (default: True)
+        use_grad_checkpoint: Whether to use gradient checkpointing (default: False)
+            Trades ~33% additional compute for significant memory savings. Only active
+            during training. (default: False)
     """
     def __init__(
         self,
@@ -329,10 +335,12 @@ class BorzoiTransformerBlock(nn.Module):
         num_rel_pos_features=32,
         use_ffn=True,
         flashed=False,
+        use_grad_checkpoint=False,
     ):
         super().__init__()
 
         self.flashed = flashed
+        self.use_grad_checkpoint = use_grad_checkpoint
         
         # Self-attention block with residual
         self.attn_block = Residual(nn.Sequential(
@@ -367,6 +375,21 @@ class BorzoiTransformerBlock(nn.Module):
             ))
         else:
             self.ffn_block = None
+
+    def _forward_impl(self, x):
+        """
+        Internal forward implementation that can be checkpointed.
+        
+        Args:
+            x: Input tensor of shape (batch, seq_len, channels)
+        
+        Returns:
+            Output tensor of shape (batch, seq_len, channels)
+        """
+        x = self.attn_block(x)
+        if self.ffn_block is not None:
+            x = self.ffn_block(x)
+        return x
     
     def forward(self, x):
         """
@@ -379,10 +402,11 @@ class BorzoiTransformerBlock(nn.Module):
         # Permute to transformer format: (B, C, L) → (B, L, C)
         x = x.permute(0, 2, 1)
         
-        # Apply transformer blocks
-        x = self.attn_block(x)
-        if self.ffn_block is not None:
-            x = self.ffn_block(x)
+        # Apply transformer blocks with optional checkpointing
+        if self.use_grad_checkpoint and self.training:
+            x = checkpoint(self._forward_impl, x, use_reentrant=False)
+        else:
+            x = self._forward_impl(x)
         
         # Permute back to conv format: (B, L, C) → (B, C, L)
         x = x.permute(0, 2, 1)
