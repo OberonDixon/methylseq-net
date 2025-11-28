@@ -445,13 +445,14 @@ class MethylSeqNN(L.LightningModule):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
         self.hooked_activations.clear()
-        return_dict = {
+        # for predictions writing to hdf5, everything in this dictionary gets saved
+        prediction_dict = {
             "predictions":torch.cat(outputs_list,dim=1),
             "specifier":specifiers,
             **self.hooked_supplemental_outputs,
         }
         self.hooked_supplemental_outputs.clear()
-        return return_dict
+        return prediction_dict
     
     def _shared_step(self, batch, batch_idx, log_descriptor):
         sequence_all_variants = batch['sequence']
