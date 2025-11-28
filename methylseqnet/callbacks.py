@@ -134,7 +134,7 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
         BaseHDF5Writer.__init__(self,output_dir=output_dir,no_targets=no_targets,)
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        self.append_batch_to_h5(trainer, pl_module, prediction["predictions"], prediction["specifiers"], batch_indices, batch)
+        self.append_batch_to_h5(trainer, pl_module, prediction["predictions"], prediction["specifier"], batch_indices, batch)
 
     def on_predict_end(self, trainer, pl_module):
         self._close_all()

@@ -87,7 +87,10 @@ class MethylSeqNN(L.LightningModule):
         activation_criterion=LogL1Loss,
         methyl_rep_criterion=BCELoss,
         seq_reps_orthogonality_criterion=OrthogonalityLoss,
-        seq_reps_to_methyl_criterion=MSELoss
+        seq_reps_to_methyl_criterion=MSELoss,
+
+        # Predict time config
+        supplemental_predict_outputs=set(),
     ):
         """
         Args:
@@ -151,6 +154,8 @@ class MethylSeqNN(L.LightningModule):
                 - activation_criterion: the loss function class to use for activation loss. Must be a subclass of nn.Module.
                 - methyl_rep_criterion: the loss function class to use for methyl representation loss. Must be a subclass of nn.Module.
                 - seq_reps_orthogonality_criterion: the loss function class to use for sequence representations orthogonality loss. Must be a subclass of nn.Module.
+            Predict-time config:
+                - supplemental_predict_outputs: a set of str names of additional outputs to return during predict step.
         """
         super().__init__()
         if not layers and not pretrained_seq_model_generator:
@@ -316,6 +321,9 @@ class MethylSeqNN(L.LightningModule):
         self.optimizer_class = optimizer_class
         self.start_epoch = 0
 
+        self.supplemental_predict_outputs = supplemental_predict_outputs
+        self.hooked_supplemental_outputs = {}
+
     def _build_modulelist_with_padding(self, modulelist_layers):
         modulelist = nn.ModuleList()
         for layer in modulelist_layers:
@@ -419,7 +427,7 @@ class MethylSeqNN(L.LightningModule):
         sequence_all_variants = batch['sequence']
         methylation_all_variants = batch['methylation']
         embeddings = batch.get('embeddings',None)
-        specifiers = batch['specifiers']
+        specifiers = batch['specifier']
         io_mappings_df = self.get_io_mappings_df()
         dataset_key = batch['dataset_key'][0]
         output_tracks_slice = (
@@ -437,7 +445,13 @@ class MethylSeqNN(L.LightningModule):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
         self.hooked_activations.clear()
-        return {"predictions":torch.cat(outputs_list,dim=1),"specifiers":specifiers}
+        return_dict = {
+            "predictions":torch.cat(outputs_list,dim=1),
+            "specifier":specifiers,
+            **self.hooked_supplemental_outputs,
+        }
+        self.hooked_supplemental_outputs.clear()
+        return return_dict
     
     def _shared_step(self, batch, batch_idx, log_descriptor):
         sequence_all_variants = batch['sequence']
@@ -1015,6 +1029,14 @@ class MethylSeqNN(L.LightningModule):
             imputed_methyl_rep = torch.zeros_like(true_methyl_rep)
         else:
             imputed_methyl_rep = self._embeddings_to_methyl_rep_forward(embeddings, dataset_key)
+        if "methyl_indep_seq_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['methyl_indep_seq_rep'] = methyl_indep_seq_rep
+        if "methyl_dep_seq_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['methyl_dep_seq_rep'] = methyl_dep_seq_rep
+        if "true_methyl_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['true_methyl_rep'] = true_methyl_rep
+        if "imputed_methyl_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['imputed_methyl_rep'] = imputed_methyl_rep
         match self.interpolate_methyl_reps_location:
             case 'output':
                 if math.isclose(self.true_methyl_rep_weight,1.0):

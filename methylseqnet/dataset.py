@@ -210,7 +210,7 @@ class MultiMethylDataset(Dataset):
                     'methylation': methylation,
                     'target': target,
                     'mask': mask,
-                    'specifiers': specifiers,
+                    'specifier': specifiers,
                 }
             except OSError as e:
                 if attempt<self.max_retries-1:
