@@ -627,6 +627,12 @@ class HaplotypedPredLogger(Callback):
             )
             # pl_module.mode = training_mode
             # pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+        if hp1_methylation is not None and hp2_methylation is not None and hp1_methylation.ndim>1 and hp2_methylation.ndim>1:
+            hp1_methylation = hp1_methylation.mean(axis=0)
+            hp2_methylation = hp2_methylation.mean(axis=0)
+        if hp1_pred_methylation is not None and hp2_pred_methylation is not None and hp1_pred_methylation.ndim>1 and hp2_pred_methylation.ndim>1:
+            hp1_pred_methylation = hp1_pred_methylation.mean(axis=0)
+            hp2_pred_methylation = hp2_pred_methylation.mean(axis=0)
         return (
             hp1_accessibility_target,
             hp2_accessibility_target,
