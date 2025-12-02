@@ -22,5 +22,7 @@ setup(
         "pyBigWig",
         "wandb>=0.21",
         "borzoi-pytorch",
+        "umap-learn",
+        "numpy<2.0.0",
     ],
 )

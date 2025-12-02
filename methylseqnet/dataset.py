@@ -210,7 +210,7 @@ class MultiMethylDataset(Dataset):
                     'methylation': methylation,
                     'target': target,
                     'mask': mask,
-                    'specifiers': specifiers,
+                    'specifier': specifiers,
                 }
             except OSError as e:
                 if attempt<self.max_retries-1:
@@ -248,7 +248,7 @@ class MultiMethylDataset(Dataset):
 
 @gin.register
 @gin.configurable
-class EmbeddingsDataset(Dataset):
+class BaseHDF5Dataset(Dataset):
     def __init__(
         self, 
         file_path, 
@@ -264,8 +264,8 @@ class EmbeddingsDataset(Dataset):
             - batch_size: how many samples per batch
             - transforms: unused for this class. present because we want a shared interface between dataset classes
         """
-        if len(transforms)>0:
-            raise NotImplementedError("The EmbeddingsDataset class cannot currently handle transforms, or rather, the transforms in transforms.py cannot handle the embeddings tensors appropriately. As of March 4 2025 this is planned for later but is not urgent.")
+        if transforms:
+            raise NotImplementedError("The BaseHDF5Dataset class cannot currently handle transforms, or rather, the transforms in transforms.py cannot handle the embeddings tensors appropriately. As of March 4 2025 this is planned for later but is not urgent.")
         
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
@@ -277,9 +277,14 @@ class EmbeddingsDataset(Dataset):
         self.file_path = create_virtual_h5_with_attributes(self.file_paths)
         
         # Check dataset details
+        lengths = []
         with h5py.File(self.file_path, 'r') as f:
-            # Determine the length of the dataset
-            self.length = len(f['embeddings'])
+            for dataset in f.keys():
+                # Determine the length of the dataset
+                lengths.append(len(f[dataset]))
+        if len(set(lengths)) != 1:
+            raise ValueError(f"Datasets in {self.file_path} do not all have the same length: found lengths {lengths} for {list(f.keys())}.")
+        self.length = lengths[0]
         
     def __len__(self):
         if self.batch_size is not None:
@@ -293,19 +298,18 @@ class EmbeddingsDataset(Dataset):
         for attempt in range(self.max_retries):
             try:
                 with h5py.File(self.file_path, 'r') as f:
-                    embeddings = torch.tensor(f['embeddings'][start_idx:end_idx,:,:], dtype=torch.float32)
-                    if self.batch_size is None:
-                        embeddings = embeddings.squeeze(0)
-                    if self.return_specifiers:
-                        try:
-                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
-                        except:
-                            specifiers = np.array(['' for _ in range(embeddings.shape[0])])
-                        if self.batch_size is None:
-                            specifiers = specifiers[0]
-                        return embeddings, None, None, specifiers
-                    else:
-                        return embeddings, None, None
+                    sample = {}
+                    for dataset in f.keys():
+                        if dataset == "specifier":
+                            sample[dataset] = f[dataset].asstr()[start_idx:end_idx]
+                        else:
+                            dataset_tensor = torch.tensor(f[dataset][start_idx:end_idx], dtype=torch.float32)
+                            if self.batch_size is None:
+                                dataset_tensor = dataset_tensor.squeeze(0)
+                            sample[dataset] = dataset_tensor
+                    if 'specifier' not in sample and self.return_specifiers:
+                        sample['specifier'] = np.array(['' for _ in range(sample[list(f.keys())[0]].shape[0])])
+                return sample
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
@@ -318,6 +322,21 @@ class EmbeddingsDataset(Dataset):
         with h5py.File(self.file_path, 'r') as f:
             gin_config_str = f.attrs['gin_config']
             return gin_config_str
+
+    def get_io_mappings_str(self):
+        with h5py.File(self.file_path,'r') as f:
+            try:
+                io_mappings_str = f.attrs['io_mappings']
+            except:
+                raise Exception(f"Could not find io_mappings in file for {self.file_path}")
+            return io_mappings_str
+
+    def get_io_mappings_df(self):
+        try:
+            io_mappings_str = self.get_io_mappings_str()
+            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
+        except:
+            return pd.DataFrame() 
 
     def __del__(self):
         # Cleanup the temporary file when the object is destroyed
@@ -416,7 +435,7 @@ class MultiDataset(Dataset):
     def __init__(
         self, 
         file_path, 
-        dataset_classes=(MultiMethylDataset,EmbeddingsDataset), 
+        dataset_classes=(MultiMethylDataset,BaseHDF5Dataset), 
         batch_size=None, 
         return_specifiers=False,
         transforms=(), 

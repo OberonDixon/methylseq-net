@@ -2,8 +2,12 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Function
+from torch.utils.checkpoint import checkpoint
 import gin
 import warnings
+
+from borzoi_pytorch.pytorch_borzoi_transformer import Attention, FlashAttention
+from borzoi_pytorch.pytorch_borzoi_utils import Residual
 
 gin.external_configurable(nn.AvgPool1d, module='torch.nn')
 gin.external_configurable(nn.MaxPool1d, module='torch.nn')
@@ -290,6 +294,123 @@ class DilatedResidual(nn.Module):
             # Add residual connection
             x = x + residual
 
+        return x
+
+@gin.configurable
+@gin.register
+class BorzoiTransformerBlock(nn.Module):
+    """
+    A single Borzoi-style transformer block with self-attention and FFN.
+    Implementation follows the pattern here: https://github.com/johahi/borzoi-pytorch/blob/main/borzoi_pytorch/pytorch_borzoi_model.py#L106
+
+    The following modifications have been made compared to what is described for Borzoi:
+     -  we maintain a (batch, channels, seq_len) interface to be consistent with Conv layers,
+        but internally permutes to (batch, seq_len, channels) for the transformer. Defaults match
+        https://github.com/johahi/borzoi-pytorch/blob/main/borzoi_pytorch/config_borzoi.py defaults.
+     -  we implement optional gradient checkpointing for memory efficiency during training
+    
+    Args:
+        dim: Model dimension
+        heads: Number of attention heads
+        dim_key: Dimension of attention keys
+        dim_value: Dimension of attention values
+        attn_dropout: Dropout rate for attention
+        pos_dropout: Dropout rate for positional encoding
+        ffn_dropout: Dropout rate for feed-forward network
+        num_rel_pos_features: Number of relative positional features
+        use_ffn: Whether to include the feed-forward network (default: True)
+        use_grad_checkpoint: Whether to use gradient checkpointing (default: False)
+            Trades ~33% additional compute for significant memory savings. Only active
+            during training. (default: False)
+    """
+    def __init__(
+        self,
+        dim,
+        heads=8,
+        dim_key=64,
+        dim_value=192,
+        attn_dropout=0.05,
+        pos_dropout=0.01,
+        ffn_dropout=0.2,
+        num_rel_pos_features=32,
+        use_ffn=True,
+        flashed=False,
+        use_grad_checkpoint=False,
+    ):
+        super().__init__()
+
+        self.flashed = flashed
+        self.use_grad_checkpoint = use_grad_checkpoint
+        
+        # Self-attention block with residual
+        self.attn_block = Residual(nn.Sequential(
+            nn.LayerNorm(dim, eps=0.001),
+            Attention(
+                dim=dim,
+                heads=heads,
+                dim_key=dim_key,
+                dim_value=dim_value,
+                dropout=attn_dropout,
+                pos_dropout=pos_dropout,
+                num_rel_pos_features=num_rel_pos_features
+            ) if not self.flashed else
+            FlashAttention(
+                dim,
+                heads = heads,
+                dropout = attn_dropout,
+                pos_dropout = pos_dropout,
+            ),
+            nn.Dropout(0.2)
+        ))
+        
+        # Optional FFN block with residual
+        if use_ffn:
+            self.ffn_block = Residual(nn.Sequential(
+                nn.LayerNorm(dim, eps=0.001),
+                nn.Linear(dim, dim * 2),
+                nn.Dropout(ffn_dropout),
+                nn.ReLU(),
+                nn.Linear(dim * 2, dim),
+                nn.Dropout(ffn_dropout)
+            ))
+        else:
+            self.ffn_block = None
+
+    def _forward_impl(self, x):
+        """
+        Internal forward implementation that can be checkpointed.
+        
+        Args:
+            x: Input tensor of shape (batch, seq_len, channels)
+        
+        Returns:
+            Output tensor of shape (batch, seq_len, channels)
+        """
+        x = self.attn_block(x)
+        if self.ffn_block is not None:
+            x = self.ffn_block(x)
+        return x
+    
+    def forward(self, x):
+        """
+        Args:
+            x: Input tensor of shape (batch, channels, seq_len)
+        
+        Returns:
+            Output tensor of shape (batch, channels, seq_len)
+        """
+        # Permute to transformer format: (B, C, L) → (B, L, C)
+        x = x.permute(0, 2, 1)
+        
+        # Apply transformer blocks with optional checkpointing
+        if self.use_grad_checkpoint and self.training:
+            x = checkpoint(self._forward_impl, x, use_reentrant=False)
+        else:
+            x = self._forward_impl(x)
+        
+        # Permute back to conv format: (B, L, C) → (B, C, L)
+        x = x.permute(0, 2, 1)
+        
         return x
 
 @gin.configurable

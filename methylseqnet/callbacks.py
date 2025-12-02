@@ -52,7 +52,9 @@ class BaseHDF5Writer(ABC):
             os.makedirs(output_dir, exist_ok=True)
         self.no_targets = no_targets
 
-    def append_batch_to_h5(self, trainer, pl_module, predictions, specifiers, batch_indices, batch):
+    def append_batch_to_h5(self, trainer, pl_module, prediction_dict, batch_indices, batch):
+        if "predictions" not in prediction_dict or "specifier" not in prediction_dict:
+            raise ValueError("dictionary output from predict_step method must contain 'predictions' and 'specifier' keys.")
         inputs, targets = self._input_target_from_batch(batch, pl_module)
         # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
         rank = trainer.global_rank
@@ -60,23 +62,26 @@ class BaseHDF5Writer(ABC):
             raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
         path = os.path.join(self.output_dir, f"predictions.h5")
 
-        pred_shape = predictions.shape[1:]
         if not self.no_targets:
             targets_shape = targets.shape[1:]
+            pred_shape = prediction_dict["predictions"].shape[1:]
             assert pred_shape == targets_shape, f"Predictions shape {pred_shape} does not match targets shape {targets_shape}"
         
         if path not in self.file_handles:
             self.file_handles[path] = h5py.File(path, "w")
-            self.file_handles[path].create_dataset("predictions", shape=(0, *pred_shape), maxshape=(None, *pred_shape), chunks=True)
+            for key, value in prediction_dict.items():
+                if key == "specifier":
+                    self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
+                else:
+                    per_batch_shape = value.shape[1:]
+                    self.file_handles[path].create_dataset(key, shape=(0, *per_batch_shape), maxshape=(None, *per_batch_shape), chunks=True)
             if not self.no_targets:
                 self.file_handles[path].create_dataset("tracks", shape=(0, *targets_shape), maxshape=(None, *targets_shape), chunks=True)
             self.file_handles[path].create_dataset("indices", shape=(0,), maxshape=(None,), dtype="i8", chunks=True)
-            self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
             self.file_handles[path].attrs['io_mappings'] = getattr(pl_module, 'io_mappings_str', '')
 
         f = self.file_handles[path]
         batch_indices = np.array(batch_indices)
-        predictions_np = predictions.detach().cpu().numpy()
         targets_np = targets.detach().cpu().numpy()
         curr_size = f["predictions"].shape[0]
 
@@ -85,8 +90,9 @@ class BaseHDF5Writer(ABC):
             self.pred_counter += predictions_np.shape[0]
 
         # Resize datasets
-        f["predictions"].resize(max(curr_size,max(batch_indices)+1), axis=0)
-        f["predictions"][batch_indices] = predictions_np
+        for key, value in prediction_dict.items():
+            f[key].resize(max(curr_size,max(batch_indices)+1), axis=0)
+            f[key][batch_indices] = value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value
         
         if not self.no_targets:
             f["tracks"].resize(max(curr_size,max(batch_indices)+1), axis=0)
@@ -95,8 +101,7 @@ class BaseHDF5Writer(ABC):
         f["indices"].resize(max(curr_size,max(batch_indices)+1), axis=0)
         f["indices"][batch_indices] = batch_indices
 
-        f["specifier"].resize(max(curr_size,max(batch_indices)+1), axis=0)
-        f["specifier"][batch_indices] = specifiers
+
 
     def _input_target_from_batch(self, batch, pl_module):
         sequence = batch['sequence']
@@ -134,7 +139,7 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
         BaseHDF5Writer.__init__(self,output_dir=output_dir,no_targets=no_targets,)
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        self.append_batch_to_h5(trainer, pl_module, prediction["predictions"], prediction["specifiers"], batch_indices, batch)
+        self.append_batch_to_h5(trainer, pl_module, prediction, batch_indices, batch)
 
     def on_predict_end(self, trainer, pl_module):
         self._close_all()
@@ -594,16 +599,16 @@ class HaplotypedPredLogger(Callback):
             device=device,
         ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
         with torch.no_grad():
-            training_mode = pl_module.mode
-            training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
+            # training_mode = pl_module.mode
+            # training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
             pl_module.eval()
-            if pl_module.layers:
-                pl_module.mode = 'full-model'
-            elif pl_module.input_to_methyl_rep:
-                pl_module.mode = 'factorized-from-pretrained'
-            else:
-                pl_module.mode = 'pretrained-only'
-            pl_module.true_methyl_rep_weight = 1.0
+            # if pl_module.layers:
+            #     pl_module.mode = 'full-model'
+            # elif pl_module.input_to_methyl_rep:
+            #     pl_module.mode = 'factorized-from-pretrained'
+            # else:
+            #     pl_module.mode = 'pretrained-only'
+            # pl_module.true_methyl_rep_weight = 1.0
             hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
             hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
@@ -620,8 +625,14 @@ class HaplotypedPredLogger(Callback):
                 if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
                 else np.zeros_like(hp2_methylation)
             )
-            pl_module.mode = training_mode
-            pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+            # pl_module.mode = training_mode
+            # pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+        if hp1_methylation is not None and hp2_methylation is not None and hp1_methylation.ndim>1 and hp2_methylation.ndim>1:
+            hp1_methylation = hp1_methylation.mean(axis=0)
+            hp2_methylation = hp2_methylation.mean(axis=0)
+        if hp1_pred_methylation is not None and hp2_pred_methylation is not None and hp1_pred_methylation.ndim>1 and hp2_pred_methylation.ndim>1:
+            hp1_pred_methylation = hp1_pred_methylation.mean(axis=0)
+            hp2_pred_methylation = hp2_pred_methylation.mean(axis=0)
         return (
             hp1_accessibility_target,
             hp2_accessibility_target,

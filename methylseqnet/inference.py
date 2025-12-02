@@ -7,7 +7,7 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
-from methylseqnet.dataset import MethylSeqDataset,MultiMethylDataset,EmbeddingsDataset,MultiDataset
+from methylseqnet.dataset import MethylSeqDataset,MultiMethylDataset,BaseHDF5Dataset,MultiDataset
 from methylseqnet.callbacks import HDF5PredictionWriter
 from methylseqnet.trainer import MethylSeqDataModule
 from tqdm.auto import tqdm
@@ -33,11 +33,13 @@ def run_dataset_save_h5(
     gpus: int = 1,
     num_workers: int = 4,
     no_targets: bool = False,
+    supplemental_predict_outputs: set = set(),
     **kwargs,
 ):
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.eval()
     model.mode=mode
+    model.supplemental_predict_outputs = supplemental_predict_outputs
     
     match dataset_type:
         case 'multimethyl':

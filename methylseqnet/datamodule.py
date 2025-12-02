@@ -20,7 +20,10 @@ class MultiKeyDataset(Dataset):
         Args:
             dataset_dict: Dict of {key: dataset}
             sample_with_replacement: If True, randomly sample. If False, concatenate.
-            epoch_size: Samples per epoch (only used if sample_with_replacement=True)
+            epoch_size: 
+                - If sample_with_replacement=True: int, samples per epoch
+                - If sample_with_replacement=False: tuple of ints (same length as dataset_dict),
+                specifying number of samples to take from the beginning of each dataset
             weights: Dict of {key: weight} for sampling (only used if sample_with_replacement=True)
         """
         self.dataset_dict = dataset_dict
@@ -33,15 +36,31 @@ class MultiKeyDataset(Dataset):
         
         if sample_with_replacement:
             # Random sampling mode
+            if epoch_size is not None and not isinstance(epoch_size, int):
+                raise ValueError("epoch_size must be an int when sample_with_replacement is True")
             self.epoch_size = epoch_size or self.cumulative_sizes[-1]
             if weights is None:
                 weights = {key: 1.0 for key in self.keys}
             self.weights = [weights.get(key, 1.0) for key in self.keys]
+            self.dataset_sizes = None  # Not used in sampling mode
         else:
-            # Concatenation mode - epoch_size cannot be set manually
+            # Concatenation mode
             if epoch_size is not None:
-                raise ValueError("epoch_size cannot be set when sample_with_replacement is False")
-            self.epoch_size = self.cumulative_sizes[-1] if self.cumulative_sizes else 0
+                if not isinstance(epoch_size, tuple):
+                    raise ValueError("epoch_size must be a tuple when sample_with_replacement is False")
+                if len(epoch_size) != len(self.keys):
+                    raise ValueError(f"epoch_size tuple must have {len(self.keys)} elements, got {len(epoch_size)}")
+                # Validate that each size doesn't exceed dataset length
+                for i, (key, size) in enumerate(zip(self.keys, epoch_size)):
+                    if size > len(self.datasets[i]):
+                        raise ValueError(f"epoch_size[{i}] ({size}) exceeds length of dataset '{key}' ({len(self.datasets[i])})")
+                self.dataset_sizes = list(epoch_size)
+                self.cumulative_sizes = self._cumsum(self.dataset_sizes)
+                self.epoch_size = self.cumulative_sizes[-1] if self.cumulative_sizes else 0
+            else:
+                # Use full dataset lengths
+                self.dataset_sizes = [len(d) for d in self.datasets]
+                self.epoch_size = self.cumulative_sizes[-1] if self.cumulative_sizes else 0
     
     @staticmethod
     def _cumsum(sequence):
@@ -67,6 +86,10 @@ class MultiKeyDataset(Dataset):
                 sample_idx = idx
             else:
                 sample_idx = idx - self.cumulative_sizes[dataset_idx - 1]
+
+            # Validation: ensure we're within the allowed range for this dataset
+            if self.dataset_sizes and sample_idx >= self.dataset_sizes[dataset_idx]:
+                raise IndexError(f"Sample index {sample_idx} out of range for dataset {dataset_idx}")
         
         sample = self.datasets[dataset_idx][sample_idx]
         sample['dataset_key'] = self.keys[dataset_idx]

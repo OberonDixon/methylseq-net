@@ -41,7 +41,7 @@ def test_hdf5_prediction_writer():
         
         prediction_1 = {
             "predictions": predictions_1,
-            "specifiers": specifiers_1
+            "specifier": specifiers_1
         }
 
         mock_batch_1 = {
@@ -58,7 +58,7 @@ def test_hdf5_prediction_writer():
         
         prediction_2 = {
             "predictions": predictions_2,
-            "specifiers": specifiers_2
+            "specifier": specifiers_2
         }
 
         mock_batch_2 = {
@@ -170,7 +170,7 @@ def test_hdf5_prediction_writer_file_cleanup():
         
         prediction = {
             "predictions": predictions,
-            "specifiers": specifiers
+            "specifier": specifiers
         }
 
         mock_batch = {
