@@ -3,7 +3,7 @@ from Bio import SeqIO
 import os
 import numpy as np
 from methylseqnet.dna_io import one_hot_encode_dna
-from methylseqnet.readers import load_sequence
+from methylseqnet.readers import load_sequence, load_track, load_masked_track
 from pathlib import Path
 import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
@@ -535,7 +535,82 @@ class MultiBedMethylModHandler(CpGHandler):
         """
         cpgs = [self.load_cpg(**sample) for sample in sample_list]
         return tuple(map(list,zip(*cpgs))) # this converts the list of many tuples into a tuple of two lists
-    
+
+class MultiFileCpGHandler(CpGHandler):
+    """
+    TODO: this class should likely replace all current CpGHandler implementations: filetype-specific implementation now lives in
+    readers.py and outside that the rest of the logic is actually all the same.
+    """
+    def __init__(
+            self,
+            cpg_files: list,
+            combine_operation='mean',
+            binarize=False,
+            threshold=0.5,
+            extend_cpg_sites=False,
+        ):  
+        """
+        This subclass handles CpG methylation data from one or more files, combining the files by the
+        specified operation and binarizing by a threshold if binarize=True
+
+        Parameters
+        ----------
+        cpg_files : list
+            List of file paths containing CpG methylation data.
+        combine_operation : str, optional
+            Operation to combine data from multiple files. Default is 'mean'.
+        binarize : bool, optional
+            Whether to binarize the methylation data. Default is False.
+        threshold : float, optional
+            Threshold for binarization if binarize is True. Default is 0.5.
+        extend_cpg_sites : bool, optional
+            Whether to extend CpG sites by one position downstream. Default is False.
+        """  
+        if not isinstance(cpg_files,list):
+            raise ValueError("bedmethyl_files input is not a list.")
+        for cpg_file in cpg_files:   
+            if not os.path.isfile(cpg_file):
+                raise OSError(f"{cpg_file} does not exist.")
+        self.cpg_files = cpg_files
+        self.combine_operation = combine_operation
+        self.binarize = binarize
+        self.threshold = threshold
+        self.extend_cpg_sites = extend_cpg_sites
+
+    def load_cpg(self,source,start,end):
+        cpg_fractions_list = []
+        valid_sites_list = []
+        for cpg_file in self.cpg_files:
+            raw_values, valid_mask = load_masked_track(
+                file_path=cpg_file,
+                contig=source,
+                start=start,
+                end=end,
+                negative_to_value=0,
+                nan_to_zero=True,
+            )
+            if self.extend_cpg_sites:
+                indices = np.where(valid_mask > 0)[0]
+                indices = indices[indices < len(raw_values) - 1]  # Remove last index if present
+                raw_values[indices + 1] = raw_values[indices]
+            cpg_fractions_list.append(raw_values)
+            valid_sites_list.append(valid_mask)
+        if self.combine_operation=='mean':
+            # Stack the arrays along a new axis (0) and compute the mean along this axis
+            stacked_values = np.stack(cpg_fractions_list, axis=0)
+            aggregated_fractions = np.mean(stacked_values, axis=0)
+            stacked_valids = np.stack(valid_sites_list, axis=0)
+            aggregated_valids = np.mean(stacked_valids, axis=0)
+        else:
+            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        if self.binarize:
+            return aggregated_fractions>self.threshold,aggregated_valids
+        else:
+            return (aggregated_fractions,aggregated_valids)
+    def load_cpg_batch(self,sample_list):
+        cpgs = [self.load_cpg(**sample) for sample in sample_list]
+        return tuple(map(list,zip(*cpgs)))
+
 @gin.register
 @gin.configurable
 class SyntheticCpGHandler(CpGHandler):
@@ -1713,20 +1788,21 @@ class PhasedFiberRNA(MultitaskIOHandler):
     def __init__(
             self,
             ref_genome,
-            methylation_bedmethyls_by_phase,
+            methylation_files_by_phase,
             fiberseq_bigwigs_by_phase,
             rna_bams_by_phase,     
             label_bin_size,
             label_num_bins,
             unphased_rna_bams: list[str] = [],
             kwargs_by_data_type: dict = {
+                'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':False},
                 'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
                 'rna': {'normalize_counts':True,'scale':1, 'clip':384},
             },
             max_chunks_in_mem: int=1000,
             normalize_label_counts: bool=False,
     ):
-        assert len(methylation_bedmethyls_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_bams_by_phase), \
+        assert len(methylation_files_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_bams_by_phase), \
             "The number of phases must be the same for methylation, fiber-seq, and RNA-seq data."
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
@@ -1734,8 +1810,8 @@ class PhasedFiberRNA(MultitaskIOHandler):
 
         self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
         self.cpg_handlers = [
-            MultiBedMethylModHandler(bedmethyl_files = [bedmethyl_file])
-            for bedmethyl_file in methylation_bedmethyls_by_phase
+            MultiFileCpGHandler(cpg_files = [cpg_file], **kwargs_by_data_type['methylation'])
+            for cpg_file in methylation_files_by_phase
             ]
         self.fiber_label_handlers = [
             MultiBigWigLabelHandler(
@@ -1761,7 +1837,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
             label_bin_size = label_bin_size,
             **kwargs_by_data_type['rna'],
         )
-        self.num_phases = len(methylation_bedmethyls_by_phase)
+        self.num_phases = len(methylation_files_by_phase)
         self.num_tracks = 2
         self.io_mappings_list = [
             {
@@ -1769,7 +1845,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
                 'cell_type':0,
                 'data_type':'Fiber-seq',
                 'genome':ref_genome,
-                'methylation_files':methylation_bedmethyls_by_phase,
+                'methylation_files':methylation_files_by_phase,
                 'label_files':fiberseq_bigwigs_by_phase,
             },
             {
@@ -1777,7 +1853,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
                 'cell_type':0,
                 'data_type':'RNA-seq',
                 'genome':ref_genome,
-                'methylation_files':methylation_bedmethyls_by_phase,
+                'methylation_files':methylation_files_by_phase,
                 'label_files':rna_bams_by_phase,
             },
         ]

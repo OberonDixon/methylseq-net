@@ -64,8 +64,22 @@ def load_masked_track(
     bin_size: int = 1,
     **kwargs,
 ) -> np.ndarray:
-    track = load_track(file_path, contig, start, end, file_type, negative_to_value, nan_to_zero, bin_size, **kwargs)
+    track = load_track(
+        file_path=file_path, 
+        contig=contig,
+        start=start,
+        end=end,
+        file_type=file_type,
+        negative_to_value=None,
+        nan_to_zero=False,
+        bin_size=bin_size,
+        **kwargs,
+    )
     valid_mask = ~np.isnan(track)
+    if negative_to_value is not None:
+        track[track < 0] = negative_to_value
+    if nan_to_zero:
+        track[np.isnan(track)] = 0
     return track, valid_mask
 
 def _load_fasta_sequence(

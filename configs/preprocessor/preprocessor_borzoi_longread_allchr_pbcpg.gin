@@ -1,8 +1,8 @@
 ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
 regions_bed = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
 methylation_files_by_phase = (
-    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp1_whole_genome_CpG/pileup.sorted.bed.gz',
-    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp2_whole_genome_CpG/pileup.sorted.bed.gz',
+    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap1.bw',
+    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap2.bw',
 )
 fiberseq_bigwigs_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap1.acc.bw',
@@ -12,7 +12,7 @@ rna_bams_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.bam',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.bam',
 )
-output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_dimelo-toolkit/'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_pb_cpg/'
 label_bin_size = 128
 label_num_bins = 4096
 seq_length = 524288
@@ -31,6 +31,11 @@ PhasedFiberRNA.fiberseq_bigwigs_by_phase = %fiberseq_bigwigs_by_phase
 PhasedFiberRNA.rna_bams_by_phase = %rna_bams_by_phase
 PhasedFiberRNA.label_bin_size = %label_bin_size
 PhasedFiberRNA.label_num_bins = %label_num_bins
+PhasedFiberRNA.kwargs_by_data_type = {
+    'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':True},
+    'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
+    'rna': {'normalize_counts':True,'scale':1, 'clip':384},
+}
 
 PreprocessingPipeline.sample_generator = @RegionBedParser()
 PreprocessingPipeline.multitask_io_handler = @PhasedFiberRNA()

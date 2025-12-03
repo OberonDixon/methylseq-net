@@ -1,6 +1,6 @@
 ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
 regions_bed = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/chrX_sequences.bed'
-methylation_bedmethyls_by_phase = (
+methylation_files_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp1_whole_genome_CpG/pileup.sorted.bed.gz',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp2_whole_genome_CpG/pileup.sorted.bed.gz',
 )
@@ -12,7 +12,7 @@ rna_bams_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.bam',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.bam',
 )
-output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits/'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_dimelo-toolkit/'
 label_bin_size = 128
 label_num_bins = 4096
 seq_length = 524288
@@ -26,7 +26,7 @@ RegionBedParser.regions_bed = %regions_bed
 RegionBedParser.seq_length = %seq_length
 
 PhasedFiberRNA.ref_genome = %ref_genome
-PhasedFiberRNA.methylation_bedmethyls_by_phase = %methylation_bedmethyls_by_phase
+PhasedFiberRNA.methylation_files_by_phase = %methylation_files_by_phase
 PhasedFiberRNA.fiberseq_bigwigs_by_phase = %fiberseq_bigwigs_by_phase
 PhasedFiberRNA.rna_bams_by_phase = %rna_bams_by_phase
 PhasedFiberRNA.label_bin_size = %label_bin_size
