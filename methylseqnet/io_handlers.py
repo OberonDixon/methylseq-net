@@ -548,6 +548,7 @@ class MultiFileCpGHandler(CpGHandler):
             binarize=False,
             threshold=0.5,
             extend_cpg_sites=False,
+            cpg_values_rescale=1.0,
         ):  
         """
         This subclass handles CpG methylation data from one or more files, combining the files by the
@@ -565,9 +566,11 @@ class MultiFileCpGHandler(CpGHandler):
             Threshold for binarization if binarize is True. Default is 0.5.
         extend_cpg_sites : bool, optional
             Whether to extend CpG sites by one position downstream. Default is False.
+        cpg_values_rescale : float, optional
+            Factor to rescale CpG values. Default is 1.0.
         """  
         if not isinstance(cpg_files,list):
-            raise ValueError("bedmethyl_files input is not a list.")
+            raise ValueError("cpg_files input is not a list.")
         for cpg_file in cpg_files:   
             if not os.path.isfile(cpg_file):
                 raise OSError(f"{cpg_file} does not exist.")
@@ -576,6 +579,7 @@ class MultiFileCpGHandler(CpGHandler):
         self.binarize = binarize
         self.threshold = threshold
         self.extend_cpg_sites = extend_cpg_sites
+        self.cpg_values_rescale = cpg_values_rescale
 
     def load_cpg(self,source,start,end):
         cpg_fractions_list = []
@@ -588,11 +592,14 @@ class MultiFileCpGHandler(CpGHandler):
                 end=end,
                 negative_to_value=0,
                 nan_to_zero=True,
+                file_type='bedmethyl' if Path(cpg_file).name.endswith(".bed.gz") else None,
             )
+            raw_values *= self.cpg_values_rescale
             if self.extend_cpg_sites:
                 indices = np.where(valid_mask > 0)[0]
                 indices = indices[indices < len(raw_values) - 1]  # Remove last index if present
                 raw_values[indices + 1] = raw_values[indices]
+                valid_mask[indices + 1] = 1
             cpg_fractions_list.append(raw_values)
             valid_sites_list.append(valid_mask)
         if self.combine_operation=='mean':
