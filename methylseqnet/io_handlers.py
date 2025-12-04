@@ -1800,13 +1800,15 @@ class PhasedFiberRNA(MultitaskIOHandler):
             rna_bams_by_phase,     
             label_bin_size,
             label_num_bins,
-            unphased_rna_bams: list[str] = [],
+            unphased_rna_bam: list[str] = [],
             kwargs_by_data_type: dict = {
                 'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':False},
                 'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
                 'rna': {'normalize_counts':True,'scale':1, 'clip':384},
             },
             max_chunks_in_mem: int=1000,
+            normalize_phased_to_unphased_counts: bool=False,
+            phase_normalization_pseudocount: float=0.1,
             normalize_label_counts: bool=False,
     ):
         assert len(methylation_files_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_bams_by_phase), \
@@ -1814,6 +1816,11 @@ class PhasedFiberRNA(MultitaskIOHandler):
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
         self.label_bin_size = label_bin_size
+        self.normalize_phased_to_unphased_counts = normalize_phased_to_unphased_counts
+        self.phase_normalization_pseudocount = phase_normalization_pseudocount
+
+        if self.normalize_phased_to_unphased_counts:
+            assert unphased_rna_bam!=[], "An unphased RNA BAM file must be provided for normalization."
 
         self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
         self.cpg_handlers = [
@@ -1840,7 +1847,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
             for bam_file in rna_bams_by_phase
         ]
         self.unphased_rna_loader = BamCovLabelHandler(
-            bam_files = unphased_rna_bams,
+            bam_files = [unphased_rna_bam],
             label_bin_size = label_bin_size,
             **kwargs_by_data_type['rna'],
         )
@@ -1914,10 +1921,21 @@ class PhasedFiberRNA(MultitaskIOHandler):
             np.stack([fiber_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
             for sample_idx in range(len(sample_list))
         ]
-        rna_list = [
-            np.stack([rna_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
-            for sample_idx in range(len(sample_list))
-        ]
+        if self.normalize_phased_to_unphased_counts:
+            unphased_rna_counts = np.array(self.unphased_rna_loader.load_labels_batch(sample_list))
+            phased_counts = np.array([
+                np.stack([rna_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
+                for sample_idx in range(len(sample_list))
+            ])
+            phased_sum = phased_counts.sum(axis=1)
+            scaling_factor = unphased_rna_counts / (phased_sum + self.phase_normalization_pseudocount)
+            normalized_phased_counts = phased_counts * scaling_factor[:, np.newaxis, :]
+            rna_list = [normalized_phased_counts[i] for i in range(len(sample_list))]
+        else:
+            rna_list = [
+                np.stack([rna_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
+                for sample_idx in range(len(sample_list))
+            ]
         label_list = [
             np.stack([fiber_list[sample_idx], rna_list[sample_idx]], axis=-1)
             for sample_idx in range(len(sample_list))
