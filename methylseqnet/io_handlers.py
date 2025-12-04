@@ -951,19 +951,19 @@ class BamCovLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.scale=scale
         self.clip=clip
+        total_reads = 0
+        for bam_file in self.bam_files:   
+            if os.path.isfile(bam_file):
+                try:
+                    bam = pysam.AlignmentFile(bam_file)
+                    self.chroms = dict(zip(bam.references, bam.lengths))
+                    total_reads += bam.mapped
+                    bam.close()
+                except:
+                    raise ValueError(f"{bam_file} cannot be opened by pysam AlignmentFile.")
+            else:
+                raise OSError(f"{bam_file} does not exist.")
         if self.normalize_counts and self.bam_files:
-            total_reads = 0
-            for bam_file in self.bam_files:   
-                if os.path.isfile(bam_file):
-                    try:
-                        bam = pysam.AlignmentFile(bam_file)
-                        self.chroms = dict(zip(bam.references, bam.lengths))
-                        total_reads += bam.mapped
-                        bam.close()
-                    except:
-                        raise ValueError(f"{bam_file} cannot be opened by pysam AlignmentFile.")
-                else:
-                    raise OSError(f"{bam_file} does not exist.")
             self.read_depth_scaling = 1e6 / total_reads
         else:
             self.read_depth_scaling = 1
