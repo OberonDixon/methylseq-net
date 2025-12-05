@@ -29,15 +29,15 @@ RegionBedParser.seq_length = %seq_length
 PhasedFiberRNA.ref_genome = %ref_genome
 PhasedFiberRNA.methylation_files_by_phase = %methylation_files_by_phase
 PhasedFiberRNA.fiberseq_bigwigs_by_phase = %fiberseq_bigwigs_by_phase
-PhasedFiberRNA.rna_bams_by_phase = %rna_bams_by_phase
+PhasedFiberRNA.rna_files_by_phase = %rna_bams_by_phase
 PhasedFiberRNA.label_bin_size = %label_bin_size
 PhasedFiberRNA.label_num_bins = %label_num_bins
 PhasedFiberRNA.kwargs_by_data_type = {
     'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':True, 'cpg_values_rescale':0.01},
     'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
-    'rna': {'normalize_counts':False,'scale':1, 'clip':384},
+    'rna': {'normalize_counts':True,'scale':1, 'clip':384},
 }
-PhasedFiberRNA.unphased_rna_bam = %unphased_rna_bam
+PhasedFiberRNA.unphased_rna_file = %unphased_rna_bam
 PhasedFiberRNA.normalize_phased_to_unphased_counts=True
 PhasedFiberRNA.phase_normalization_pseudocount=0.1
 

@@ -1797,10 +1797,11 @@ class PhasedFiberRNA(MultitaskIOHandler):
             ref_genome,
             methylation_files_by_phase,
             fiberseq_bigwigs_by_phase,
-            rna_bams_by_phase,     
+            rna_files_by_phase,     
             label_bin_size,
             label_num_bins,
-            unphased_rna_bam: list[str] = [],
+            rna_handler_cls = BamCovLabelHandler,
+            unphased_rna_file: list[str] = [],
             kwargs_by_data_type: dict = {
                 'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':False},
                 'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
@@ -1811,7 +1812,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
             phase_normalization_pseudocount: float=0.1,
             normalize_label_counts: bool=False,
     ):
-        assert len(methylation_files_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_bams_by_phase), \
+        assert len(methylation_files_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_files_by_phase), \
             "The number of phases must be the same for methylation, fiber-seq, and RNA-seq data."
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
@@ -1820,7 +1821,9 @@ class PhasedFiberRNA(MultitaskIOHandler):
         self.phase_normalization_pseudocount = phase_normalization_pseudocount
 
         if self.normalize_phased_to_unphased_counts:
-            assert unphased_rna_bam!=[], "An unphased RNA BAM file must be provided for normalization."
+            assert unphased_rna_file!=[], "An unphased RNA BAM file must be provided for normalization."
+            phased_rna_kwargs = kwargs_by_data_type['rna'].copy()
+            phased_rna_kwargs['normalize_counts'] = False
 
         self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
         self.cpg_handlers = [
@@ -1839,15 +1842,15 @@ class PhasedFiberRNA(MultitaskIOHandler):
             for bigwig_file in fiberseq_bigwigs_by_phase
         ]
         self.rna_label_handlers = [
-            BamCovLabelHandler(
-                bam_files = [bam_file],
+            rna_handler_cls(
+                [rna_file],
                 label_bin_size = label_bin_size,
-                **kwargs_by_data_type['rna'],
+                **phased_rna_kwargs,
             )
-            for bam_file in rna_bams_by_phase
+            for rna_file in rna_files_by_phase
         ]
-        self.unphased_rna_loader = BamCovLabelHandler(
-            bam_files = [unphased_rna_bam],
+        self.unphased_rna_loader = rna_handler_cls(
+            [unphased_rna_file],
             label_bin_size = label_bin_size,
             **kwargs_by_data_type['rna'],
         )
@@ -1868,7 +1871,7 @@ class PhasedFiberRNA(MultitaskIOHandler):
                 'data_type':'RNA-seq',
                 'genome':ref_genome,
                 'methylation_files':methylation_files_by_phase,
-                'label_files':rna_bams_by_phase,
+                'label_files':rna_files_by_phase,
             },
         ]
 
@@ -1923,13 +1926,24 @@ class PhasedFiberRNA(MultitaskIOHandler):
         ]
         if self.normalize_phased_to_unphased_counts:
             unphased_rna_counts = np.array(self.unphased_rna_loader.load_labels_batch(sample_list))
+            # print("unphased cts",unphased_rna_counts.shape,np.sum(unphased_rna_counts,axis=1))
             phased_counts = np.array([
                 np.stack([rna_phases_list[phase][sample_idx] for phase in range(self.num_phases)])
                 for sample_idx in range(len(sample_list))
             ])
+            # print("phased cts",phased_counts.shape,np.sum(phased_counts,axis=2))
             phased_sum = phased_counts.sum(axis=1)
+            # print("phased sum",np.mean(phased_sum[phased_sum>0]))
             scaling_factor = unphased_rna_counts / (phased_sum + self.phase_normalization_pseudocount)
+            # print("scaling factor",scaling_factor.shape,scaling_factor[scaling_factor>0])
+            # print("phase 0 before scaling",phased_counts[:,0][scaling_factor>0])
+            # print("phase 1 before scaling",phased_counts[:,1][scaling_factor>0])
+            # print("phased sum before scaling",phased_sum[scaling_factor>0])
+            # print("unphased before scaling",unphased_rna_counts[scaling_factor>0])
             normalized_phased_counts = phased_counts * scaling_factor[:, np.newaxis, :]
+            # print("cts scaling on avg",np.sum(normalized_phased_counts,axis=2)/np.sum(phased_counts,axis=2))
+            # print("scaled to",np.sum(unphased_rna_counts,axis=1),"equal now to",np.sum(normalized_phased_counts,axis=1).sum(axis=1))
+            # print("nonzero sites unphased|hp1|hp2:",np.sum(unphased_rna_counts>0),np.sum(normalized_phased_counts[:,0]>0),np.sum(normalized_phased_counts[:,1]>0))
             rna_list = [normalized_phased_counts[i] for i in range(len(sample_list))]
         else:
             rna_list = [
