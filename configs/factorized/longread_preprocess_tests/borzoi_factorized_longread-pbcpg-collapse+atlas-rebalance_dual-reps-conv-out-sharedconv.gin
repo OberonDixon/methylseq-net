@@ -28,7 +28,7 @@ methylseqnet.layers.DilatedResidual.repeat=7
 methylseqnet.layers.DilatedResidual.dropout=0.3
 
 scaleup_block/methylseqnet.layers.ConvFinal.in_channels=%dilated_residual_filters
-scaleup_block/methylseqnet.layers.ConvFinal.filters=63
+scaleup_block/methylseqnet.layers.ConvFinal.filters=65
 scaleup_block/methylseqnet.layers.ConvFinal.kernel_size=1
 
 embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
@@ -48,7 +48,7 @@ methyl_reps_probe/Conv1d.out_channels=42
 methyl_reps_probe/Conv1d.kernel_size=1
 
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.in_channels=1920
-embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=42
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=43
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=4
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
@@ -106,7 +106,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':60,
             },
         }
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
+methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
 methylseqnet.methylseqnn.MethylSeqNN.regression=True
 methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
@@ -121,6 +121,16 @@ methylseqnet.callbacks.HaplotypedPredLogger.accessibility_outputs_slice=[0]
 methylseqnet.callbacks.HaplotypedPredLogger.rna_outputs_slice=[1]
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+    "longread":[
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/fold2.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/fold4.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/fold6.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/chrX_fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/chrX_fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/chrX_fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/chrX_fold0.h5",
+    ],
     "atlas":[
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold2.h5",
@@ -129,10 +139,11 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
     ],
 }
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+    "longread":["/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/chrX_fold1.h5"],
     "atlas":["/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"],
 }
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
 methylseqnet.trainer.MethylSeqDataModule.epoch_size=1000
-methylseqnet.trainer.MethylSeqDataModule.val_epoch_size=(500,)
+methylseqnet.trainer.MethylSeqDataModule.val_epoch_size=(500,500)
