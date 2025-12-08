@@ -1,6 +1,6 @@
 ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
 regions_bed = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
-unphased_rna_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.tss.counts.bed.gz'
+unphased_rna_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.no5exon.tss.counts.bed.gz'
 methylation_files_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap1.bw',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap2.bw',
@@ -10,10 +10,10 @@ fiberseq_bigwigs_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap2.acc.bw',
 )
 rna_files_by_phase = (
-    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.tss.counts.bed.gz',
-    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.tss.counts.bed.gz',
+    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.no5exon.tss.counts.bed.gz',
+    '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.no5exon.tss.counts.bed.gz',
 )
-output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse/'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/preprocessed_datasets/borzoi_splits_isoseq_collapse_no5exon/'
 label_bin_size = 128
 label_num_bins = 4096
 seq_length = 524288

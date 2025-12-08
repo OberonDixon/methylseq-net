@@ -60,9 +60,9 @@ def parse_abundance(abundance_path):
 def main():
     folder = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/"
     for gff_path, abundance_path, output_path in [
-        (f"{folder}GM12878.kinnex.collapsed.gff",f"{folder}GM12878.kinnex.collapsed.abundance.txt",f"{folder}GM12878.kinnex.tss.counts.bed.gz"),
-        (f"{folder}GM12878.kinnex.HP1.collapsed.gff",f"{folder}GM12878.kinnex.HP1.collapsed.abundance.txt",f"{folder}GM12878.kinnex.HP1.tss.counts.bed.gz"),
-        (f"{folder}GM12878.kinnex.HP2.collapsed.gff",f"{folder}GM12878.kinnex.HP2.collapsed.abundance.txt",f"{folder}GM12878.kinnex.HP2.tss.counts.bed.gz"),
+        (f"{folder}GM12878.kinnex.collapsed.no5exon.gff",f"{folder}GM12878.kinnex.collapsed.no5exon.abundance.txt",f"{folder}GM12878.kinnex.no5exon.tss.counts.bed.gz"),
+        (f"{folder}GM12878.kinnex.HP1.collapsed.no5exon.gff",f"{folder}GM12878.kinnex.HP1.collapsed.no5exon.abundance.txt",f"{folder}GM12878.kinnex.HP1.no5exon.tss.counts.bed.gz"),
+        (f"{folder}GM12878.kinnex.HP2.collapsed.no5exon.gff",f"{folder}GM12878.kinnex.HP2.collapsed.no5exon.abundance.txt",f"{folder}GM12878.kinnex.HP2.no5exon.tss.counts.bed.gz"),
     ]:
         print(f"Processing {output_path}...", file=sys.stderr)
         print("Parsing GFF...", file=sys.stderr)
