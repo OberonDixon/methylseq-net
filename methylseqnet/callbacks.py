@@ -21,6 +21,7 @@ import gin
 from methylseqnet import dna_io
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
+from methylseqnet.readers import load_sequence, load_track, load_masked_track
 
 class ConditionalBestScoreReset(Callback):
     def __init__(self, checkpoint_callback, reset_on_train_start):
@@ -657,15 +658,15 @@ class HaplotypedPredLogger(Callback):
         end,
         device,
     ) -> torch.Tensor:
-        cpg_ratio, non_zero_mask = self._load_track_from_file(
-            genome_track_file=genome_track_file,
-            motif="CG,0",
-            chromosome=chromosome,
+        cpg_ratio, non_zero_mask = load_masked_track(
+            file_path=genome_track_file,
+            contig=chromosome,
             start=start,
             end=end,
-            bin_size=1,
-            crop=0,
+            motif="CG,0",
         )
+        if np.any(cpg_ratio>1):
+            cpg_ratio = cpg_ratio/100
         exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
         x_methylseq = torch.permute(
             torch.tensor(
@@ -729,34 +730,5 @@ class HaplotypedPredLogger(Callback):
         bin_size=1,
         crop=0,
     ) -> np.ndarray:
-        from dimelo import load_processed
-        if genome_track_file.endswith(".bed.gz"):
-            mod_vector, val_vector = load_processed.pileup_vectors_from_bedmethyl(
-                bedmethyl_file = genome_track_file,
-                motif = motif,
-                regions = f'{chromosome}:{start+crop}-{end-crop}',
-                quiet=True,
-            )
-            mod_vector_binned = mod_vector.reshape(-1, bin_size).sum(axis=1)
-            val_vector_binned = val_vector.reshape(-1, bin_size).sum(axis=1)
-            non_zero_mask = val_vector_binned != 0
-            methylated_ratio = np.zeros_like(mod_vector_binned, dtype=float)
-            methylated_ratio[non_zero_mask] = mod_vector_binned[non_zero_mask] / val_vector_binned[non_zero_mask]
-            return methylated_ratio, non_zero_mask
-        elif genome_track_file.endswith(".bw") or genome_track_file.endswith(".bigwig"):
-            bw = pyBigWig.open(genome_track_file)
-            values = np.array(bw.values(chromosome, start+crop, end-crop, numpy=True))
-            bw.close()
-            values[np.isnan(values)] = 0.0
-            values_binned = values.reshape(-1, bin_size).mean(axis=1)
-            non_zero_mask = values_binned != 0
-            return values_binned, non_zero_mask
-        elif genome_track_file.endswith(".bam"):
-            bam = pysam.AlignmentFile(genome_track_file, "rb")
-            coverage = np.array([sum(x) for x in zip(*(bam.count_coverage(chromosome,start+crop,end-crop)))])
-            bam.close()
-            coverage_binned = coverage.reshape(-1, bin_size).mean(axis=1)
-            non_zero_mask = coverage_binned != 0
-            return coverage_binned, non_zero_mask
-        else:
-            raise ValueError(f"Unsupported genome track file format: {genome_track_file}")
+        values = load_track(file_path=genome_track_file, contig=chromosome, start=start+crop, end=end-crop, nan_to_zero=True, bin_size=bin_size, motif=motif)
+        return values, values != 0
