@@ -4,6 +4,74 @@ import os
 
 import numpy as np
 
+def load_annotations(
+    tabix_path,
+    fetch_params=(),
+    subset=None,
+    exclude_subset=False,
+    ):
+    """
+    Load transcript start site (TSS) annotations from a tabix-indexed GTF file.
+    Parameters
+    ----------
+    tabix_path : str or Path
+        Path to the tabix-indexed GTF file.
+    fetch_params : tuple, optional, default () to load all
+        Parameters to pass to the fetch method of the tabix file (e.g., contig, start, end).
+    subset : set of str, optional, default None
+        Set of gene names to include. If None, include all genes.
+    exclude_subset : bool, optional, default False
+        If True, exclude genes in the subset instead of including them.
+    Returns
+    -------
+    list of dict
+        List of TSS annotations with keys: 'chrom', 'tss', 'strand', 'gene_id', 'gene_name', 'transcript_id', 'transcript_type', 'canonical'.
+    """
+    import pysam
+    gtf = pysam.TabixFile(tabix_path)
+    tss_list = []
+    for record in gtf.fetch(*fetch_params):
+        fields = record.split("\t")
+        if fields[2] == "transcript":
+            chrom = fields[0]
+            start = int(fields[3])
+            end = int(fields[4])
+            strand = fields[6]
+            attributes = fields[8]
+
+            # Parse attributes
+            attr_dict = {}
+            for attr in attributes.strip().split(';'):
+                attr = attr.strip()
+                if attr:
+                    parts = attr.split(' ', 1)
+                    if len(parts) == 2:
+                        key = parts[0]
+                        val = parts[1].strip('"')
+                        attr_dict[key] = val
+            
+            # TSS is start for + strand, end for - strand
+            tss = start if strand == '+' else end
+
+            tss_dict = {
+                'chrom': chrom,
+                'tss': tss,
+                'strand': strand,
+                'gene_id': attr_dict.get('gene_id', ''),
+                'gene_name': attr_dict.get('gene_name', '').upper(),
+                'transcript_id': attr_dict.get('transcript_id', ''),
+                'transcript_type': attr_dict.get('transcript_type', ''),
+                'canonical': 'Ensembl_canonical' in attributes
+            }
+            
+            if (
+                    (subset is None or (exclude_subset != (tss_dict['gene_name'] in subset)))
+                    and tss_dict['canonical']
+                    and tss_dict['transcript_type'] == 'protein_coding'
+                ):
+                tss_list.append(tss_dict)
+    return tss_list
+
 def load_sequence(
     file_path: str | Path | dict[str, str | Path],
     contig: str,
