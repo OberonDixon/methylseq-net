@@ -336,6 +336,8 @@ class HaplotypedPredLogger(Callback):
         regions: list[tuple[str, int, int]],
         hp1_rna_file: str = None,
         hp2_rna_file: str = None,
+        hp1_genome_fasta: str | None = None,
+        hp2_genome_fasta: str | None = None,
         accessibility_outputs_slice: slice | list = [0],
         rna_outputs_slice: slice | list = [-1],
         crop_for_accessibility: int = 163840,
@@ -354,6 +356,12 @@ class HaplotypedPredLogger(Callback):
         self.hp1_rna_file = hp1_rna_file
         self.hp2_rna_file = hp2_rna_file
         self.genome = pysam.FastaFile(ref_genome_fasta)
+        if hp1_genome_fasta and hp2_genome_fasta:
+            self.hp1_genome = pysam.FastaFile(hp1_genome_fasta)
+            self.hp2_genome = pysam.FastaFile(hp2_genome_fasta)
+        else:
+            self.hp1_genome = self.genome
+            self.hp2_genome = self.genome
         self.regions = regions
         self.accessibility_outputs_slice = accessibility_outputs_slice
         self.rna_outputs_slice = rna_outputs_slice
@@ -561,6 +569,7 @@ class HaplotypedPredLogger(Callback):
             start=start,
             end=end,
             device=device,
+            genome=self.hp1_genome,
         )
         hp2_sequence, hp2_methylation_encoding = self._construct_input_tensor(
             genome_track_file=self.hp2_cpg_file,
@@ -568,6 +577,7 @@ class HaplotypedPredLogger(Callback):
             start=start,
             end=end,
             device=device,
+            genome=self.hp2_genome,
         )
         hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
         hp2_methylation = self.input_to_methylation(torch.cat([hp2_sequence, hp2_methylation_encoding],dim=1)).squeeze().cpu().numpy()
@@ -657,6 +667,7 @@ class HaplotypedPredLogger(Callback):
         start,
         end,
         device,
+        genome=None,
     ) -> torch.Tensor:
         cpg_ratio, non_zero_mask = load_masked_track(
             file_path=genome_track_file,
@@ -668,10 +679,12 @@ class HaplotypedPredLogger(Callback):
         if np.any(cpg_ratio>1):
             cpg_ratio = cpg_ratio/100
         exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
+        if genome is None:
+            genome = self.genome
         x_methylseq = torch.permute(
             torch.tensor(
                 dna_io.one_hot_encode_dna(
-                    dna_strand=self.genome.fetch(chromosome,start,end), 
+                    dna_strand=genome.fetch(chromosome,start,end), 
                     cpg_methylation=exp_cpg_ratio, 
                     valid_cpgs=non_zero_mask,
                 ),
