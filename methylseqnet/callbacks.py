@@ -22,6 +22,7 @@ from methylseqnet import dna_io
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
 from methylseqnet.readers import load_sequence, load_track, load_masked_track
+from methylseqnet.tensor_ops import gather_to_rank0
 
 class ConditionalBestScoreReset(Callback):
     def __init__(self, checkpoint_callback, reset_on_train_start):
@@ -140,7 +141,32 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
         BaseHDF5Writer.__init__(self,output_dir=output_dir,no_targets=no_targets,)
 
     def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        self.append_batch_to_h5(trainer, pl_module, prediction, batch_indices, batch)
+        if trainer.world_size > 1:
+            rank = trainer.global_rank
+            world_size = trainer.world_size
+            
+            if rank == 0:
+                # Gather everything
+                gathered_prediction = {k: gather_to_rank0(v, world_size, rank) for k, v in prediction.items()}
+                gathered_indices = gather_to_rank0(
+                    torch.tensor(batch_indices, device=prediction['predictions'].device), 
+                    world_size, rank
+                ).cpu().numpy() if batch_indices is not None else None
+                gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v 
+                                for k, v in batch.items()}
+                
+                self.append_batch_to_h5(trainer, pl_module, gathered_prediction, gathered_indices, gathered_batch)
+            else:
+                # Non-root ranks just send
+                for v in prediction.values():
+                    gather_to_rank0(v, world_size, rank)
+                if batch_indices is not None:
+                    gather_to_rank0(torch.tensor(batch_indices, device=prediction['predictions'].device), world_size, rank)
+                for v in batch.values():
+                    if isinstance(v, torch.Tensor):
+                        gather_to_rank0(v, world_size, rank)
+        else:
+            self.append_batch_to_h5(trainer, pl_module, prediction, batch_indices, batch)
 
     def on_predict_end(self, trainer, pl_module):
         self._close_all()

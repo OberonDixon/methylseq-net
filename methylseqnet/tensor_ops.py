@@ -1,5 +1,50 @@
 import torch
 import torch.nn.functional as F
+import torch.distributed as dist
+import numpy as np
+
+def gather_to_rank0(data, world_size=None, rank=None):
+    """
+    Gather data from all ranks to rank 0.
+    
+    Args:
+        data: torch.Tensor, np.ndarray, list, or other object to gather
+        world_size: Number of processes (auto-detected if None)
+        rank: Current process rank (auto-detected if None)
+    
+    Returns:
+        Gathered data on rank 0, None on other ranks
+    """
+    if world_size is None:
+        world_size = dist.get_world_size() if dist.is_initialized() else 1
+    if rank is None:
+        rank = dist.get_rank() if dist.is_initialized() else 0
+    
+    if world_size == 1:
+        return data
+    
+    if isinstance(data, torch.Tensor):
+        if rank == 0:
+            gathered = [torch.zeros_like(data) for _ in range(world_size)]
+            dist.gather(data, gathered, dst=0)
+            return torch.cat(gathered, dim=0)
+        else:
+            dist.gather(data, dst=0)
+            return None
+    else:
+        # For non-tensors (strings, lists, numpy arrays, etc.)
+        if rank == 0:
+            gathered = [None] * world_size
+            dist.gather_object(data, gathered, dst=0)
+            if isinstance(data, np.ndarray):
+                return np.concatenate(gathered)
+            elif isinstance(data, list):
+                return [item for sublist in gathered for item in sublist]
+            else:
+                return gathered
+        else:
+            dist.gather_object(data, dst=0)
+            return None
 
 def interp(x: torch.Tensor, xp: torch.Tensor, fp: torch.Tensor, dim: int=-1, extrapolate: str='constant') -> torch.Tensor:
     """One-dimensional linear interpolation between monotonically increasing sample
