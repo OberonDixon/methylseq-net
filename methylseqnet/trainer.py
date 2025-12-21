@@ -44,7 +44,7 @@ class MethylSeqDataModule(LightningDataModule):
         epoch_size=10000,
         val_epoch_size=None,
         dataset_weights=None,
-        dataset_class=MethylSeqDataset,
+        dataset_class=MultiMethylDataset,
         pow=False, # temporarily restored for backwards compatibility; does nothing
         num_workers=4,
     ):

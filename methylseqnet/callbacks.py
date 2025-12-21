@@ -145,6 +145,14 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
             rank = trainer.global_rank
             world_size = trainer.world_size
             
+            batch_to_gather = batch.copy()
+            # these huge input tensors may slow down gathering
+            batch.pop('sequence',None)
+            batch.pop('methylation',None)
+
+            # print(f"batch keys {batch_to_gather.keys()} prediction keys {[prediction.keys()]}")
+            # print(f"world_size {world_size} rank {rank} batch indices {batch_indices}")
+            
             if rank == 0:
                 # Gather everything
                 gathered_prediction = {k: gather_to_rank0(v, world_size, rank) for k, v in prediction.items()}
@@ -153,7 +161,7 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
                     world_size, rank
                 ).cpu().numpy() if batch_indices is not None else None
                 gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v 
-                                for k, v in batch.items()}
+                                for k, v in batch_to_gather.items()}
                 
                 self.append_batch_to_h5(trainer, pl_module, gathered_prediction, gathered_indices, gathered_batch)
             else:
