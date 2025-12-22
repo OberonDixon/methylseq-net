@@ -322,6 +322,8 @@ class MethylSeqNN(L.LightningModule):
         self.start_epoch = 0
 
         self.supplemental_predict_outputs = supplemental_predict_outputs
+        if 'cpg_density' in self.supplemental_predict_outputs:
+            warnings.warn("CpG density supplemental output is hardcoded to 128bp bins with no cropping.")
         self.hooked_supplemental_outputs = {}
 
     def _build_modulelist_with_padding(self, modulelist_layers):
@@ -355,6 +357,14 @@ class MethylSeqNN(L.LightningModule):
         """
         if methylation.shape[1] > 1 and methylation.shape[1]!=self.num_cell_types[dataset_key]:
             raise ValueError(f"MethylSeqNN residual forward received methylation input with {methylation.shape[1]} cell types, but expected either 1 (shared methylation) or {self.num_cell_types[dataset_key] if dataset_key in self.num_cell_types else self.num_cell_types}.")
+        if 'cpg_density' in self.supplemental_predict_outputs:
+            bin_size = 128
+            cpgs = (sequence[:,1,:-1].bool() & sequence[:,2,1:].bool()).float()
+            cpgs = torch.nn.functional.pad(cpgs, (0, 1), value=0)
+            num_bins = sequence.shape[2] // bin_size
+            cpgs_binned = cpgs[:, :num_bins*bin_size].reshape(cpgs.shape[0], num_bins, bin_size)
+            cpg_density = cpgs_binned.sum(dim=2) / bin_size
+            self.hooked_supplemental_outputs['cpg_density'] = cpg_density
         match self.mode:
             # run both the pretrained and residual models, including their outputs heads. Full prediction.
             case 'full-model':
@@ -944,7 +954,8 @@ class MethylSeqNN(L.LightningModule):
                 for layer in self.seq_input_head:
                     x_seq = layer(x_seq)
             embeddings = self.pretrained_seq_model(x_seq)     
-
+            if "pretrained_embedder_rep" in self.supplemental_predict_outputs:
+                self.hooked_supplemental_outputs['pretrained_embedder_rep'] = embeddings
             return embeddings
         else:
             return None
