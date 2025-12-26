@@ -252,17 +252,22 @@ class BaseHDF5Dataset(Dataset):
     def __init__(
         self, 
         file_path, 
-        batch_size=None, 
-        transforms=(), 
-        return_specifiers=False,
-        max_retries=100, 
-        retry_delay=2,
+        batch_size: int | None = None, 
+        transforms: tuple = (), 
+        return_specifiers: bool = False,
+        datasets: set | None = None,
+        max_retries: int = 100, 
+        retry_delay: int = 2,
     ):
         """
         args:
             - file_path: a path to an h5 file, or a list of paths to h5 files
             - batch_size: how many samples per batch
             - transforms: unused for this class. present because we want a shared interface between dataset classes
+            - return_specifiers: whether to return specifiers
+            - datasets: list of dataset names to return. if None, return all datasets in the file
+            - max_retries: how many times to retry reading from the h5 file in case of failure
+            - retry_delay: how many seconds to wait between retries
         """
         if transforms:
             raise NotImplementedError("The BaseHDF5Dataset class cannot currently handle transforms, or rather, the transforms in transforms.py cannot handle the embeddings tensors appropriately. As of March 4 2025 this is planned for later but is not urgent.")
@@ -270,6 +275,7 @@ class BaseHDF5Dataset(Dataset):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.return_specifiers = return_specifiers
+        self.datasets = datasets
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
@@ -299,7 +305,11 @@ class BaseHDF5Dataset(Dataset):
             try:
                 with h5py.File(self.file_path, 'r') as f:
                     sample = {}
-                    for dataset in f.keys():
+                    if self.datasets is not None:
+                        datasets_to_use = self.datasets
+                    else:
+                        datasets_to_use = f.keys()
+                    for dataset in datasets_to_use:
                         if dataset == "specifier":
                             sample[dataset] = f[dataset].asstr()[start_idx:end_idx]
                         else:
