@@ -285,9 +285,15 @@ class BaseHDF5Dataset(Dataset):
         # Check dataset details
         lengths = []
         with h5py.File(self.file_path, 'r') as f:
-            for dataset in f.keys():
-                # Determine the length of the dataset
-                lengths.append(len(f[dataset]))
+            if self.datasets is not None:
+                for dataset in self.datasets:
+                    if dataset not in f:
+                        raise ValueError(f"Dataset {dataset} not found in file {self.file_path}. Available datasets: {list(f.keys())}.")
+                    else:
+                        lengths.append(len(f[dataset]))
+            else:
+                for dataset in f.keys():
+                    lengths.append(len(f[dataset]))
         if len(set(lengths)) != 1:
             raise ValueError(f"Datasets in {self.file_path} do not all have the same length: found lengths {lengths} for {list(f.keys())}.")
         self.length = lengths[0]
