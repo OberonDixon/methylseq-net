@@ -210,6 +210,8 @@ class MethylSeqNN(L.LightningModule):
                 nn.functional.softplus(mb[:, :x.shape[1],:]) * 
                 nn.functional.softplus(x + mb[:, x.shape[1]:,:])
             ),
+            'keep_a': lambda a, b: a,
+            'keep_b': lambda a, b: b,
         }
         # TODO: rename layers to something like residual_methylseq_model
         self.layers = nn.ModuleList()
