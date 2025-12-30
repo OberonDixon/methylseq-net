@@ -103,7 +103,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'embeddings_to_methyl_dep_seq_rep':True,
                     'factorized_reps_to_output':True,
                 },
-                'epochs':60,
+                'epochs':100,
             },
         }
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
