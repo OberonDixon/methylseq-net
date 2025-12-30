@@ -11,29 +11,37 @@
 #SBATCH --time=24:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=0-7 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
+#SBATCH --array=2-3 # Specify the range of array jobs (e.g., 0-2 for 3 configs)
 
 # Command(s) to run:
 # Define an array of model paths
+#    "slurm30018035task9"
+#    "slurm30039609task10"
+#    "slurm30024664task1"
+#    "slurm29867045task1"
+#    "slurm29952986task5"
+#    "slurm29940167task0"
+#    "slurm29865703task0"
+#    "slurm29867045task4"
 MODEL_IDENTIFIERS=(
-    "slurm30018035task9"
-    "slurm30039609task10"
-    "slurm30024664task1"
-    "slurm29867045task1"
-    "slurm29952986task5"
-    "slurm29940167task0"
-    "slurm29865703task0"
-    "slurm29867045task4"
+    "slurm30634711task0"
+    "slurm30630619task3"
+    "slurm30626422task2"
+    "slurm30626422task1"
 )
+#    "factorized-from-pretrained"
+#    "factorized-from-pretrained"
+#    "factorized-from-pretrained"
+#    "factorized-from-pretrained"
+#    "factorized-from-pretrained"
+#    "pretrained-only"
+#    "pretrained-only"
+#    "factorized-from-pretrained"
 MODEL_MODES=(
-    "factorized-from-pretrained"
-    "factorized-from-pretrained"
-    "factorized-from-pretrained"
-    "factorized-from-pretrained"
-    "factorized-from-pretrained"
-    "pretrained-only"
-    "pretrained-only"
-    "factorized-from-pretrained"
+   "factorized-from-pretrained"
+   "factorized-from-pretrained"
+   "pretrained-only"
+   "factorized-from-pretrained"
 )
 source activate methylseqnet
 python single_model_atlas_longread.py --model-identifier ${MODEL_IDENTIFIERS[$SLURM_ARRAY_TASK_ID]} --gpus 1 --mode ${MODEL_MODES[$SLURM_ARRAY_TASK_ID]}
