@@ -44,4 +44,4 @@ MODEL_MODES=(
    "factorized-from-pretrained"
 )
 source activate methylseqnet
-python single_model_atlas_longread.py --model-identifier ${MODEL_IDENTIFIERS[$SLURM_ARRAY_TASK_ID]} --gpus 1 --mode ${MODEL_MODES[$SLURM_ARRAY_TASK_ID]}
+python single_model_atlas_longread.py --model-identifier ${MODEL_IDENTIFIERS[$SLURM_ARRAY_TASK_ID]} --gpus 1 --mode ${MODEL_MODES[$SLURM_ARRAY_TASK_ID]} --checkpoint-type best

@@ -6,7 +6,7 @@ from functools import partial
 import h5py
 import numpy as np
 
-def main(model_identifier, gpus, mode='factorized-from-pretrained'):
+def main(model_identifier, gpus, mode='factorized-from-pretrained', checkpoint_type='best'):
     dataset_paths = [
         {
             "atlas":f"/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold{fold}.h5",
@@ -22,12 +22,21 @@ def main(model_identifier, gpus, mode='factorized-from-pretrained'):
         dataset_name = Path(list(dataset_path.values())[0]).stem
         dataset_dir = Path(list(dataset_path.values())[0]).parent
         print(f"Running through {dataset_name}, saving to {dataset_dir / model_identifier / dataset_name}.")
+        if checkpoint_type == 'best':
+            ckpt_path = max(
+                Path(f"/clusterfs/nilah/oberon/lightning/{checkpoint_id}/checkpoints/").glob('best*.ckpt'),
+                key=lambda p: p.stat().st_mtime
+            ) 
+        elif checkpoint_type == 'temp':
+            ckpt_path = f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/temp-checkpoint.ckpt'
+        else:
+            raise ValueError(f"Unknown checkpoint type: {checkpoint_type}")
         run_dataset_save_h5(
-            model_path=f'/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/temp-checkpoint.ckpt',
+            model_path=ckpt_path,
             mode=mode,
             dataset_path=dataset_path,
             dataset_type='multimethyl',
-            output_path=dataset_dir / model_identifier / dataset_name,
+            output_path=dataset_dir / model_identifier / f'{dataset_name}_{checkpoint_type}',
             gpus = gpus,
             num_workers = 4,
             no_targets = no_targets,
@@ -40,5 +49,6 @@ if __name__ == "__main__":
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference to /clusterfs/nilah/oberon/lightning/")
     parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use for inference.")
     parser.add_argument("--mode", choices=['factorized-from-pretrained', 'pretrained-only'], default='factorized-from-pretrained', help="Mode of inference.")
+    parser.add_argument("--checkpoint-type", choices=['best', 'temp'], default='best', help="Type of checkpoint to use.")
     args = parser.parse_args()
-    main(args.model_identifier, args.gpus, args.mode)
+    main(args.model_identifier, args.gpus, args.mode, args.checkpoint_type)
