@@ -158,6 +158,23 @@ class MethylationDropout(nn.Module):
         return x
 
 @gin.configurable
+class ZeroChannels(nn.Module):
+    """Layer that outputs a tensor with 0 channels regardless of input."""
+    
+    def __init__(self):
+        super().__init__()
+    
+    def forward(self, x):
+        """
+        Args:
+            x: tensor of shape (batch, channels, length)
+        Returns:
+            tensor of shape (batch, 0, length)
+        """
+        batch, _, length = x.shape
+        return torch.empty(batch, 0, length, device=x.device, dtype=x.dtype)
+
+@gin.configurable
 @gin.register
 class ConvDNA(nn.Module):
     def __init__(self, in_channels, filters, kernel_size, pool_size, weight_decay=0, pad=False, stride=1, pool_class=nn.MaxPool1d):

@@ -200,18 +200,22 @@ class MethylSeqNN(L.LightningModule):
             if concat_pretrained_embeddings_at:
                 raise ValueError("MethylSeqNN concat_pretrained_embeddings_at provided but no layers or input_to_methyl_rep defined; ignoring.")
         self.model_merge_operation = model_merge_operation
-        self.operations = { # the different operations that can be used to combine pretrained and residual models. take in (res,x)
+        self.operations = { # configurable operations that can be used for elementwise tensor combinations. take in (modulator,features)
             'multiply': torch.mul,  # Element-wise multiplication
-            'log_multiply': lambda res, x: torch.exp(torch.log(x + 1e-5) + res), # Element-wise multiplication on a log scale
-            'tanh_log_multiply': lambda res, x: x * torch.exp(4.0 * torch.tanh(res/4.0)),
+            'log_multiply': lambda modulator, features: torch.exp(torch.log(features + 1e-5) + modulator), # Element-wise multiplication on a log scale
+            'tanh_log_multiply': lambda modulator, features: features * torch.exp(4.0 * torch.tanh(modulator/4.0)),
             'add': torch.add,       # Element-wise addition
             # Element-wise softplus(m) * softplus(x+b) where m is first n res channels, b is second n res channels, n is x.shape[1]
-            'mx+b': lambda mb, x: (
-                nn.functional.softplus(mb[:, :x.shape[1],:]) * 
-                nn.functional.softplus(x + mb[:, x.shape[1]:,:])
+            'mx+b': lambda modulator, features: (
+                nn.functional.softplus(modulator[:, :x.shape[1],:]) * 
+                nn.functional.softplus(features + modulator[:, x.shape[1]:,:])
             ),
-            'keep_a': lambda a, b: a,
-            'keep_b': lambda a, b: b,
+            'keep_a': lambda modulator, features: features,
+            'keep_modulator': lambda modulator, features: modulator,
+            'keep_features': lambda modulator, features: features,
+            'film': lambda modulator, features: (
+                modulator[:, :features.shape[1],:] * features + modulator[:, features.shape[1]:,:]
+            ),
         }
         # TODO: rename layers to something like residual_methylseq_model
         self.layers = nn.ModuleList()
@@ -1167,7 +1171,7 @@ class MethylSeqNN(L.LightningModule):
                     else:
                         celltype_methyl_rep = methyl_rep[:, 0, :, :]
                     if self.embeddings_to_methyl_dep_seq_rep:
-                        methyl_dep_seq_rep_task = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
+                        methyl_dep_seq_rep_task = self.operations[self.model_merge_operation](celltype_methyl_rep, methyl_dep_seq_rep)
                         x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_task], dim=1)
                     else:
                         x_methylseq_rep = torch.cat([methyl_indep_seq_rep, celltype_methyl_rep], dim=1)
@@ -1180,7 +1184,7 @@ class MethylSeqNN(L.LightningModule):
             for cell_type_idx in range(methyl_rep.shape[1]):
                 celltype_methyl_rep = methyl_rep[:, cell_type_idx, :, :]
                 if self.embeddings_to_methyl_dep_seq_rep:
-                    methyl_dep_seq_rep_celltype = self.operations[self.model_merge_operation](methyl_dep_seq_rep, celltype_methyl_rep)
+                    methyl_dep_seq_rep_celltype = self.operations[self.model_merge_operation](celltype_methyl_rep, methyl_dep_seq_rep)
                     x_methylseq_rep = torch.cat([methyl_indep_seq_rep, methyl_dep_seq_rep_celltype], dim=1)
                 else:
                     x_methylseq_rep = torch.cat([methyl_indep_seq_rep, celltype_methyl_rep], dim=1)
