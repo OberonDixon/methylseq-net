@@ -21,10 +21,11 @@ def main(model_identifier, gpus, mode='factorized-from-pretrained', checkpoint_t
     for dataset_path in dataset_paths:
         dataset_name = Path(list(dataset_path.values())[0]).stem
         dataset_dir = Path(list(dataset_path.values())[0]).parent
-        print(f"Running through {dataset_name}, saving to {dataset_dir / model_identifier / dataset_name}.")
+        output_path = dataset_dir / model_identifier / f'{dataset_name}_{checkpoint_type}'
+        print(f"Running through {dataset_name}, saving to {output_path}.")
         if checkpoint_type == 'best':
             ckpt_path = max(
-                Path(f"/clusterfs/nilah/oberon/lightning/{checkpoint_id}/checkpoints/").glob('best*.ckpt'),
+                Path(f"/clusterfs/nilah/oberon/lightning/{model_identifier}/checkpoints/").glob('best*.ckpt'),
                 key=lambda p: p.stat().st_mtime
             ) 
         elif checkpoint_type == 'temp':
@@ -36,7 +37,7 @@ def main(model_identifier, gpus, mode='factorized-from-pretrained', checkpoint_t
             mode=mode,
             dataset_path=dataset_path,
             dataset_type='multimethyl',
-            output_path=dataset_dir / model_identifier / f'{dataset_name}_{checkpoint_type}',
+            output_path=output_path,
             gpus = gpus,
             num_workers = 4,
             no_targets = no_targets,
