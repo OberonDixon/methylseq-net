@@ -34,12 +34,16 @@ def run_dataset_save_h5(
     num_workers: int = 4,
     no_targets: bool = False,
     supplemental_predict_outputs: set = set(),
+    variable_input_length: bool = False,
     **kwargs,
 ):
     model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
     model.eval()
     model.mode=mode
     model.supplemental_predict_outputs = supplemental_predict_outputs
+    if variable_input_length:
+        model.crop_off_sequence = 0
+        model.pretrained_seq_model.crop = nn.Identity()
     
     match dataset_type:
         case 'multimethyl':

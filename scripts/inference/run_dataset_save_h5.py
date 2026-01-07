@@ -4,7 +4,7 @@ from methylseqnet.transforms import InsertSyntheticCpG
 from pathlib import Path
 from functools import partial
 
-def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True):
+def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True, variable_input_length=False):
     if dataset_type == 'atlas':
         dataset_paths = [
             {
@@ -14,7 +14,7 @@ def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True)
     elif dataset_type == 'synthetic':
         dataset_paths = [
             {
-                "all":"/clusterfs/nilah/oberon/datasets/motif_insertion_test/pred.h5",
+                "all":"/clusterfs/nilah/oberon/datasets/motif_insertion_test/motif_insertions.h5",
             }
         ]
     if synthetic_cpg:
@@ -26,7 +26,7 @@ def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True)
                 flank_width = 1000,
                 center_cpg_frac = 0.05,
                 flanking_cpg_frac = 0.5,
-                background_cpg_frac = 0.95,
+                background_cpg_frac = 0.85,
                 offset = 0,
             ),
         )
@@ -43,9 +43,10 @@ def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True)
             dataset_type='multimethyl',
             output_path=dataset_dir / model_identifier / dataset_name,
             gpus = 1,
-            num_workers = 4,
+            num_workers = 8,
             no_targets = no_targets,
             transforms = transforms,
+            variable_input_length=variable_input_length,
         )
 
 if __name__ == "__main__":
@@ -54,5 +55,6 @@ if __name__ == "__main__":
     parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--dataset-type", choices=['atlas', 'synthetic'], default='atlas', help="Type of dataset to run inference on.")
     parser.add_argument("--synthetic-cpg", action='store_true', help="If set, add synthetic CpG data.")
+    parser.add_argument("--variable-input-length", action='store_true', help="If set, sequence length can be any integer multiple of 128 that is >=16384.")
     args = parser.parse_args()
-    main(args.model_identifier, args.no_targets, args.dataset_type, args.synthetic_cpg)
+    main(args.model_identifier, args.no_targets, args.dataset_type, args.synthetic_cpg, args.variable_input_length)
