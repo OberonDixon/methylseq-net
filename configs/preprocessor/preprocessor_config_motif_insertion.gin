@@ -19,7 +19,7 @@ DirectoryIndexer.center_subsequence = True
 PreprocessingPipeline.sample_generator = @DirectoryIndexer()
 PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
-PreprocessingPipeline.samples_per_batch = 1
+PreprocessingPipeline.samples_per_batch = 1000
 PreprocessingPipeline.output_directory = %output_directory
 
 

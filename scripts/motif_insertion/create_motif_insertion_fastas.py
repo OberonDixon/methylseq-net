@@ -31,6 +31,9 @@ def main():
     parser.add_option('--REFERENCE_GENOME', dest='REFERENCE_GENOME',
         default='/clusterfs/nilah/ayesha/genomes/hg38.ml.fa', # default hg38 path
         help='Reference genome fasta path [Default: %default]')
+    parser.add_option('--OVERWRITE', action='store_true', dest='OVERWRITE',
+        default=False,
+        help='Overwrite existing files if present [Default: %default]')
     (options, args) = parser.parse_args()
 
     if len(args) == 3:
@@ -164,9 +167,9 @@ def main():
         seqs = [str(i.seq) for i in records]
         
         for tf in TFS:
-            # IMPORTANT: don't re-write motif insertion file if it's already created for that tf
+            # IMPORTANT: don't re-write motif insertion file if it's already created for that tf, unless OVERWRITE is set
             tf_motif_insertion_path = f'{PEAKS_OUTPUT_DIR}/{tis}/motif_inserted_sequences_{INPUT_LEN}_{tf}.fasta'
-            if os.path.exists(tf_motif_insertion_path):
+            if os.path.exists(tf_motif_insertion_path) and not options.OVERWRITE:
                 print(f"Skipped {tf_motif_insertion_path}")
                 continue
             
