@@ -1,7 +1,5 @@
-# directory = '/global/scratch/users/poojakathail/kidney_data/archive/scBasset/Homo_sapiens_motif_fasta/endogenous_sequences_basenji_motifs_insertion_position_-10/'
-directory = '/global/scratch/users/arbajwa/datasets/atac_atlas/Hepatocyte_peaks_test_small/'
+directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_peaks/'
 output_directory = '/clusterfs/nilah/oberon/datasets/motif_insertion_test/'
-# output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/motif_insertion_test/'
 label_bin_size = 128
 label_num_bins = 128
 seq_length = 16384
@@ -13,7 +11,7 @@ MultiMethylWriter.mask = False
 DirectoryIndexer.directory = %directory
 DirectoryIndexer.subsequence_start = 0
 DirectoryIndexer.subsequence_end = 16384
-DirectoryIndexer.recursive = False # recursive will look into sub folders as well
+DirectoryIndexer.recursive = True # recursive will look into sub folders as well
 DirectoryIndexer.split = 'motif_insertions'
 DirectoryIndexer.pad_with_Ns = True
 DirectoryIndexer.center_subsequence = True

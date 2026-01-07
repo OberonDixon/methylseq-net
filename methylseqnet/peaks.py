@@ -71,7 +71,7 @@ def generate_peaks_bed_from_dataset(
                     if (end - start) // target_bin_size != target.shape[0]:
                         raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
                     selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
-                    peak_strings.extend([f"{chrom}\t{start + idx * target_bin_size}\t{start + (idx + 1) * target_bin_size}\t{data_type}_peak" for idx in selected_peak_indices])
+                    peak_strings.extend([f"{chrom}\t{start + idx * target_bin_size}\t{start + (idx + 1) * target_bin_size}" for idx in selected_peak_indices])
                     pbar.update(len(selected_peak_indices))
                     if len(peak_strings) >= num_peaks:
                         peak_strings = peak_strings[:num_peaks]
@@ -79,7 +79,7 @@ def generate_peaks_bed_from_dataset(
                         break
             if os.path.exists(output_directory) is False:
                 os.makedirs(output_directory)
-            with open(Path(output_directory) / f'{label_substring}_{data_type}.bed', 'w') as f:
+            with open(Path(output_directory) / f'{label_substring}_{data_type}_peaks.hg38.bed', 'w') as f:
                 f.write('\n'.join(peak_strings))
 
 

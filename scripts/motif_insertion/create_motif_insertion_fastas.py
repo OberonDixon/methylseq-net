@@ -11,7 +11,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 import methylseqnet
 #from methylseqnet.dataset import CustomH5Dataset
-from methylseqnet.motif_helpers import insert_center_pos, shuffle_peak, create_subsets
+from methylseqnet.motif_helpers import insert_center_pos, shuffle_peak #, create_subsets
 
 def main():
     usage = 'usage: %prog [options] <PWMS_TOP_DIR> <PEAKS_TOP_DIR> <PEAKS_OUTPUT_DIR>'
@@ -79,7 +79,7 @@ def main():
     TISSUES = [tis.split('.hg38.bed')[0] for tis in TISSUES if 'peaks' in tis]
     print(f"Tissues are: {TISSUES}")
     # TISSUES = ['Hepatocyte_peaks', 'Adipocyte_peaks'] # dummy for testing, want to run on full list eventually
-    TISSUES = ['Hepatocyte_peaks'] # dummy for testing, want to run on full list eventually
+    # TISSUES = ['Hepatocyte_peaks'] # dummy for testing, want to run on full list eventually
 
     ### Create endogenous sequences of desired length ###
     # Centered at peaks from bed files
