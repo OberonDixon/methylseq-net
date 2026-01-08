@@ -275,7 +275,8 @@ class BaseHDF5Dataset(Dataset):
         self.file_paths = file_path if isinstance(file_path, list) else [file_path]
         self.batch_size = batch_size
         self.return_specifiers = return_specifiers
-        self.datasets = datasets
+        modified_datasets = datasets if not self.return_specifiers else (datasets | {'specifier'} if datasets is not None else None)
+        self.datasets = modified_datasets
         self.max_retries = max_retries
         self.retry_delay = retry_delay
         
