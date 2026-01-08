@@ -44,12 +44,17 @@ def generate_peaks_bed_from_dataset(
     min_peak_distance=50,
     target_bin_size=128,
     num_peaks=1000,
-    random_seed=42
+    random_seeds=[42]
 ):
     dataset = MultiMethylDataset(dataset_path)
     io_mappings_df = dataset.get_io_mappings_df()
     peaks = {}
-    for label_substring in label_substrings:
+    if len(random_seeds) != len(label_substrings):
+        if len(random_seeds) == 1:
+            random_seeds = random_seeds * len(label_substrings)
+        else:
+            raise ValueError("Length of random_seeds must be 1 or equal to length of label_substrings")
+    for label_substring, random_seed in zip(label_substrings,random_seeds):
         matching_io_mappings = io_mappings_df[io_mappings_df['label_files'].str.upper().str.contains(label_substring.upper())]
         if len(matching_io_mappings) > 1:
             raise ValueError(f"Multiple io mappings match the label substring '{label_substring}': {matching_io_mappings}")
@@ -64,22 +69,25 @@ def generate_peaks_bed_from_dataset(
             with tqdm(total=num_peaks, desc=f"Generating peaks for {label_substring}") as pbar:
                 for sample in dataloader:
                     region_str = sample['specifier'].split('|')[0]
-                    chrom = region_str.split(':')[0]
-                    start = int(region_str.split(':')[1].split('-')[0])
-                    end = int(region_str.split(':')[1].split('-')[1])
-                    target = sample['target'][0,channel,:].numpy()
-                    if (end - start) // target_bin_size != target.shape[0]:
-                        raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
-                    selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
-                    peak_strings.extend([f"{chrom}\t{start + idx * target_bin_size}\t{start + (idx + 1) * target_bin_size}" for idx in selected_peak_indices])
-                    pbar.update(len(selected_peak_indices))
-                    if len(peak_strings) >= num_peaks:
-                        peak_strings = peak_strings[:num_peaks]
-                        pbar.update(num_peaks)
-                        break
+                    try:
+                        chrom = region_str.split(':')[0]
+                        start = int(region_str.split(':')[1].split('-')[0])
+                        end = int(region_str.split(':')[1].split('-')[1])
+                        target = sample['target'][0,channel,:].numpy()
+                        if (end - start) // target_bin_size != target.shape[0]:
+                            raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
+                        selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
+                        peak_strings.extend([f"{chrom}\t{start + idx * target_bin_size}\t{start + (idx + 1) * target_bin_size}" for idx in selected_peak_indices])
+                        pbar.update(len(selected_peak_indices))
+                        if len(peak_strings) >= num_peaks:
+                            peak_strings = peak_strings[:num_peaks]
+                            pbar.update(num_peaks)
+                            break
+                    except Exception as e:
+                        print(f"Error processing region {region_str}: {e}")
             if os.path.exists(output_directory) is False:
                 os.makedirs(output_directory)
-            with open(Path(output_directory) / f'{label_substring}_{data_type}_peaks.hg38.bed', 'w') as f:
+            with open(Path(output_directory) / f'{label_substring.replace(" ","_")}_{data_type}_peaks.hg38.bed', 'w') as f:
                 f.write('\n'.join(peak_strings))
 
 
@@ -95,7 +103,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-peaks", type=int, default=1000, help="Number of peaks to extract per cell type")
     parser.add_argument("--min-peak-distance", type=int, default=16384, help="Minimum distance between peaks")
     parser.add_argument("--target-bin-size", type=int, default=128, help="Size of target bins in the preprocessed dataset")
-    parser.add_argument("--random-seed", type=int, default=42, help="Random seed for reproducibility")
+    parser.add_argument("--random-seeds", type=int, default=42, nargs='+', help="Random seeds per label substring for reproducibility")
     args = parser.parse_args()
     generate_peaks_bed_from_dataset(
         dataset_path=args.dataset_paths,
@@ -106,5 +114,5 @@ if __name__ == "__main__":
         num_peaks=args.num_peaks,
         min_peak_distance=args.min_peak_distance,
         target_bin_size=args.target_bin_size,
-        random_seed=args.random_seed
+        random_seeds=args.random_seeds
     )

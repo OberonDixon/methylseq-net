@@ -51,6 +51,7 @@ def main(model_identifier, no_targets, dataset_type='atlas', synthetic_cpg=True,
             no_targets = no_targets,
             transforms = transforms,
             variable_input_length=variable_input_length,
+            supplemental_predict_outputs = {"methyl_dep_seq_rep","methyl_indep_seq_rep","true_methyl_rep","imputed_methyl_rep","cpg_density"},
         )
 
 if __name__ == "__main__":
