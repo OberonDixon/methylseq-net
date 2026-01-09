@@ -1,5 +1,5 @@
-directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_peaks/'
-output_directory = '/clusterfs/nilah/oberon/datasets/motif_insertion_test/'
+directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_peaks/cardiac_ATAC-seq_peaks/'
+output_directory = '/clusterfs/nilah/oberon/datasets/motif_insertion_test/cardiac_ATAC-seq_peaks/'
 label_bin_size = 128
 label_num_bins = 128
 seq_length = 16384

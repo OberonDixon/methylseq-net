@@ -9,6 +9,7 @@ import pysam
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
+from tqdm.auto import tqdm
 import methylseqnet
 #from methylseqnet.dataset import CustomH5Dataset
 from methylseqnet.motif_helpers import insert_center_pos, shuffle_peak #, create_subsets
@@ -21,10 +22,10 @@ def main():
         type='int',
         default=524288, # default to Borzoi context
         help='Sequence input length [Default: %default]')
-    parser.add_option('--PEAK_LEN', dest='PEAK_LEN',
+    parser.add_option('--SHUFFLE_LEN', dest='SHUFFLE_LEN',
         type='int',
         default=128, # default bin size
-        help='Peak length [Default: %default]')
+        help='Shuffling length around peak center [Default: %default]')
     parser.add_option('--N', dest='N',
         default=5, # default to 5 trials per motif/peak pair
         help='Number of trials for each motif insertion [Default: %default]')
@@ -48,11 +49,12 @@ def main():
 
     # calculate pad length needed to fill input
     INPUT_LEN = options.INPUT_LEN
-    PEAK_LEN = options.PEAK_LEN
+    if INPUT_LEN % 2 != 0:
+        raise ValueError("INPUT_LEN must be an even number.")
+    SHUFFLE_LEN = options.SHUFFLE_LEN
     N = options.N
-    PAD_LEN = (INPUT_LEN-PEAK_LEN)//2
     print(f"Model input sequence length is: {INPUT_LEN}")
-    print(f"Peak sequence length is: {PEAK_LEN}")
+    print(f"Shuffled central sequence length is: {SHUFFLE_LEN}")
 
     # reference genome
     hg38_fasta = pysam.Fastafile(options.REFERENCE_GENOME)
@@ -74,8 +76,13 @@ def main():
     # process pwms to be ready for sampling
     pwms = {}
     for tf in TFS:
-        pwms[tf] = pd.read_csv(f'{PWMS_TOP_DIR}/pwms/{tf}.csv', index_col=0, skiprows=1, header=None)
-        pwms[tf] = pwms[tf]/pwms[tf].sum(axis=0)  # columns sum to 1
+        try:
+            pwms[tf] = pd.read_csv(f'{PWMS_TOP_DIR}/pwms/{tf}.csv', index_col=0, skiprows=1, header=None)
+            pwms[tf] = pwms[tf]/pwms[tf].sum(axis=0)  # columns sum to 1
+        except FileNotFoundError:
+            print(f"PWM file not found for {tf}, removing...")
+            TFS.remove(tf)
+            continue
     
     # tissue list (from peak files)
     TISSUES = os.listdir(f'{PEAKS_TOP_DIR}/')
@@ -95,10 +102,9 @@ def main():
         for i, row in peaks.iterrows():
             try:
                 source = row["Chromosome"]
-                # Convert 1-based start to 0-based before padding
-                # The fetched sequence will now be INPUT_LEN long
-                start_0based = row["Start"] - 1 
-                start, end = start_0based - PAD_LEN, row["End"] + PAD_LEN
+                # The fetched sequence is INPUT_LEN long
+                center_loc = (row["Start"] + row["End"]) // 2
+                start, end = center_loc - INPUT_LEN//2, center_loc + INPUT_LEN//2
                 
                 start_pad = 0 - min(start,0)
                 chrom_length = chrom_lens_dict[source]
@@ -129,10 +135,9 @@ def main():
         for i, row in peaks.iterrows():
             try:
                 source = row["Chromosome"]
-                # Convert 1-based start to 0-based before padding
-                # The fetched sequence will now be INPUT_LEN long
-                start_0based = row["Start"] - 1 
-                start, end = start_0based - PAD_LEN, row["End"] + PAD_LEN
+                # The fetched sequence must be INPUT_LEN long
+                center_loc = (row["Start"] + row["End"]) // 2
+                start, end = center_loc - INPUT_LEN//2, center_loc + INPUT_LEN//2
                 
                 start_pad = 0 - min(start,0)
                 chrom_length = chrom_lens_dict[source]
@@ -143,8 +148,8 @@ def main():
                                                        max(start, 0),
                                                        min(end, chrom_length)) + end_pad*"N"
                 # shuffle peak portion
-                peak_start = (len(seq)-PEAK_LEN)//2
-                peak_end = peak_start + PEAK_LEN
+                peak_start = (len(seq)-SHUFFLE_LEN)//2
+                peak_end = peak_start + SHUFFLE_LEN
                 shuffled_peak = shuffle_peak(seq, peak_start, peak_end)
                 seq = seq[:peak_start] + shuffled_peak + seq[peak_end:]
             except ValueError:
@@ -179,7 +184,7 @@ def main():
             # make motif-inserted sequences
             for i, seq in enumerate(seqs):
                 
-                trials = insert_center_pos(seq, pwm, PEAK_LEN, N, shuffle=True)
+                trials = insert_center_pos(seq, pwm, SHUFFLE_LEN, N, shuffle=True)
         
                 for j, trial in enumerate(trials):
                     tf_motif_seqs.append(SeqRecord(Seq(trial), id=f"{i}_{j}_{tf}"))
