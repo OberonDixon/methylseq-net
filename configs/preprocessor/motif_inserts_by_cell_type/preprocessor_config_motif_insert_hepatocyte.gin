@@ -1,5 +1,5 @@
-directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_peaks/hepatocyte_ATAC-seq_peaks/'
-output_directory = '/clusterfs/nilah/oberon/datasets/motif_insertion_test/hepatocyte_ATAC-seq_peaks/'
+directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_peaks_2048/hepatocyte_ATAC-seq_peaks/'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/hepatocyte_ATAC-seq_peaks_2048/'
 label_bin_size = 128
 label_num_bins = 128
 seq_length = 16384
@@ -21,5 +21,3 @@ PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
 PreprocessingPipeline.samples_per_batch = 1000
 PreprocessingPipeline.output_directory = %output_directory
-
-

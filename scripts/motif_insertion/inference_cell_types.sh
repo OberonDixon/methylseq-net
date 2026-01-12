@@ -11,7 +11,8 @@
 #SBATCH --time=10:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=0-29
+#SBATCH --array=0-1,5-8,12-13,17-59
+#SBATCH --exclude=n0386.savio4
 # Command(s) to run:
 
 CELL_TYPES=(
@@ -30,23 +31,32 @@ CELL_TYPES=(
 MODEL_IDENTIFIERS=(
     "slurm30634711task0"
     "slurm30634711task0"
+    "slurm30634711task0"
+    "slurm30634711task0"
+    "slurm30634711task0"
     "slurm30630619task3"
 )
 
-KWARGS_0=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.15)
-KWARGS_1=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.85)
-KWARGS_2=(--no-targets --dataset-type synthetic --variable-input-length)
+KWARGS_0=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.03)
+KWARGS_1=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.25)
+KWARGS_2=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.50)
+KWARGS_3=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.75)
+KWARGS_4=(--no-targets --dataset-type synthetic --synthetic-cpg --variable-input-length --center-methyl-frac 0.95)
+KWARGS_5=(--no-targets --dataset-type synthetic --variable-input-length)
 
-CONFIG_IDX=$((SLURM_ARRAY_TASK_ID / 10))
-CELL_IDX=$((SLURM_ARRAY_TASK_ID % 10))
+CONFIG_IDX=$((SLURM_ARRAY_TASK_ID % 6))
+CELL_IDX=$((SLURM_ARRAY_TASK_ID / 6))
 
 case $CONFIG_IDX in
     0) KWARGS=("${KWARGS_0[@]}") ;;
     1) KWARGS=("${KWARGS_1[@]}") ;;
     2) KWARGS=("${KWARGS_2[@]}") ;;
+    3) KWARGS=("${KWARGS_3[@]}") ;;
+    4) KWARGS=("${KWARGS_4[@]}") ;;
+    5) KWARGS=("${KWARGS_5[@]}") ;;
 esac
 
-DATASET_PATH="/clusterfs/nilah/oberon/datasets/motif_insertion_test/${CELL_TYPES[$CELL_IDX]}_ATAC-seq_peaks/motif_insertions.h5"
+DATASET_PATH="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/${CELL_TYPES[$CELL_IDX]}_ATAC-seq_peaks_2048/motif_insertions.h5"
 
 source activate methylseqnet
 
