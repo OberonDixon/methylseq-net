@@ -7,7 +7,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A_%a.err
-#SBATCH --array=2,5
+#SBATCH --array=10-15
 #SBATCH --exclude=n0029.savio3,n0048.savio3
 
 CELL_TYPES=(
@@ -21,6 +21,12 @@ CELL_TYPES=(
     "memory"
     "neuron"
     "oligodendrocyte"
+    "cnhs10859"
+    "cnhs11327"
+    "cnhs12338"
+    "cnhs12340"
+    "cnhs12494"
+    "cnhs12498"
 )
 
 CONFIG_FILE="../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_${CELL_TYPES[$SLURM_ARRAY_TASK_ID]}.gin"

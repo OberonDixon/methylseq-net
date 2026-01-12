@@ -55,13 +55,14 @@ def generate_peaks_bed_from_dataset(
         else:
             raise ValueError("Length of random_seeds must be 1 or equal to length of label_substrings")
     for label_substring, random_seed in zip(label_substrings,random_seeds):
-        matching_io_mappings = io_mappings_df[io_mappings_df['label_files'].str.upper().str.contains(label_substring.upper())]
+        matching_io_mappings = io_mappings_df[(io_mappings_df['label_files'].str.upper().str.contains(label_substring.upper())) & (io_mappings_df['data_type'] == data_type)]
         if len(matching_io_mappings) > 1:
-            raise ValueError(f"Multiple io mappings match the label substring '{label_substring}': {matching_io_mappings}")
+            print(f"Warning: multiple io mappings match the label substring '{label_substring}': {matching_io_mappings}")
         elif len(matching_io_mappings) == 0:
             raise ValueError(f"No io mappings match the label substring '{label_substring}'")
         else:
-            channel = matching_io_mappings.iloc[0]['channel']
+            channel = matching_io_mappings['channel'].tolist()
+            print(channel)
             g = torch.Generator()
             g.manual_seed(random_seed)
             dataloader = DataLoader(dataset, batch_size=None, shuffle=True, generator=g)
@@ -73,7 +74,7 @@ def generate_peaks_bed_from_dataset(
                         chrom = region_str.split(':')[0]
                         start = int(region_str.split(':')[1].split('-')[0])
                         end = int(region_str.split(':')[1].split('-')[1])
-                        target = sample['target'][0,channel,:].numpy()
+                        target = sample['target'][0,channel,:].mean(dim=0).numpy()
                         if (end - start) // target_bin_size != target.shape[0]:
                             raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
                         selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
