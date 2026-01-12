@@ -243,7 +243,7 @@ class MultiMethylDataset(Dataset):
 
     def __del__(self):
         # Cleanup the temporary file when the object is destroyed
-        if os.path.exists(self.file_path):
+        if hasattr(self, 'file_path') and self.file_path and os.path.exists(self.file_path):
             os.remove(self.file_path)
 
 @gin.register
@@ -357,7 +357,7 @@ class BaseHDF5Dataset(Dataset):
 
     def __del__(self):
         # Cleanup the temporary file when the object is destroyed
-        if os.path.exists(self.file_path):
+        if hasattr(self, 'file_path') and self.file_path and os.path.exists(self.file_path):
             os.remove(self.file_path)
 
 class SingleH5Dataset(Dataset):
