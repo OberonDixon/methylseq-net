@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=motif_insertions_through_methylseq
 #SBATCH --account=fc_nilah
-#SBATCH --partition=savio4_gpu
+#SBATCH --partition=savio3_gpu
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
@@ -11,8 +11,8 @@
 #SBATCH --time=10:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=0-1,5-8,12-13,17-59
-#SBATCH --exclude=n0386.savio4
+#SBATCH --array=0-1,5-7,12-13,17,20-21,29-40,45,47-50,52-54
+#SBATCH --exclude=n0386.savio4,n0389.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 
 CELL_TYPES=(
