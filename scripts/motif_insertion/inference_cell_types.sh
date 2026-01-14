@@ -8,24 +8,30 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --gres=gpu:1
 #SBATCH --requeue
-#SBATCH --time=10:00:00
+#SBATCH --time=20:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=8,17,50,54
+#SBATCH --array=50
 #SBATCH --exclude=n0386.savio4,n0389.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 
 CELL_TYPES=(
-    "acinar"
-    "adipocyte"
-    "cardiac"
-    "cilliated"
-    "hepatocyte"
-    "killer_t"
-    "mammary_basal_epi"
-    "memory"
-    "neuron"
-    "oligodendrocyte"
+    "acinar_ATAC-seq"
+    "adipocyte_ATAC-seq"
+    "cardiac_ATAC-seq"
+    "cilliated_ATAC-seq"
+    "hepatocyte_ATAC-seq"
+    "killer_t_ATAC-seq"
+    "mammary_basal_epi_ATAC-seq"
+    "memory_ATAC-seq"
+    "neuron_ATAC-seq"
+    "oligodendrocyte_ATAC-seq"
+    "CNhs10859_CAGE-seq"
+    "CNhs11327_CAGE-seq"
+    "CNhs12338_CAGE-seq"
+    "CNhs12340_CAGE-seq"
+    "CNhs12494_CAGE-seq"
+    "CNhs12498_CAGE-seq"
 )
 
 MODEL_IDENTIFIERS=(
@@ -56,7 +62,7 @@ case $CONFIG_IDX in
     5) KWARGS=("${KWARGS_5[@]}") ;;
 esac
 
-DATASET_PATH="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/${CELL_TYPES[$CELL_IDX]}_ATAC-seq_peaks_2048/motif_insertions.h5"
+DATASET_PATH="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/${CELL_TYPES[$CELL_IDX]}_peaks_2048/motif_insertions.h5"
 
 source activate methylseqnet
 

@@ -7,7 +7,7 @@
 #SBATCH --time=1:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A_%a.err
-#SBATCH --array=10-15
+#SBATCH --array=13
 #SBATCH --exclude=n0029.savio3,n0048.savio3
 
 CELL_TYPES=(
