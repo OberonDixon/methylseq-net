@@ -11,27 +11,28 @@
 #SBATCH --time=20:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=50
+#SBATCH --array=101-101
 #SBATCH --exclude=n0386.savio4,n0389.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 
 CELL_TYPES=(
-    "acinar_ATAC-seq"
-    "adipocyte_ATAC-seq"
-    "cardiac_ATAC-seq"
-    "cilliated_ATAC-seq"
-    "hepatocyte_ATAC-seq"
-    "killer_t_ATAC-seq"
-    "mammary_basal_epi_ATAC-seq"
-    "memory_ATAC-seq"
-    "neuron_ATAC-seq"
-    "oligodendrocyte_ATAC-seq"
-    "CNhs10859_CAGE-seq"
-    "CNhs11327_CAGE-seq"
-    "CNhs12338_CAGE-seq"
-    "CNhs12340_CAGE-seq"
-    "CNhs12494_CAGE-seq"
-    "CNhs12498_CAGE-seq"
+    "acinar_ATAC-seq_peaks"
+    "adipocyte_ATAC-seq_peaks"
+    "cardiac_ATAC-seq_peaks"
+    "cilliated_ATAC-seq_peaks"
+    "hepatocyte_ATAC-seq_peaks"
+    "killer_t_ATAC-seq_peaks"
+    "mammary_basal_epi_ATAC-seq_peaks"
+    "memory_ATAC-seq_peaks"
+    "neuron_ATAC-seq_peaks"
+    "oligodendrocyte_ATAC-seq_peaks"
+    "CNhs10859_CAGE-seq_peaks"
+    "CNhs11327_CAGE-seq_peaks"
+    "CNhs12338_CAGE-seq_peaks"
+    "CNhs12340_CAGE-seq_peaks"
+    "CNhs12494_CAGE-seq_peaks"
+    "CNhs12498_CAGE-seq_peaks"
+    "non_peak_sites"
 )
 
 MODEL_IDENTIFIERS=(
@@ -62,7 +63,7 @@ case $CONFIG_IDX in
     5) KWARGS=("${KWARGS_5[@]}") ;;
 esac
 
-DATASET_PATH="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/${CELL_TYPES[$CELL_IDX]}_peaks_2048/motif_insertions.h5"
+DATASET_PATH="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/${CELL_TYPES[$CELL_IDX]}_2048/motif_insertions.h5"
 
 source activate methylseqnet
 

@@ -397,7 +397,7 @@ class EncodingSelector(LayerTransform):
             self.channels = 4
         elif self.encoding_str in ['stranded-methyl-with-mask']:
             self.channels = 3
-        elif self.encoding_str in ['smoothed-methyl-only','interp-methyl-only']:
+        elif self.encoding_str in ['smoothed-methyl-only','interp-methyl-only', 'cpg-density-only']:
             self.channels = 1
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
@@ -447,6 +447,12 @@ class EncodingSelector(LayerTransform):
             # for some reason tensor_ops.interpolate_collapsed_methylation isn't putting the tensor on the right device
             x[:,4:5,:] = tensor_ops.interpolate_collapsed_methylation(x)
             x = x[:,4:5,:]
+        elif self.encoding_str == 'cpg-density-only':
+            cpg_mask = x[:, 6, :] > 0
+            cpg_density = tensor_ops.tensor_rolling_average(cpg_mask,self.window_size)
+            x = x.clone()
+            x[:,6,:] = cpg_density
+            x = x[:,6:7,:]
         else:
             raise NotImplementedError(f"encoding_str: {self.encoding_str}")
 
