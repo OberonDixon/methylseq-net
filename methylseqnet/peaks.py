@@ -1,5 +1,6 @@
 import argparse
 import os
+import random
 
 import numpy as np
 import torch
@@ -85,13 +86,13 @@ def generate_peaks_bed_from_dataset(
                 print(f"Warning: multiple io mappings match the label substring '{label_substring}': {matching_io_mappings}")
             elif len(matching_io_mappings) == 0:
                 raise ValueError(f"No io mappings match the label substring '{label_substring}'")
-            channel = matching_io_mappings['channel'].tolist()
+            channels = matching_io_mappings['channel'].tolist()
         else:
-            channel = [0]
+            channels = [0]
             label_substring = 'random_sites'
             data_type = 'endogenous'
 
-        
+        print(channels)
         g = torch.Generator()
         g.manual_seed(random_seed)
         dataloader = DataLoader(dataset, batch_size=None, shuffle=True, generator=g)
@@ -103,7 +104,7 @@ def generate_peaks_bed_from_dataset(
                     chrom = region_str.split(':')[0]
                     start = int(region_str.split(':')[1].split('-')[0])
                     end = int(region_str.split(':')[1].split('-')[1])
-                    target = sample['target'][0,channel,:].mean(dim=0).numpy()
+                    target = sample['target'][0,random.choice(channels),:].numpy()
                     if (end - start) // target_bin_size != target.shape[0]:
                         raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
                     selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
