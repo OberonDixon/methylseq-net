@@ -11,6 +11,7 @@ dependencies:
   - htslib
   - whatshap
   - dipcall
+  - bcftools
   - pb-cpg-tools
   - modkit=0.2.4
   - pip:
