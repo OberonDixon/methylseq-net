@@ -1,0 +1,17 @@
+name: methylseqnet
+channels:
+  - nanoporetech
+  - nvidia
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python>=3.11
+  - pip
+  - htslib
+  - whatshap
+  - dipcall
+  - pb-cpg-tools
+  - modkit=0.2.4
+  - pip:
+    - -e .

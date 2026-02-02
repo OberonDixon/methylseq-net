@@ -1,11 +1,30 @@
 # methylseq-net
 
-Neural network to predict TF binding, accessibility, and expression from DNA sequence and methylation. Based on preliminary work from April 2023, with an architecture inspired by Basset (Kelley et al, 2015). 
+MethylSeqNet is a method for conditioning genomic regulatory activity predictons on epigenetic state, currently in the form of CpG methylation landscape. This repo was created based on preliminary work in April 2023. 
 
-First prototype will be trained from CTCF binding data with paired CpG methylation in GM12878 from the DiMeLo-seq paper (Altemose et al, 2021). 
+## Installation
 
-## installation
+Clone the repository and navigate into the top-level directory containing `environment.yml` and `pyproject.toml`. 
 
-Clone the repository, navigate into the directory containing setup.py, and install with pip.
+```
+git clone https://github.com/OberonDixon/methylseq-net
+cd methylseq-net
+```
 
-`pip install -e .`
+Create a conda environment by running this following command. This will install the `methylseqnet` python package in editable mode so any code changes will be reflected whenever the python kernel is re-started. Conda dependencies necessary for preprocessing and downstream analysis are also installed.
+
+```
+conda env create -f environment.yml
+```
+
+You can also update your existing environment:
+
+```
+conda env update -f environment.yml
+```
+
+And you can update while removing any unnecessary dependencies:
+
+```
+conda env update -f environment.yml --prune
+```
