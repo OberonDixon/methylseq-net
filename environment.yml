@@ -12,6 +12,7 @@ dependencies:
   - whatshap
   - dipcall
   - bcftools
+  - isoseq
   - pb-cpg-tools
   - modkit=0.2.4
   - pip:
