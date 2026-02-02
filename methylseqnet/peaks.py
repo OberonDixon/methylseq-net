@@ -9,6 +9,7 @@ from tqdm.auto import tqdm
 from pathlib import Path
 
 from methylseqnet.dataset import MultiMethylDataset
+from methylseqnet.transforms import EncodingSelector
 
 def selected_peaks_from_target(target, peak_threshold, min_peak_distance_bins):
     if peak_threshold==0:
@@ -69,10 +70,13 @@ def generate_peaks_bed_from_dataset(
     min_peak_distance=50,
     target_bin_size=128,
     num_peaks=1000,
+    cpg_density_range=(),
+    cpg_density_window=2048,
     random_seeds=[42]
 ):
     dataset = MultiMethylDataset(dataset_path)
     io_mappings_df = dataset.get_io_mappings_df()
+    cpg_density_layer = EncodingSelector(encoding_str="cpg-density-only")
     peaks = {}
     if len(random_seeds) != len(label_substrings):
         if len(random_seeds) == 1:
@@ -105,9 +109,16 @@ def generate_peaks_bed_from_dataset(
                     start = int(region_str.split(':')[1].split('-')[0])
                     end = int(region_str.split(':')[1].split('-')[1])
                     target = sample['target'][0,random.choice(channels),:].numpy()
+                    cpg_density = cpg_density_layer(torch.cat([sample['sequence'][:,:,:],sample['methylation'][:,0,:,:]], dim=1))
+                    binned_cpg_density = torch.nn.functional.avg_pool1d(cpg_density,kernel_size=128,stride=128)
                     if (end - start) // target_bin_size != target.shape[0]:
                         raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")
                     selected_peak_indices = selected_peaks_from_target(target, peak_threshold, min_peak_distance // target_bin_size)
+                    if cpg_density_range:
+                        for selected_peak_index in tuple(selected_peak_indices):
+                            cpg_density_in_window = binned_cpg_density[0,0,max(0,selected_peak_index - cpg_density_window // (2 * target_bin_size)):min(binned_cpg_density.shape[2],selected_peak_index + cpg_density_window // (2 * target_bin_size))].mean().item()
+                            if cpg_density_in_window < cpg_density_range[0] or cpg_density_in_window > cpg_density_range[1]:
+                                selected_peak_indices.remove(selected_peak_index)
                     peak_strings.extend([f"{chrom}\t{start + idx * target_bin_size}\t{start + (idx + 1) * target_bin_size}" for idx in selected_peak_indices])
                     pbar.update(len(selected_peak_indices))
                     if len(peak_strings) >= num_peaks:
@@ -134,6 +145,8 @@ if __name__ == "__main__":
     parser.add_argument("--num-peaks", type=int, default=1000, help="Number of peaks to extract per cell type")
     parser.add_argument("--min-peak-distance", type=int, default=16384, help="Minimum distance between peaks")
     parser.add_argument("--target-bin-size", type=int, default=128, help="Size of target bins in the preprocessed dataset")
+    parser.add_argument("--cpg-density-range", type=float, nargs=2, default=(), help="Optional min and max CpG density range to filter peaks")
+    parser.add_argument("--cpg-density-window", type=int, default=2048, help="Window size around peak to compute CpG density")
     parser.add_argument("--random-seeds", type=int, default=42, nargs='+', help="Random seeds per label substring for reproducibility")
     args = parser.parse_args()
     generate_peaks_bed_from_dataset(
@@ -145,5 +158,7 @@ if __name__ == "__main__":
         num_peaks=args.num_peaks,
         min_peak_distance=args.min_peak_distance,
         target_bin_size=args.target_bin_size,
+        cpg_density_range=tuple(args.cpg_density_range) if args.cpg_density_range else (),
+        cpg_density_window=args.cpg_density_window,
         random_seeds=args.random_seeds
     )

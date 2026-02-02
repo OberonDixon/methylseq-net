@@ -1,0 +1,23 @@
+directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_random_celltype_cpg.025_10cts_peaks_2048/_ATAC-seq_peaks'
+output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/random_celltype_cpg.025_10cts_2048/'
+label_bin_size = 128
+label_num_bins = 128
+seq_length = 16384
+
+MultiMethylWriter.track_length = %label_num_bins
+MultiMethylWriter.seq_length = %seq_length
+MultiMethylWriter.mask = False
+
+DirectoryIndexer.directory = %directory
+DirectoryIndexer.subsequence_start = 0
+DirectoryIndexer.subsequence_end = 16384
+DirectoryIndexer.recursive = True # recursive will look into sub folders as well
+DirectoryIndexer.split = 'motif_insertions'
+DirectoryIndexer.pad_with_Ns = True
+DirectoryIndexer.center_subsequence = True
+
+PreprocessingPipeline.sample_generator = @DirectoryIndexer()
+PreprocessingPipeline.multitask_io_handler = @MultiFastaSequenceOnly()
+PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
+PreprocessingPipeline.samples_per_batch = 1000
+PreprocessingPipeline.output_directory = %output_directory

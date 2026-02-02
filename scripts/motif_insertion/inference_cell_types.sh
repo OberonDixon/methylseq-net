@@ -11,8 +11,8 @@
 #SBATCH --time=20:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
-#SBATCH --array=102-107
-#SBATCH --exclude=n0386.savio4,n0389.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
+#SBATCH --array=138-149
+#SBATCH --exclude=n0386.savio4,n0389.savio4,n0215.savio3,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 
 CELL_TYPES=(
@@ -36,6 +36,11 @@ CELL_TYPES=(
     "random_celltype_10cts"
     "random_celltype_15cts"
     "random_celltype_5cts"
+    "random_celltype_cpg.05_10cts"
+    "random_celltype_cpg.025_10cts"
+    "random_celltype_cpg.10_10cts"
+    "random_celltype_cpg0-.05_10cts"
+    "random_celltype_cpg.05-.15_10cts"
 )
 
 MODEL_IDENTIFIERS=(
