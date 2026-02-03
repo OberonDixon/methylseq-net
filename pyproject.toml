@@ -26,6 +26,8 @@ dependencies = [
     "umap-learn",
     "numpy<2.0.0",
     "psutil",
+    "openpyxl",
+    "ipykernel",
 ]
 
 [tool.setuptools]
