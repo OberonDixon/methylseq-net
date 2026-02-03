@@ -289,7 +289,7 @@ class BaseHDF5Dataset(Dataset):
             if self.datasets is not None:
                 for dataset in self.datasets:
                     if dataset not in f:
-                        raise ValueError(f"Dataset {dataset} not found in file {self.file_path}. Available datasets: {list(f.keys())}.")
+                        raise ValueError(f"Dataset '{dataset}' not found in file {self.file_path}. Available datasets: {list(f.keys())}.")
                     else:
                         lengths.append(len(f[dataset]))
             else:
