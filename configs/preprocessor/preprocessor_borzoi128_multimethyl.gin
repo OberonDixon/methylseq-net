@@ -1,10 +1,10 @@
-ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
-regions_bed = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
-methylation_directory = '/global/scratch/users/dixonluinenburg/methylation_atlas/GSE186458_RAW'
-atac_directory = '/global/scratch/users/dixonluinenburg/atac_atlas/bigwigs'
-cage_directory = '/global/scratch/users/dixonluinenburg/cage_atlas/hg38_v9'
-match_file = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/cell_type_matching_atac-cage.tsv'
-output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/'
+ref_genome = '/mnt/faststorage/oberon/genomes/hg38.fa'
+regions_bed = '/mnt/faststorage/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
+methylation_directory = '/mnt/faststorage/oberon/methylation_atlas/GSE186458_RAW'
+atac_directory = '/mnt/faststorage/oberon/atac_atlas/bigwigs'
+cage_directory = '/mnt/faststorage/oberon/cage_atlas/hg38_v9'
+match_file = '/mnt/faststorage/oberon/repos/methylseq-net/configs/cell_type_matching_atac-cage.tsv'
+output_directory = '/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/'
 label_bin_size = 128
 label_num_bins = 4096
 seq_length = 524288
@@ -32,6 +32,6 @@ PreprocessingPipeline.multitask_io_handler = @MultiMethylAtacCageAtlases()
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
 PreprocessingPipeline.output_directory = %output_directory
 PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
-PreprocessingPipeline.samples_per_batch = 2
+PreprocessingPipeline.samples_per_batch = 1
 
 

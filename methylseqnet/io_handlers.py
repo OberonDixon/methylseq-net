@@ -659,6 +659,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             threshold=5,
             scale=1,
             clip=1024,
+            soft_clip=True,
             ):
         if not isinstance(bigwig_files,list):
             raise ValueError("bigwig_files input is not a list.")
@@ -673,6 +674,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.counts_normalization = 0
         self.scale=scale
         self.clip=clip
+        self.soft_clip=soft_clip
         for bigwig_file in bigwig_files:   
             if os.path.isfile(bigwig_file):
                 try:
@@ -723,7 +725,14 @@ class MultiBigWigLabelHandler(LabelHandler):
         if self.binarize:
             return aggregated_values>self.threshold
         else:
-            return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)    
+            if self.soft_clip:
+                # sqrt over clip threshold
+                aggregated_values = np.where(aggregated_values>self.clip,
+                                             self.clip + np.sqrt(np.maximum(aggregated_values - self.clip, 0)),
+                                             aggregated_values)
+                return aggregated_values
+            else:
+                return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)    
             
     def load_labels_batch(self,sample_list,gc_content_list=None):
         bws = [pyBigWig.open(str(bigwig_file)) for bigwig_file in self.bigwig_files]
@@ -753,6 +762,7 @@ class MultiBedGzLabelHandler(LabelHandler):
             threshold=5,
             scale=1,
             clip=1024,
+            soft_clip=True,
             ):    
         self.bedgz_files = [str(bedgz_file) for bedgz_file in bedgz_files]
         self.label_bin_size = label_bin_size
@@ -763,6 +773,8 @@ class MultiBedGzLabelHandler(LabelHandler):
         self.threshold = threshold
         self.scale=scale
         self.clip=clip
+        self.soft_clip=soft_clip
+        self.counts_normalization = 0
         for bedgz_file in self.bedgz_files:   
             if os.path.isfile(bedgz_file):
                 try:
@@ -810,7 +822,14 @@ class MultiBedGzLabelHandler(LabelHandler):
         if self.binarize:
             return aggregated_values>self.threshold
         else:
-            return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)       
+            if self.soft_clip:
+                # sqrt over clip threshold
+                aggregated_values = np.where(aggregated_values>self.clip,
+                                             self.clip + np.sqrt(np.maximum(aggregated_values - self.clip, 0)),
+                                             aggregated_values)
+                return aggregated_values
+            else:
+                return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)       
     def load_labels_batch(self,sample_list,gc_content_list=None):
         if self.normalize_gc:
             if gc_content_list is None:
@@ -862,7 +881,7 @@ class MultiBigWigCpGLabelHandler(LabelHandler):
         valid_rows = valid_cpgs_reshaped.sum(axis=1) > 0  # Identify rows with valid CpG values
     
         bin_means = np.full(valid_cpgs_reshaped.shape[0], self.no_cpgs_value)  # Initialize with default value
-        valid_sums = valid_mods_reshaped.sum(axis=1)
+        valid_sums = valid_cpgs_reshaped.sum(axis=1)
         bin_means = np.divide(
             fractions_reshaped.sum(axis=1),
             valid_sums,
@@ -946,6 +965,7 @@ class BamCovLabelHandler(LabelHandler):
             normalize_counts=False,
             scale=1,
             clip=1024,
+            soft_clip=True,
             ):
         self.bam_files = [str(bam_file) for bam_file in bam_files]
         self.label_bin_size = label_bin_size
@@ -953,6 +973,7 @@ class BamCovLabelHandler(LabelHandler):
         self.normalize_counts = normalize_counts
         self.scale=scale
         self.clip=clip
+        self.soft_clip=soft_clip
         total_reads = 0
         for bam_file in self.bam_files:   
             if os.path.isfile(bam_file):
@@ -1000,7 +1021,14 @@ class BamCovLabelHandler(LabelHandler):
             aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
         else:
             raise NotImplementedError(f"No implementation for {self.combine_operation}.")
-        return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)
+        if self.soft_clip:
+            # sqrt over clip threshold
+            aggregated_values = np.where(aggregated_values>self.clip,
+                                         self.clip + np.sqrt(np.maximum(aggregated_values - self.clip, 0)),
+                                         aggregated_values)
+            return aggregated_values
+        else:
+            return np.clip(a=self.scale*aggregated_values, a_min=0, a_max=self.clip)
     def load_labels_batch(self,sample_list):
         return [self.load_labels(**sample) for sample in sample_list]
     
