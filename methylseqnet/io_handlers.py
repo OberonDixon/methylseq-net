@@ -653,7 +653,7 @@ class MultiBigWigLabelHandler(LabelHandler):
             label_bin_size: int,
             trim_off_ends: int = 0,
             combine_operation='mean',
-            normalize_counts=False,
+            normalize_counts_per=None,
             normalize_gc=False,
             binarize=False,
             threshold=5,
@@ -666,7 +666,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.bigwig_files = bigwig_files
         self.combine_operation = combine_operation
         self.normalize_gc = normalize_gc
-        self.normalize_counts = normalize_counts
+        self.normalize_counts_per = normalize_counts_per
         self.binarize = binarize
         self.threshold = threshold     
         self.trim_off_ends = trim_off_ends
@@ -675,30 +675,30 @@ class MultiBigWigLabelHandler(LabelHandler):
         self.scale=scale
         self.clip=clip
         self.soft_clip=soft_clip
-        for bigwig_file in bigwig_files:   
-            if os.path.isfile(bigwig_file):
-                try:
-                    bw = pyBigWig.open(str(bigwig_file))
-                    self.chroms = bw.chroms()
-                    if self.normalize_counts:
-                        warnings.warn("Normalizing counts for bigwig label handler is not tested and may not work right.")
-                        sample_values = bw.values('chr1',0,200000000)
-                        sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
-                        if combine_operation=='mean':
-                            self.counts_normalization+=sample_values_sum/(200000000*len(bigwig_files))
-                        else:
-                            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
-                    bw.close()
-                except:
-                    raise ValueError(f"{bigwig_file} cannot be opened by pyBigWig.")
+        if self.normalize_counts_per is not None:
+            total_counts = 0
+            for bigwig_file in bigwig_files:
+                bw = pyBigWig.open(str(bigwig_file))
+                # Sum across all chromosomes
+                for chrom, length in bw.chroms().items():
+                    stats = bw.stats(chrom, 0, length, type="sum", nBins=1,exact=True)
+                    if stats[0] is not None:
+                        total_counts += stats[0]
+                bw.close()
+            
+            if self.combine_operation == 'mean':
+                self.counts_normalization = (total_counts / len(bigwig_files)) / self.normalize_counts_per
             else:
-                raise OSError(f"{bigwig_file} does not exist.")
+                raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        else:
+            self.counts_normalization = 1
  
     def load_labels(self,source,start,end,bws,gc_content):
         values_list = []
         if (end - start)%self.label_bin_size != 0: # - 2*self.trim_off_ends
             raise ValueError(f"Genomic region {source}:{start}-{end} cannot be evenly binned into bins of size {self.label_bin_size}.") 
         for bw in bws:
+            self.chroms = bw.chroms()
             start_pad = max(-(start+self.trim_off_ends),0)
             end_pad = max(end-self.trim_off_ends,self.chroms[source]) - self.chroms[source]
             try:
@@ -720,8 +720,7 @@ class MultiBigWigLabelHandler(LabelHandler):
         if self.normalize_gc:
             # This may in future be replaced with a more sophisticated calculation
             aggregated_values = aggregated_values/(gc_content + 0.1)
-        if self.normalize_counts:
-            aggregated_values = aggregated_values/self.counts_normalization
+        aggregated_values = aggregated_values/self.counts_normalization
         if self.binarize:
             return aggregated_values>self.threshold
         else:
@@ -756,7 +755,7 @@ class MultiBedGzLabelHandler(LabelHandler):
             bedgz_files: list,
             label_bin_size: int,
             combine_operation='mean',
-            normalize_counts=False,
+            normalize_counts_per=None,
             normalize_gc=False,
             binarize=False,
             threshold=5,
@@ -767,30 +766,29 @@ class MultiBedGzLabelHandler(LabelHandler):
         self.bedgz_files = [str(bedgz_file) for bedgz_file in bedgz_files]
         self.label_bin_size = label_bin_size
         self.combine_operation = combine_operation
-        self.normalize_counts = normalize_counts
+        self.normalize_counts_per = normalize_counts_per
         self.normalize_gc = normalize_gc
         self.binarize = binarize
         self.threshold = threshold
         self.scale=scale
         self.clip=clip
         self.soft_clip=soft_clip
-        self.counts_normalization = 0
-        for bedgz_file in self.bedgz_files:   
-            if os.path.isfile(bedgz_file):
-                try:
-                    if self.normalize_counts:
-                        sample_values = self.counts_vector_from_bedgz(bedgz_file,'chr1',0,200000000)
-                        sample_values_sum = np.sum(np.nan_to_num(sample_values,nan=0))
-                        if self.combine_operation=='mean':
-                            self.counts_normalization+=sample_values_sum/(200000000+len(self.bedgz_files))
-                        else:
-                            raise NotImplementedError(f"No implementation for {self.combine_operation}.")
-                    else:
-                        pysam.TabixFile(bedgz_file) # just check that we can open the file
-                except Exception as e:
-                    raise ValueError(f"{e}. {bedgz_file} cannot be opened by pysam tabix - is it bgzipped and indexed?")
+        if self.normalize_counts_per is not None:
+            total_counts = 0
+            for bedgz_file in self.bedgz_files:
+                tbx = pysam.TabixFile(bedgz_file)
+                for chrom in tbx.contigs:
+                    for row in tbx.fetch(chrom):
+                        tabix_fields = row.split("\t")
+                        counts = int(tabix_fields[4])
+                        total_counts += counts
+            
+            if self.combine_operation == 'mean':
+                self.counts_normalization = (total_counts / len(self.bedgz_files)) / self.normalize_counts_per
             else:
-                raise OSError(f"{bedgz_file} does not exist.") 
+                raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        else:
+            self.counts_normalization = 1
                 
     def counts_vector_from_bedgz(self,bedgz_file,chrom,start,end):
         counts_vector = np.zeros(end-start)
@@ -817,8 +815,9 @@ class MultiBedGzLabelHandler(LabelHandler):
         if self.normalize_gc:
             # This may in future be replaced with a more sophisticated calculation
             aggregated_values = aggregated_values/(gc_content + 0.1)
-        if self.normalize_counts:
-            aggregated_values = 1000*aggregated_values/self.counts_normalization
+
+        aggregated_values = aggregated_values/self.counts_normalization
+
         if self.binarize:
             return aggregated_values>self.threshold
         else:
@@ -962,7 +961,7 @@ class BamCovLabelHandler(LabelHandler):
             bam_files: list,
             label_bin_size: int,
             combine_operation='mean',
-            normalize_counts=False,
+            normalize_counts_per=None,
             scale=1,
             clip=1024,
             soft_clip=True,
@@ -970,7 +969,7 @@ class BamCovLabelHandler(LabelHandler):
         self.bam_files = [str(bam_file) for bam_file in bam_files]
         self.label_bin_size = label_bin_size
         self.combine_operation = combine_operation
-        self.normalize_counts = normalize_counts
+        self.normalize_counts_per = normalize_counts_per
         self.scale=scale
         self.clip=clip
         self.soft_clip=soft_clip
@@ -986,8 +985,8 @@ class BamCovLabelHandler(LabelHandler):
                     raise ValueError(f"{bam_file} cannot be opened by pysam AlignmentFile.")
             else:
                 raise OSError(f"{bam_file} does not exist.")
-        if self.normalize_counts and self.bam_files:
-            self.read_depth_scaling = 1e6 / total_reads
+        if self.normalize_counts_per is not None and self.bam_files:
+            self.read_depth_scaling = self.normalize_counts_per / (total_reads / len(self.bam_files))
         else:
             self.read_depth_scaling = 1
     def load_labels(self,source,start,end):
@@ -1012,7 +1011,7 @@ class BamCovLabelHandler(LabelHandler):
                             )
                         )
                     ] + end_pad*[0])
-                values_list.append(self.read_depth_scaling * values)
+                values_list.append(values)
             except Exception as e:
                 raise RuntimeError(f"Error in coverage loading for {source}:{start}-{end} from {bam_file}. contig length {self.chroms[source]}") from e
         if self.combine_operation=='mean':
@@ -1021,6 +1020,9 @@ class BamCovLabelHandler(LabelHandler):
             aggregated_values = np.mean(stacked_values, axis=0).reshape(-1,self.label_bin_size).mean(axis=1)
         else:
             raise NotImplementedError(f"No implementation for {self.combine_operation}.")
+        
+        aggregated_values = self.read_depth_scaling * aggregated_values
+        
         if self.soft_clip:
             # sqrt over clip threshold
             aggregated_values = np.where(aggregated_values>self.clip,
@@ -1123,7 +1125,7 @@ class MethylAtacAtlases(MultitaskIOHandler):
                                     bigwig_files = atac_celltype_files,
                                     # trim_off_ends=trim_off_ends,
                                     label_bin_size=label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1350,7 +1352,7 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = atac_celltype_files,
                                     label_bin_size=label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1372,7 +1374,7 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = cage_celltype_files,
                                     label_bin_size = label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1395,7 +1397,7 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = [atac_celltype_file],
                                     label_bin_size=label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1417,7 +1419,7 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = [cage_celltype_file],
                                     label_bin_size = label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -2025,7 +2027,6 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
             cage_clip: float=384,
             merge_labels: bool=True,
             max_chunks_in_mem: int=100,
-            normalize_label_counts: bool=False,
             normalize_label_gc: bool=False,
             binarize_cpg: bool=False,
             binarize_labels: bool=False,
@@ -2055,7 +2056,8 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
         self.io_mappings_list = []
 
         with open(match_file) as f:
-            for index,line in tqdm(enumerate(f),desc='Identifying and setting scaling for input files'):
+            lines = f.readlines()
+            for index,line in tqdm(enumerate(lines),desc='Identifying and setting scaling for input files',total=len(lines)):
                 if index>0: #first line is the headers
                     fields = line.split('\t')
                     methylation_names = fields[0].strip('"\'').split(',')
@@ -2108,7 +2110,6 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = atac_celltype_files,
                                     label_bin_size=label_bin_size,
-                                    normalize_counts=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -2130,7 +2131,6 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = cage_celltype_files,
                                     label_bin_size = label_bin_size,
-                                    normalize_counts=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -2153,7 +2153,7 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = [atac_celltype_file],
                                     label_bin_size=label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=cpm_normalize_labels,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -2175,7 +2175,7 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = [cage_celltype_file],
                                     label_bin_size = label_bin_size,
-                                    normalize_counts=normalize_label_counts,
+                                    cpm_normalize=cpm_normalize_labels,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
