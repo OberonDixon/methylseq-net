@@ -389,10 +389,10 @@ class HaplotypedPredLogger(Callback):
         self.hp2_accessibility_file = hp2_accessibility_file
         self.hp1_rna_file = hp1_rna_file
         self.hp2_rna_file = hp2_rna_file
-        self.genome = pysam.FastaFile(ref_genome_fasta)
+        self.genome = ref_genome_fasta
         if hp1_genome_fasta and hp2_genome_fasta:
-            self.hp1_genome = pysam.FastaFile(hp1_genome_fasta)
-            self.hp2_genome = pysam.FastaFile(hp2_genome_fasta)
+            self.hp1_genome = hp1_genome_fasta
+            self.hp2_genome = hp2_genome_fasta
         else:
             self.hp1_genome = self.genome
             self.hp2_genome = self.genome
@@ -709,16 +709,23 @@ class HaplotypedPredLogger(Callback):
             start=start,
             end=end,
             motif="CG,0",
+            negative_to_value=0.0,
         )
         if np.any(cpg_ratio>1):
             cpg_ratio = cpg_ratio/100
         exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
         if genome is None:
             genome = self.genome
+        sequence = load_sequence(
+            file_path=genome,
+            contig=chromosome,
+            start=start,
+            end=end,
+        )
         x_methylseq = torch.permute(
             torch.tensor(
                 dna_io.one_hot_encode_dna(
-                    dna_strand=genome.fetch(chromosome,start,end), 
+                    dna_strand=sequence, 
                     cpg_methylation=exp_cpg_ratio, 
                     valid_cpgs=non_zero_mask,
                 ),
