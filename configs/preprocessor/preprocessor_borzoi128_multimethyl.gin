@@ -16,6 +16,9 @@ MultiMethylWriter.mask = True
 RegionBedParser.regions_bed = %regions_bed
 RegionBedParser.seq_length = %seq_length
 
+MultiBigWigLabelHandler.normalize_counts_per=None #already normalized per billion
+MultiBedGzLabelHandler.normalize_counts_per=1e9
+
 MultiMethylAtacCageAtlases.ref_genome = %ref_genome
 MultiMethylAtacCageAtlases.methylation_directory = %methylation_directory
 MultiMethylAtacCageAtlases.atac_directory = %atac_directory
@@ -23,7 +26,6 @@ MultiMethylAtacCageAtlases.cage_directory = %cage_directory
 MultiMethylAtacCageAtlases.match_file = %match_file
 MultiMethylAtacCageAtlases.label_bin_size = %label_bin_size
 MultiMethylAtacCageAtlases.label_num_bins = %label_num_bins
-MultiMethylAtacCageAtlases.normalize_label_counts = False
 MultiMethylAtacCageAtlases.normalize_label_gc = False
 MultiMethylAtacCageAtlases.binarize_labels = False
 
