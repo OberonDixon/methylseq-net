@@ -24,10 +24,15 @@ dependencies = [
     "wandb>=0.21",
     "borzoi-pytorch",
     "umap-learn",
+    "numba>=0.58.0",
     "numpy<2.0.0",
     "psutil",
     "openpyxl",
     "ipykernel",
+    "tqdm",
+    "ipywidgets",
+    "seaborn",
+    "pyliftover",
 ]
 
 [tool.setuptools]
