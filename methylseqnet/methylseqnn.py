@@ -257,6 +257,7 @@ class MethylSeqNN(L.LightningModule):
         self.methyl_indep_seq_rep_probe = nn.ModuleList([])
         self.methyl_dep_seq_rep_probe = nn.ModuleList([])
         self.input_to_methyl_rep = nn.ModuleList([])
+        self.factorized_reps_to_output = nn.ModuleList([])
         self.methyl_indep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_indep_seq_rep_probe_upstream_grad_scale)
         self.methyl_dep_seq_rep_probe_grad_interface = GradientReversalLayer(lambda_=methyl_dep_seq_rep_probe_upstream_grad_scale)
         if self.use_embeddings_factorization:
@@ -785,7 +786,7 @@ class MethylSeqNN(L.LightningModule):
         inputs_length = sequence.shape[-1] - (2*self.crop_off_sequence if self.crop_off_sequence else 0)
         targets_length = targets.shape[-1]
         
-        if self.layers or self.input_to_methyl_rep:
+        if len(self.layers)>0 or self.input_to_methyl_rep:
             if not self.pad_all_layers:
                 network_outputs_length = (inputs_length - self.receptive_field+self.total_stride)//self.total_stride
             else:
@@ -820,7 +821,7 @@ class MethylSeqNN(L.LightningModule):
         # Total pooling
         total_pooling = 1
     
-        for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep:
+        for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep+self.factorized_reps_to_output:
             kernel_size = getattr(layer, 'kernel_size', 1)
             if isinstance(kernel_size,tuple):
                 kernel_size = kernel_size[0]
@@ -1022,6 +1023,8 @@ class MethylSeqNN(L.LightningModule):
         if self.merged_output_head:
             for layer in self.merged_output_head:
                 x = layer(x)
+        if self.crop_off_final:
+            x = x[:,:,self.crop_off_final:-self.crop_off_final]
         return x
                 
     def _residual_layers_forward(self, x, embeddings, pseudobatch_scaleup=1):
@@ -1123,8 +1126,8 @@ class MethylSeqNN(L.LightningModule):
                     x_methyl_pseudobatch, 
                     embeddings_pseudobatch_scaleup=pseudobatch_scaleup)
             x_methyl_pseudobatch = layer(x_methyl_pseudobatch)
-        if self.crop_off_final:
-            x_methyl_pseudobatch = x_methyl_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final] 
+        # if self.crop_off_final:
+        #     x_methyl_pseudobatch = x_methyl_pseudobatch[:,:,self.crop_off_final:-self.crop_off_final] 
         batch_size = sequence.size(0)
         
         if methylation.shape[1]>1:
@@ -1178,7 +1181,6 @@ class MethylSeqNN(L.LightningModule):
                     for layer in self.factorized_reps_to_output[f"factorized_reps_to_output_task{absolute_task_index}"]:
                         x_methylseq_rep = layer(x_methylseq_rep)
                     x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_methylseq_rep
-            return x_output_allchannels
         else:
             x_methylseq_pseudobatch_list = []
             for cell_type_idx in range(methyl_rep.shape[1]):
@@ -1196,7 +1198,7 @@ class MethylSeqNN(L.LightningModule):
             if methyl_rep.shape[1]==1:
                 x_output_allchannels = x_methylseq_pseudobatch
             else:
-                x_output_allchannels = x_methylseq_pseudobatch.new_zeros(methyl_indep_seq_rep.size(0), self.out_tracks, methyl_indep_seq_rep.size(2))
+                x_output_allchannels = x_methylseq_pseudobatch.new_zeros(methyl_indep_seq_rep.size(0), self.out_tracks, x_methylseq_pseudobatch.size(2))
                 batch_size = methyl_indep_seq_rep.size(0)
                 for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):
                     start = cell_type_idx*batch_size
@@ -1204,7 +1206,9 @@ class MethylSeqNN(L.LightningModule):
                     x_cell_type = x_methylseq_pseudobatch[start:end]
                     for relative_task_index, absolute_task_index in channel_tuples:
                         x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_cell_type[:, absolute_task_index:absolute_task_index+1, :]
-            return x_output_allchannels
+        if self.crop_off_final:
+            x_output_allchannels = x_output_allchannels[:,:,self.crop_off_final:-self.crop_off_final]
+        return x_output_allchannels
     
     def _concat_pretrained_embeddings(self, embeddings, rbs, x, embeddings_pseudobatch_scaleup=1):
         """

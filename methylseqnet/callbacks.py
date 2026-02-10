@@ -186,7 +186,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         metrics=[PearsonAcrossPositions(), PearsonAcrossTasks(),CCCAcrossVariants()],
         in_memory=True,
         metrics_per_sample=True,
-        metrics_across_dataset=False,
+        metrics_across_dataset=True,
     ):
         Callback.__init__(self)
         self.in_memory = in_memory
