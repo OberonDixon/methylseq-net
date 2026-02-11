@@ -128,15 +128,15 @@ methylseqnet.callbacks.HaplotypedPredLogger.rna_outputs_slice=[1]
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
     "atlas":[
-        "/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold1.h5",
-        "/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold2.h5",
-        "/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold5.h5",
-        "/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold6.h5",
-        "/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold7.h5",
+        "/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold1.h5",
+        "/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold2.h5",
+        "/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold5.h5",
+        "/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold6.h5",
+        "/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold7.h5",
     ],
 }
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
-    "atlas":["/mnt/faststorage/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold4.h5",],
+    "atlas":["/home/oberon/atlas_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold4.h5",],
 }
 methylseqnet.trainer.MethylSeqDataModule.batch_size=1
 methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
