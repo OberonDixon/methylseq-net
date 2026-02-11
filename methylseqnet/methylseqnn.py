@@ -821,7 +821,7 @@ class MethylSeqNN(L.LightningModule):
         # Total pooling
         total_pooling = 1
     
-        for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep+self.factorized_reps_to_output:
+        for layer in self.layers+self.merged_output_head+self.input_to_methyl_rep+(self.factorized_reps_to_output if isinstance(self.factorized_reps_to_output, nn.ModuleList) else next(iter(self.factorized_reps_to_output.values()))):
             kernel_size = getattr(layer, 'kernel_size', 1)
             if isinstance(kernel_size,tuple):
                 kernel_size = kernel_size[0]

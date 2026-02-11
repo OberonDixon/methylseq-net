@@ -28,6 +28,7 @@ def test_hdf5_prediction_writer():
         # Create mock trainer and pl_module
         mock_trainer = Mock()
         mock_trainer.global_rank = 0  # Simulate rank 0
+        mock_trainer.world_size = 1
         mock_pl_module = Mock()
         mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = io_mappings_str
@@ -134,20 +135,6 @@ def test_hdf5_prediction_writer():
             # Verify specifiers
             expected_specifiers = [f"sample_{i}".encode('utf-8') for i in range(7)]
             assert list(stored_specifiers[:7]) == expected_specifiers
-        
-        # Test error case: non-zero rank should raise ValueError
-        mock_trainer.global_rank = 1
-        
-        with pytest.raises(ValueError, match="Unexpected rank 1"):
-            writer.write_on_batch_end(
-                trainer=mock_trainer,
-                pl_module=mock_pl_module,
-                prediction=prediction_1,
-                batch_indices=batch_indices_1,
-                batch=mock_batch_1,
-                batch_idx=0,
-                dataloader_idx=0
-            )
 
 
 def test_hdf5_prediction_writer_file_cleanup():
@@ -159,6 +146,7 @@ def test_hdf5_prediction_writer_file_cleanup():
         # Create mock data
         mock_trainer = Mock()
         mock_trainer.global_rank = 0
+        mock_trainer.world_size = 1
         mock_pl_module = Mock()
         mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = ""

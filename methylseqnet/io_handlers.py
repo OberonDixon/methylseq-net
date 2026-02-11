@@ -1125,7 +1125,6 @@ class MethylAtacAtlases(MultitaskIOHandler):
                                     bigwig_files = atac_celltype_files,
                                     # trim_off_ends=trim_off_ends,
                                     label_bin_size=label_bin_size,
-                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1352,7 +1351,6 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = atac_celltype_files,
                                     label_bin_size=label_bin_size,
-                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1374,7 +1372,6 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = cage_celltype_files,
                                     label_bin_size = label_bin_size,
-                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1397,7 +1394,6 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = [atac_celltype_file],
                                     label_bin_size=label_bin_size,
-                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1419,7 +1415,6 @@ class MethylAtacCageAtlases(MultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = [cage_celltype_file],
                                     label_bin_size = label_bin_size,
-                                    cpm_normalize=normalize_label_counts,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -1836,8 +1831,8 @@ class PhasedFiberRNA(MultitaskIOHandler):
             unphased_rna_file: list[str] = [],
             kwargs_by_data_type: dict = {
                 'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':False},
-                'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
-                'rna': {'normalize_counts':True,'scale':1, 'clip':384},
+                'fiberseq': {'normalize_counts_per':None,'scale':2, 'clip':32},
+                'rna': {'normalize_counts_per':1e9,'scale':1, 'clip':384},
             },
             max_chunks_in_mem: int=1000,
             normalize_phased_to_unphased_counts: bool=False,
@@ -1855,8 +1850,9 @@ class PhasedFiberRNA(MultitaskIOHandler):
         if self.normalize_phased_to_unphased_counts:
             assert unphased_rna_file!=[], "An unphased RNA BAM file must be provided for normalization."
             phased_rna_kwargs = kwargs_by_data_type['rna'].copy()
-            phased_rna_kwargs['normalize_counts'] = False
-
+            phased_rna_kwargs['normalize_counts_per'] = False
+        else:
+            phased_rna_kwargs = kwargs_by_data_type['rna']
         self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
         self.cpg_handlers = [
             MultiFileCpGHandler(cpg_files = [cpg_file], **kwargs_by_data_type['methylation'])
@@ -2153,7 +2149,6 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBigWigLabelHandler(
                                     bigwig_files = [atac_celltype_file],
                                     label_bin_size=label_bin_size,
-                                    cpm_normalize=cpm_normalize_labels,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,
@@ -2175,7 +2170,6 @@ class MultiMethylAtacCageAtlases(MultimethylMultitaskIOHandler):
                                 label_handlers.append(MultiBedGzLabelHandler(
                                     bedgz_files = [cage_celltype_file],
                                     label_bin_size = label_bin_size,
-                                    cpm_normalize=cpm_normalize_labels,
                                     normalize_gc=normalize_label_gc,
                                     binarize=binarize_labels,
                                     threshold=threshold_labels,

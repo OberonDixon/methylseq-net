@@ -22,7 +22,6 @@ MultiMethylAtacCageAtlases.cage_directory = %cage_directory
 MultiMethylAtacCageAtlases.match_file = %match_file
 MultiMethylAtacCageAtlases.label_bin_size = %label_bin_size
 MultiMethylAtacCageAtlases.label_num_bins = %label_num_bins
-MultiMethylAtacCageAtlases.normalize_label_counts = False
 MultiMethylAtacCageAtlases.normalize_label_gc = False
 MultiMethylAtacCageAtlases.binarize_labels = False
 
