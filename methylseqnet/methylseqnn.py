@@ -18,12 +18,10 @@ import zipfile
 import pandas as pd
 from io import StringIO
 
-from methylseqnet.transforms import *
-from methylseqnet.layers import *
-from methylseqnet.losses import *
-from methylseqnet.optimizers import *
-from methylseqnet.pretrained import *
-from methylseqnet.activations import *
+from methylseqnet.layers import ActivationCapture, GradientReversalLayer
+from methylseqnet.losses import PoissonLoss, LogL1Loss, BCELoss, OrthogonalityLoss, MSELoss
+from methylseqnet.optimizers import AdamOptimizer
+from methylseqnet.pretrained import basenji2_pytorch, borzoi_pytorch
 
 gin.register(nn.Softplus)
 gin.register(nn.Sigmoid)
