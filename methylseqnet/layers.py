@@ -12,6 +12,10 @@ from borzoi_pytorch.pytorch_borzoi_utils import Residual
 gin.external_configurable(nn.AvgPool1d, module='torch.nn')
 gin.external_configurable(nn.MaxPool1d, module='torch.nn')
 
+################################################################################################################
+####                                          Utility layers                                                ####
+################################################################################################################
+
 class GradientReversal(Function):
     @staticmethod
     def forward(ctx, x, lambda_):
@@ -50,114 +54,6 @@ class ActivationCapture(nn.Module):
         return x
 
 @gin.configurable
-@gin.register
-class EncodingAdjuster(nn.Module):
-    """
-    OBSOLETE: this class is obsolete. Use transforms.py::EncodingSelector instead.
-    EncodingAdjuster / EncodingSelector will take a 7-dimensional input encoding ACGT-mCfrac-mGfrac-CpGmask and select a 
-    different encoding for test purposes, such as seq-only, no CpGmask, or C + mCfrac add to 1.
-    """
-    def __init__(self, encoding_str):
-        super().__init__()
-        warnings.warn(
-            "The EncodingAdjuster class in layers.py is deprecated and will be removed in a future release. "
-            "Please use transforms.py::EncodingSelector instead.",
-            UserWarning,
-            stacklevel=2
-        )
-        self.encoding_str = encoding_str
-        if self.encoding_str in ['seq+methyl_binary-seq','seq+methyl_ACGTm-sum-to-1','seq+methyl_binarize-methyl']:
-            self.channels = 7
-        elif self.encoding_str in ['seq+methyl_no-mask']:
-            self.channels = 6
-        elif self.encoding_str in ['seq+methyl_combine-strands-no-mask','seq+smoothed-methyl']:
-            self.channels = 5
-        elif self.encoding_str in ['seq-only']:
-            self.channels = 4
-        elif self.encoding_str in ['methyl-only']:
-            self.channels = 3
-        elif self.encoding_str in ['smoothed-methyl-only']:
-            self.channels = 1
-        else:
-            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
-
-    def forward(self, x):
-        # the structure of the one-hot sequence is [sample,(A,C,G,T,meth_fraction_fwd,meth_fraction_rev,valid_cpg),position]
-
-        if self.encoding_str == 'seq+methyl_binary-seq':
-            x = x
-        elif self.encoding_str == 'seq+methyl_no-mask':
-            x =  x[:,0:6,:]
-        elif self.encoding_str == 'seq+methyl_ACGTm-sum-to-1':
-            x = x.clone()
-            x[:,1:3,:] = x[:,1:3,:] - x[:,4:6,:]
-        elif self.encoding_str == 'seq+methyl_binarize-methyl':
-            x = x.clone()
-            x[:,4:6,:] = (x[:,4:6,:]>0.5)
-        elif self.encoding_str == 'seq+methyl_combine-strands-no-mask':
-            x = x.clone()
-            x[:,4,:] = x[:,4,:] + x[:,5,:]
-            x = x[:,0:5,:]
-        elif self.encoding_str == 'seq+smoothed-methyl':
-            mask = x[:,6,:]>0
-            methylation = x[:,4,:]+x[:,5,:]
-            padding = (129 - 1) // 2
-            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
-            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
-            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
-            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
-            x = x.clone()
-            x[:,4,:] = smoothed
-            x = x[:,0:5,:]
-        elif self.encoding_str == 'seq-only':
-            x = x[:,0:4,:]
-        elif self.encoding_str == 'methyl-only':
-            x = x[:,4:7,:]
-        elif self.encoding_str == 'smoothed-methyl-only':
-            mask = x[:,6,:]>0
-            methylation = x[:,4,:]+x[:,5,:]
-            padding = (129 - 1) // 2
-            kernel = torch.ones(1, 1, 129, device=methylation.device)  # Create a kernel with ones
-            smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
-            mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
-            smoothed = torch.nan_to_num((smoothed / mask_sum),nan=1,posinf=1)
-            x = x.clone()
-            x[:,4,:] = smoothed
-            x = x[:,4:5,:]
-        else:
-            raise NotImplementedError(f"encoding_str: {self.encoding_str}")
-
-        return x
-
-@gin.configurable
-@gin.register
-class MethylationDropout(nn.Module):
-    def __init__(self, in_channels, dropout=0.2, chunk_size=1, inverted=False):
-        super().__init__()
-        warnings.warn(
-            "The MethylationDropout class in layers.py is deprecated and will be removed in a future release. "
-            "Please use transforms.py::CpGSparsifier instead.",
-            UserWarning,
-            stacklevel=2
-        )
-        self.in_channels=in_channels
-        self.dropout=dropout
-        self.chunk_size=chunk_size
-        self.inverted=inverted
-    def forward(self,x):
-        if self.in_channels>4 and self.training:
-            num_samples, num_channels, length = x.shape
-            effective_length = (length + self.chunk_size - 1) // self.chunk_size
-            chunk_mask = torch.rand(num_samples, effective_length, device=x.device) > self.dropout
-            if self.inverted:
-                chunk_mask = ~chunk_mask
-            mask = chunk_mask.repeat_interleave(self.chunk_size, dim=1)
-            mask = mask[:,:length]
-            mask = mask.unsqueeze(1).expand(num_samples, self.in_channels-4, length)
-            x[:,4:,:]*=mask # Zero out the methylation channels using the mask
-        return x
-
-@gin.configurable
 class ZeroChannels(nn.Module):
     """Layer that outputs a tensor with 0 channels regardless of input."""
     
@@ -173,6 +69,10 @@ class ZeroChannels(nn.Module):
         """
         batch, _, length = x.shape
         return torch.empty(batch, 0, length, device=x.device, dtype=x.dtype)
+
+################################################################################################################
+####                                        Trainable layers                                                ####
+################################################################################################################
 
 @gin.configurable
 @gin.register

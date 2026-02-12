@@ -110,7 +110,7 @@ class BaseHDF5Writer(ABC):
         targets = batch['target']
         # TODO: make this work in the case where inputs contains embeddings for pretrained
         # TODO: adjust for variants
-        targets = pl_module.trim_targets(sequence,targets)
+        targets = pl_module.crop_targets(targets)
         return sequence, targets
 
     def __del__(self):
@@ -199,8 +199,8 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
             raise ValueError("if metrics_across_dataset is False, nothing gets saved between batches, so in_memory must be True.")
 
         self.metric_values_dict = defaultdict(dict)
-        self.targets_list = []
-        self.predictions_list = []
+        self.targets_dict = defaultdict(list)
+        self.predictions_dict = defaultdict(list)
 
         
 
@@ -215,14 +215,22 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         return channels_dict
 
     def on_validation_epoch_start(self, trainer, pl_module):
-        for data_type in pl_module.get_io_mappings_df()['data_type'].unique():
-            for metric in self.metrics:
-                metric_name = metric.__class__.__name__
-                self.metric_values_dict[metric_name][data_type] = [float('nan')]  # initialize with nan to sync_dist issues
+        io_mappings_df = pl_module.get_io_mappings_df()
+        for dataset_key in io_mappings_df['dataset_key'].unique():
+            if self.split_by_target_type:
+                for data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].unique():
+                    for metric in self.metrics:
+                        metric_name = metric.__class__.__name__
+                        self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"] = [float('nan')]  # initialize with nan to sync_dist issues
+            else:
+                for metric in self.metrics:
+                    metric_name = metric.__class__.__name__
+                    self.metric_values_dict[metric_name][dataset_key] = [float('nan')]
     
     def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
         targets = targets.detach().cpu()
+        dataset_key = batch['dataset_key'][0]
         predictions = outputs["predictions"].detach().cpu()
         batch_size = predictions.shape[0]
         io_mappings_df = pl_module.get_io_mappings_df()
@@ -231,25 +239,25 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                 if self.split_by_target_type:
                     for data_type, dataset_channels in self._get_channels_dict(pl_module).items():
                         # check whether this channel is associated with the current sample's dataset_key
-                        if data_type in io_mappings_df[io_mappings_df['dataset_key']==batch['dataset_key'][i]]['data_type'].values:
+                        if data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].values:
                             if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
                                 sample_predictions = predictions[i,:,dataset_channels,:]
                                 sample_targets = targets[i,:,dataset_channels,:]
                                 for metric in self.metrics:
                                     metric_name = metric.__class__.__name__
                                     metric_value = metric(sample_targets, sample_predictions)
-                                    self.metric_values_dict[metric_name][data_type].append(metric_value.item())
+                                    self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"].append(metric_value.item())
                 else:
                     sample_predictions = predictions[i]
                     sample_targets = targets[i]
                     for metric in self.metrics:
                         metric_name = metric.__class__.__name__
                         metric_value = metric(sample_targets, sample_predictions)
-                        self.metric_values_dict[metric_name]['all'].append(metric_value.item())
+                        self.metric_values_dict[metric_name][dataset_key].append(metric_value.item())
         if self.metrics_across_dataset:
             if self.in_memory:
-                self.predictions_list.extend([predictions[i] for i in range(batch_size)])
-                self.targets_list.extend([targets[i] for i in range(batch_size)])
+                self.predictions_dict[dataset_key].extend([predictions[i] for i in range(batch_size)])
+                self.targets_dict[dataset_key].extend([targets[i] for i in range(batch_size)])
             else:
                 self.append_batch_to_h5(trainer, pl_module, predictions, ["" for _ in predictions], None, batch)
 
@@ -257,30 +265,34 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         if self.metrics_per_sample:
             for metric in self.metrics:
                 metric_name = metric.__class__.__name__
-                for data_type, metric_values in self.metric_values_dict[metric_name].items():
+                for data_description, metric_values in self.metric_values_dict[metric_name].items():
                     # log the mean
                     if len(metric_values) > 0:
                         mean_metric_value = np.nanmean(metric_values)
                         # valid_values = [v for v in metric_values if not np.isnan(v)]
                         # if len(valid_values) == 0:
                         #     print(f"[Rank {trainer.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
-                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_type}", mean_metric_value, prog_bar=True, sync_dist=True)
+                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=True)
         if self.metrics_across_dataset:
+            io_mappings_df = pl_module.get_io_mappings_df()
             if self.in_memory:
                 # first concatenate everything into tensors to operate upon
-                predictions = torch.cat(self.predictions_list, dim=2)
-                targets = torch.cat(self.targets_list, dim=2)
-                # compute metrics from in-memory structure
-                for metric in self.metrics:
-                    metric_name = metric.__class__.__name__
-                    if self.split_by_target_type:
-                        for data_type, channels in self._get_channels_dict(pl_module).items():
-                            if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
-                                metric_value = metric(targets[...,channels,:], predictions[...,channels,:])
-                                pl_module.log(f"val/{metric_name}_across_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
-                    else:
-                        metric_value = metric(targets, predictions)
-                        pl_module.log(f"val/{metric_name}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
+                for dataset_key in self.targets_dict.keys():
+                    predictions = torch.cat(self.predictions_dict[dataset_key], dim=2)
+                    targets = torch.cat(self.targets_dict[dataset_key], dim=2)
+                    # compute metrics from in-memory structure
+                    for metric in self.metrics:
+                        metric_name = metric.__class__.__name__
+                        if self.split_by_target_type:
+                            for data_type, channels in self._get_channels_dict(pl_module).items():
+                                # check whether this channel is associated with the current sample's dataset_key
+                                if data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].values:
+                                    if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
+                                        metric_value = metric(targets[...,channels,:], predictions[...,channels,:])
+                                        pl_module.log(f"val/{metric_name}_across_dataset_{dataset_key}_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
+                        else:
+                            metric_value = metric(targets, predictions)
+                            pl_module.log(f"val/{metric_name}_{dataset_key}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
             else:
                 # first close all of the file handles to flush everything to disk
                 self._close_all()
@@ -288,8 +300,8 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                 raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
                     
         # empty the lists for next epoch
-        self.predictions_list = []
-        self.targets_list = []
+        self.predictions_dict = defaultdict(list)
+        self.targets_dict = defaultdict(list)
         self.metric_values_dict = defaultdict(dict)
 
 class GPUMemoryLogger(Callback):

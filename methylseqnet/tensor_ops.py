@@ -3,6 +3,16 @@ import torch.nn.functional as F
 import torch.distributed as dist
 import numpy as np
 
+FEATURE_MODULATION_OPS = {
+    'multiply': lambda features, modulator: torch.mul(features, modulator),
+    'add': lambda features, modulator: torch.add(features, modulator), 
+    'keep_modulator': lambda features, modulator: modulator,
+    'keep_features': lambda features, modulator: features,
+    'film': lambda features, modulator: (
+        modulator[:, :features.shape[1],:] * features + modulator[:, features.shape[1]:,:]
+    ),
+}
+
 def gather_to_rank0(data, world_size=None, rank=None):
     """
     Gather data from all ranks to rank 0.
