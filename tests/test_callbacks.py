@@ -30,7 +30,7 @@ def test_hdf5_prediction_writer():
         mock_trainer.global_rank = 0  # Simulate rank 0
         mock_trainer.world_size = 1
         mock_pl_module = Mock()
-        mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
+        mock_pl_module.crop_targets = lambda targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = io_mappings_str
         
         pred_shape = (1, 10, 3)  # Example prediction shape
@@ -148,7 +148,7 @@ def test_hdf5_prediction_writer_file_cleanup():
         mock_trainer.global_rank = 0
         mock_trainer.world_size = 1
         mock_pl_module = Mock()
-        mock_pl_module.trim_targets = lambda inputs,targets: targets  # Identity function for trimming
+        mock_pl_module.crop_targets = lambda targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = ""
         
         predictions = torch.randn(2, 5, 3)
