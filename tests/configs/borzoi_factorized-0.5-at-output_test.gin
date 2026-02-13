@@ -47,10 +47,12 @@ methylseqnet.methylseqnn.MethylSeqNN.encoder_cfg = @borzoi_pytorch
 methylseqnet.methylseqnn.MethylSeqNN.encoder_input_head = [@seq_model/EncodingSelector]
 methylseqnet.methylseqnn.MethylSeqNN.conditioning_operation = 'keep_modulator'
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
+    @embeddings_to_seq_rep/ConvBlock,
+]
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [
     @embeddings_to_methyl_rep/ConvBlock,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = []
 methylseqnet.methylseqnn.MethylSeqNN.input_to_conditioning_state_rep = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
