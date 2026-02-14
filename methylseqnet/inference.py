@@ -7,7 +7,7 @@ from methylseqnet.dna_io import one_hot_encode_dna
 from methylseqnet.datawriter import BigWigWriter
 import json
 from pathlib import Path
-from methylseqnet.dataset import MethylSeqDataset,MultiMethylDataset,BaseHDF5Dataset,MultiDataset
+from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
 from methylseqnet.callbacks import HDF5PredictionWriter
 from methylseqnet.trainer import MethylSeqDataModule
 from tqdm.auto import tqdm

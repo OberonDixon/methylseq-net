@@ -16,238 +16,6 @@ import gc
 
 @gin.register
 @gin.configurable
-class MethylSeqDataset(Dataset):
-    def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
-        self.file_path = file_path
-        self.batch_size = batch_size
-        self.transforms = [transform() for transform in transforms]
-        self.return_specifiers = return_specifiers
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        # Check dataset details
-        with h5py.File(self.file_path, 'r') as f:
-            # Determine the length of the dataset
-            self.length = len(f['sequence'])
-            if len(f['sequence']) != len(f['tracks']):
-                raise ValueError(f"sequence and tracks datasets do not line up: {len(f['sequence'])} vs {len(f['tracks'])} entries respectively.")
-            if 'mask' in f:
-                self.mask = True
-                if len(f['tracks']) != len(f['mask']):
-                    raise ValueError(f"tracks and mask datasets do not line up: {len(f['tracks'])} vs {len(f['mask'])} entries respectively.")
-            else:
-                self.mask = False
-
-        
-    def __len__(self):
-        if self.batch_size is not None:
-            return (self.length + self.batch_size -1) // self.batch_size
-        else:
-            return self.length
-
-    def __getitem__(self, idx):
-        start_idx = idx * self.batch_size if self.batch_size else idx
-        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
-        for attempt in range(self.max_retries):
-            try:
-                with h5py.File(self.file_path, 'r') as f:
-                    input_data = f['sequence'][start_idx:end_idx,:,:]
-                    target = f['tracks'][start_idx:end_idx,:,:]
-                    input_data = torch.tensor(input_data, dtype=torch.float32)
-                    target = torch.tensor(target, dtype=torch.float32)
-                    if self.mask:
-                        mask = f['mask'][start_idx:end_idx,:,:]
-                        mask = torch.tensor(mask, dtype=torch.bool)
-                    else:
-                        mask = None
-                    if self.return_specifiers:
-                        try:
-                            specifiers = f['specifier'].asstr()[start_idx:end_idx]
-                        except Exception as e:
-                            try: 
-                                # this exists to support legacy datasets and will be obsoleted and removed at some point
-                                specifiers = f['region'][start_idx:end_idx]
-                            except:
-                                # adjust this line when the region option is removed
-                                raise ValueError(
-                                    'Dataset contains neither "specifier" nor "region". Consider running with return_specifiers=False'
-                                ) from e
-                        if self.batch_size is None:
-                            specifiers = specifiers[0]
-                            
-                
-                for transform in self.transforms:
-                    input_data, target, mask = transform(input_data, target, mask)
-        
-                if self.batch_size is None:
-                    input_data = input_data.squeeze(0)
-                    target = target.squeeze(0)
-                    mask = mask.squeeze(0) if mask is not None else mask
-                
-                if self.return_specifiers:
-                    return input_data, target, mask, specifiers
-                else:
-                    return input_data, target, mask
-            except OSError as e:
-                if attempt<self.max_retries-1:
-                    print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
-                    time.sleep(self.retry_delay)
-                else:
-                    # If all retries fail, print the error and re-raise the last exception
-                    print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
-                    raise  # Re-raise the last caught exception
-
-    def get_config(self):
-        with h5py.File(self.file_path, 'r') as f:
-            gin_config_str = f.attrs['gin_config']
-            return gin_config_str
-
-    def get_io_mappings_str(self):
-        with h5py.File(self.file_path,'r') as f:
-            io_mappings_str = f.attrs['io_mappings']
-            return io_mappings_str
-
-    def get_io_mappings_df(self):
-        try:
-            io_mappings_str = self.get_io_mappings_str()
-            pd.read_csv(StringIO(io_mappings_str),sep='\t')
-        except:
-            return pd.DataFrame()
-        return 
-
-@gin.register
-@gin.configurable
-class MultiMethylDataset(Dataset):
-    def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
-        self.file_paths = file_path if isinstance(file_path, list) else [file_path]
-        self.batch_size = batch_size
-        self.transforms = [transform() for transform in transforms]
-        # self.return_specifiers = return_specifiers always return specifiers in dict
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        
-        # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
-        self.file_path = create_virtual_h5_with_attributes(self.file_paths)
-
-        # Check dataset details
-        with h5py.File(self.file_path, 'r') as f:
-            # Determine the length of the dataset
-            self.length = len(f['sequence'])
-            if len(f['sequence']) != len(f['tracks']) or len(f['tracks']) != len(f['methylation']):
-                raise ValueError(f"sequence and tracks datasets do not line up: {len(f['sequence'])} vs {len(f['tracks'])} entries respectively.")
-            if 'mask' in f:
-                self.mask = True
-                if len(f['tracks']) != len(f['mask']):
-                    raise ValueError(f"tracks and mask datasets do not line up: {len(f['tracks'])} vs {len(f['mask'])} entries respectively.")
-            else:
-                self.mask = False
-
-        
-    def __len__(self):
-        if self.batch_size is not None:
-            return (self.length + self.batch_size -1) // self.batch_size
-        else:
-            return self.length
-
-    def __getitem__(self, idx):
-        start_idx = idx * self.batch_size if self.batch_size else idx
-        end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
-        for attempt in range(self.max_retries):
-            try:
-                with h5py.File(self.file_path, 'r', rdcc_nbytes=1024*1024, rdcc_nslots=1) as f:
-                    sequence_np = f['sequence'][start_idx:end_idx]
-                    methylation_np = f['methylation'][start_idx:end_idx]
-                    target_np = f['tracks'][start_idx:end_idx]
-
-                    # Backward compatibility: expand dimensions if needed
-                    if sequence_np.ndim == 3:
-                        # Old format: (batch, 4, seq_length) -> (batch, 1, 4, seq_length)
-                        sequence_np = sequence_np[:, np.newaxis, :, :]
-
-                    if target_np.ndim == 3:
-                        # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
-                        target_np = target_np[:, np.newaxis, :, :]
-
-                    if methylation_np.ndim == 3:
-                        # Old format: (batch, 3*num_cell_types, seq_length) -> (batch, 1, num_cell_types, 3, seq_length)
-                        batch_size = methylation_np.shape[0]
-                        seq_length = methylation_np.shape[2]
-                        num_cell_types = methylation_np.shape[1] // 3
-                        methylation_np = methylation_np.reshape(batch_size, num_cell_types, 3, seq_length)
-                        methylation_np = methylation_np[:, np.newaxis, :, :, :]
-
-                    sequence = torch.tensor(sequence_np, dtype=torch.float32)
-                    methylation = torch.tensor(methylation_np, dtype=torch.float32)
-                    target = torch.tensor(target_np, dtype=torch.float32)
-                    del sequence_np, methylation_np, target_np  # free memory
-                    if self.mask:
-                        mask_np = f['mask'][start_idx:end_idx]
-                        if mask_np.ndim == 3:
-                            # Old format: (batch, num_tracks, track_length) -> (batch, 1, num_tracks, track_length)
-                            mask_np = mask_np[:, np.newaxis, :, :]
-                        mask = torch.tensor(mask_np, dtype=torch.bool)
-                        del mask_np  # free memory
-                    else:
-                        mask = torch.ones_like(target, dtype=torch.bool)
-                    specifiers = f['specifier'].asstr()[start_idx:end_idx]
-
-                    if self.batch_size is None:
-                        specifiers = specifiers[0]
-                            
-                for transform in self.transforms:
-                    sequence, methylation, target, mask = transform(sequence, methylation, target, mask)
-
-                if self.batch_size is None:
-                    sequence = sequence.squeeze(0)
-                    methylation = methylation.squeeze(0)
-                    target = target.squeeze(0)
-                    mask = mask.squeeze(0) if mask is not None else mask
-        
-                if idx%50==0:
-                    gc.collect()
-                
-                return {
-                    'sequence': sequence,
-                    'conditioning_state': methylation,
-                    'target': target,
-                    'mask': mask,
-                    'specifier': specifiers,
-                }
-            except OSError as e:
-                if attempt<self.max_retries-1:
-                    print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
-                    time.sleep(self.retry_delay)
-                else:
-                    # If all retries fail, print the error and re-raise the last exception
-                    print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
-                    raise  # Re-raise the last caught exception
-
-    def get_config(self):
-        with h5py.File(self.file_path, 'r') as f:
-            gin_config_str = f.attrs['gin_config']
-            return gin_config_str
-
-    def get_io_mappings_str(self):
-        with h5py.File(self.file_path,'r') as f:
-            try:
-                io_mappings_str = f.attrs['io_mappings']
-            except:
-                raise Exception(f"Could not find io_mappings in file for {self.file_path}")
-            return io_mappings_str
-
-    def get_io_mappings_df(self):
-        try:
-            io_mappings_str = self.get_io_mappings_str()
-            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
-        except:
-            return pd.DataFrame() 
-
-    def __del__(self):
-        # Cleanup the temporary file when the object is destroyed
-        if hasattr(self, 'file_path') and self.file_path and os.path.exists(self.file_path):
-            os.remove(self.file_path)
-
-@gin.register
-@gin.configurable
 class BaseHDF5Dataset(Dataset):
     def __init__(
         self, 
@@ -360,161 +128,79 @@ class BaseHDF5Dataset(Dataset):
         if hasattr(self, 'file_path') and self.file_path and os.path.exists(self.file_path):
             os.remove(self.file_path)
 
-class SingleH5Dataset(Dataset):
-    def __init__(
-        self,
-        file_path,
-        dataset_name,
-        batch_size=None,
-        max_retries=100, 
-        retry_delay=2,
-        transforms=(),
-        return_specifiers=False,
-    ):
-        if len(transforms)>0:
-            raise NotImplementedError("Transforms not implemented.")
-        
-        self.file_paths = file_path if isinstance(file_path, list) else [file_path]       
-        self.dataset_name = dataset_name
-        self.max_retries = 100
-        self.retry_delay = 2
-        self.batch_size = batch_size
-        self.return_specifiers = return_specifiers
+@gin.register
+@gin.configurable
+class MultiMethylDataset(BaseHDF5Dataset):
+    def __init__(self, file_path, batch_size=None, transforms=(), return_specifiers=False, max_retries=100, retry_delay=2):
+        self.transforms = [transform() for transform in transforms]
+        super().__init__(
+            file_path=file_path,
+            batch_size=batch_size,
+            transforms=(),   # base class raises on non-empty; transforms handled above
+            return_specifiers=return_specifiers,
+            datasets=['sequence', 'methylation', 'tracks', 'mask'],
+            max_retries=max_retries,
+            retry_delay=retry_delay,
+        )
 
-        # it is crucial that self.file_path be virtual, because the file will be deleted in the __del__ function
-        self.file_path = create_virtual_h5_with_attributes(self.file_paths)
-        
-        with h5py.File(self.file_path, 'r') as f:
-            # Determine the length of the dataset
-            self.length = len(f[self.dataset_name])
-            
-    def __len__(self):
-        if self.batch_size is not None:
-            return (self.length + self.batch_size -1) // self.batch_size
-        else:
-            return self.length
-        
     def __getitem__(self, idx):
         start_idx = idx * self.batch_size if self.batch_size else idx
         end_idx = min(start_idx + self.batch_size, self.length) if self.batch_size else idx + 1
         for attempt in range(self.max_retries):
             try:
-                with h5py.File(self.file_path, 'r') as f: 
-                    data = torch.tensor(f[self.dataset_name][idx], dtype=torch.float32)
+                with h5py.File(self.file_path, 'r', rdcc_nbytes=1024*1024, rdcc_nslots=1) as f:
+                    sequence_np = f['sequence'][start_idx:end_idx]
+                    methylation_np = f['methylation'][start_idx:end_idx]
+                    target_np = f['tracks'][start_idx:end_idx]
+                    mask_np = f['mask'][start_idx:end_idx]
+                    specifiers = f['specifier'].asstr()[start_idx:end_idx]
                     if self.batch_size is None:
-                        data = data.squeeze(0)
-                    if self.return_specifiers:
-                        # try:
-                        specifiers = f['specifier'].asstr()[start_idx:end_idx]
-                        # except:
-                        #     specifiers = np.array(['' for _ in range(data.shape[0])])
-                        if self.batch_size is None:
-                            specifiers = specifiers[0]
-                        return data, None, None, specifiers
-                    else:
-                        return data
+                        specifiers = specifiers[0]
+
+                    # Backward compatibility: expand dimensions if needed
+                    if sequence_np.ndim == 3:
+                        sequence_np = sequence_np[:, np.newaxis, :, :]
+                        target_np = target_np[:, np.newaxis, :, :]
+                        batch_size = methylation_np.shape[0]
+                        seq_length = methylation_np.shape[2]
+                        num_cell_types = methylation_np.shape[1] // 3
+                        methylation_np = methylation_np.reshape(batch_size, num_cell_types, 3, seq_length)
+                        methylation_np = methylation_np[:, np.newaxis, :, :, :]
+                        mask_np = mask_np[:, np.newaxis, :, :]
+
+                    sequence = torch.tensor(sequence_np, dtype=torch.float32)
+                    methylation = torch.tensor(methylation_np, dtype=torch.float32)
+                    target = torch.tensor(target_np, dtype=torch.float32)
+                    mask = torch.tensor(mask_np, dtype=torch.bool)
+                    del sequence_np, methylation_np, target_np, mask_np  # free memory
+                            
+                for transform in self.transforms:
+                    sequence, methylation, target, mask = transform(sequence, methylation, target, mask)
+
+                if self.batch_size is None:
+                    sequence = sequence.squeeze(0)
+                    methylation = methylation.squeeze(0)
+                    target = target.squeeze(0)
+                    mask = mask.squeeze(0) if mask is not None else mask
+        
+                if idx%50==0:
+                    gc.collect()
+                
+                return {
+                    'sequence': sequence,
+                    'conditioning_state': methylation,
+                    'target': target,
+                    'mask': mask,
+                    'specifier': specifiers,
+                }
             except OSError as e:
                 if attempt<self.max_retries-1:
                     print(f"Attempt {attempt + 1} failed with error: {e}. Retrying in {self.retry_delay} seconds.", file=sys.stderr)
                     time.sleep(self.retry_delay)
                 else:
+                    # If all retries fail, print the error and re-raise the last exception
                     print(f"Max retries exceeded. Failed to read from HDF5 file: {self.file_path}", file=sys.stderr)
                     raise  # Re-raise the last caught exception
-
-    def get_config(self):
-        with h5py.File(self.file_path, 'r') as f:
-            gin_config_str = f.attrs['gin_config']
-            return gin_config_str
-
-    def get_io_mappings_str(self):
-        with h5py.File(self.file_path,'r') as f:
-            try:
-                io_mappings_str = f.attrs['io_mappings']
-            except:
-                raise Exception(f"Could not find io_mappings in file for {self.file_path}")
-            return io_mappings_str
-
-    def get_io_mappings_df(self):
-        try:
-            io_mappings_str = self.get_io_mappings_str()
-            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
-        except:
-            return pd.DataFrame() 
-
-    def __del__(self):
-        # Cleanup the temporary file when the object is destroyed
-        if os.path.exists(self.file_path):
-            os.remove(self.file_path)
-            
-@gin.register
-@gin.configurable
-class MultiDataset(Dataset):
-    def __init__(
-        self, 
-        file_path, 
-        dataset_classes=(MultiMethylDataset,BaseHDF5Dataset), 
-        batch_size=None, 
-        return_specifiers=False,
-        transforms=(), 
-        allow_unequal_lengths=True,
-        validate_specifiers=True,
-        kwargs_tuple=({},{}),
-    ):
-        if not isinstance(file_path,tuple):
-            raise TypeError("MultiDataset file_path must be passed as a tuple of file paths corresponding to the dataset_classes.")
-        if not isinstance(dataset_classes,tuple):
-            raise TypeError("MultiDataset dataset_classes must be pass as a tuple containing class handles.")
-        self.datasets = tuple(
-            dataset_class(
-                file_path=file_path_for_class,
-                batch_size=batch_size,
-                transforms=transforms,
-                return_specifiers=True,
-                **kwargs_for_class,
-            )
-            for dataset_class, file_path_for_class, kwargs_for_class in zip(dataset_classes, file_path, kwargs_tuple)
-        )
-        self.return_specifiers = return_specifiers
-        lengths = [len(dataset) for dataset in self.datasets]
-        if not allow_unequal_lengths and len(set(lengths)) > 1:
-            raise ValueError(f"All MultiDataset datasets must have the same length; instead found lengths {lengths}. Pass allow_unequal_lengths=True to override.")
-        self.validate_specifiers = validate_specifiers
-        self.length=min(lengths)
-        
-    def __len__(self):
-        return self.length
-        
-    def __getitem__(self, idx):  
-        results = [dataset[idx] for dataset in self.datasets]
-        inputs  = [r[0] for r in results]
-        targets = [r[1] for r in results]
-        masks   = [r[2] for r in results]
-        specifiers = [r[3] for r in results]
-        if self.validate_specifiers and len(set([",".join(specifier_list) for specifier_list in specifiers])) > 1:
-            raise ValueError(f"Mistmatch between datasets for index {idx}: {specifiers} corresponding to {self.datasets}.")
-        if self.return_specifiers:
-            return _pack(inputs), _pack(targets), _pack(masks), specifiers[0]
-        else:
-            return _pack(inputs), _pack(targets), _pack(masks)
-
-    def get_io_mappings_str(self):
-        io_mappings_strs = []
-        for dataset in self.datasets:
-            if hasattr(dataset, "get_io_mappings_str") and callable(getattr(dataset, "get_io_mappings_str")):
-                try:
-                    io_mappings_strs.append(dataset.get_io_mappings_str())
-                except:
-                    pass
-        if len(io_mappings_strs)>0:
-            return max(io_mappings_strs, key=len)
-        raise AttributeError("None of the MultiDataset dataset members can return an io_mappings_str.")
-
-    def get_io_mappings_df(self):
-        try:
-            io_mappings_str = self.get_io_mappings_str()
-            return pd.read_csv(StringIO(io_mappings_str),sep='\t')
-        except:
-            return pd.DataFrame()         
         
 def create_virtual_h5_with_attributes(file_paths):
     """
