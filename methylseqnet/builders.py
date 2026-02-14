@@ -1318,7 +1318,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
         if self.normalize_phased_to_unphased_counts:
             assert unphased_rna_file!=[], "An unphased RNA BAM file must be provided for normalization."
             phased_rna_kwargs = kwargs_by_data_type['rna'].copy()
-            phased_rna_kwargs['normalize_counts_per'] = False
+            phased_rna_kwargs['normalize_counts_per'] = None
         else:
             phased_rna_kwargs = kwargs_by_data_type['rna']
         self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
