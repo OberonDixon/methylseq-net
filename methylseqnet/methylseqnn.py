@@ -82,15 +82,22 @@ class MethylSeqNN(L.LightningModule):
         supplemental_predict_outputs: Set = set(),
     ):
         """
-                            ┌─► [unconditional_seq_rep] ────────────────┐
-                            │                                           ▼
-        [sequence_encoder] ─┤                                        concat ─► [output_head]
-                            │                                           ▲
-                            └─► [conditional_seq_rep] ────────► ⊗ ──────┘
-                                                                │ [conditioning_operation]
-                            ┌─► [conditioning_state_rep] ───────┘
-                            │
-        [conditioning_encoder] (optional; can be imputed from sequence)
+        MethylSeqNN forward pass diagram. Simplified processing can be achieved by mapping either
+        the conditional or unconditional sequence representations to zero-channel (thus keeping only
+        the other one in the concatenation operation) or by setting a conditioning_operation that keeps
+        only the `features`, i.e. the conditional_seq_rep, or only the `modulator`, i.e. the
+        conditioning_state_rep. 
+
+        sequence:             ┌────► [unconditional_seq_rep] ──────────┐       output:
+        (N,4,L)               │                                        ▼       (N,out_tracks,L)
+        [sequence_encoder] ─┬─┤                                      concat ─► [output_head]
+                            │ │                                        ▲
+                            │ └────► [conditional_seq_rep] ──► ⊗ ──────┘
+                            │                                  ▲ [conditioning_operation]
+                            │    ┌─► [conditioning_state_rep] ─┘      pseudobatch across
+        conditioning_state: │    │                                    conditioning states
+        (N,states,C,L)      ▼    │
+        [conditioning_state_encoder] (optional; can be imputed from sequence)
         """
         
         super().__init__()
