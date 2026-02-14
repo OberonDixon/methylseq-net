@@ -175,7 +175,9 @@ class MethylSeqNN(L.LightningModule):
                 f"MethylSeqNN residual forward received conditioning_state input with {conditioning_state.shape[1]} cell types."+
                 f"Expected either 1 (shared conditioning_state) or {self.num_cell_types[dataset_key] if dataset_key in self.num_cell_types else self.num_cell_types}."
                 )
-        # TODO: add shape assertions
+        assert sequence.shape[0] == conditioning_state.shape[0], f"Batch size mismatch between sequence and conditioning_state: {sequence.shape[0]} vs {conditioning_state.shape[0]}"
+        assert sequence.shape[-1] == conditioning_state.shape[-1], f"Sequence length mismatch between sequence and conditioning_state: {sequence.shape[-1]} vs {conditioning_state.shape[-1]}"
+        assert dataset_key in self.dataset_keys, f"Dataset key {dataset_key} not found in model dataset_keys {self.dataset_keys}. Used 'all' to run all tasks. Check if io_mappings_str is set correctly and contains the dataset_key."
         embeddings = self._sequence_encoder_forward(sequence)
         x = self._conditioning_forward(sequence, conditioning_state, embeddings, dataset_key)
         return x
@@ -433,6 +435,7 @@ class MethylSeqNN(L.LightningModule):
             cell_type_idx_offset += self.num_cell_types[dataset_key]
         self.num_cell_types['all'] = sum([cell_types for cell_types in self.num_cell_types.values()])
         self.cell_type_list_per_dataset['all'] = [cell_type for cell_types in self.cell_type_list_per_dataset.values() for cell_type in cell_types]
+        self.dataset_keys = set(self.num_cell_types.keys())
         assert max(io_mappings_df['absolute_channel']) == self.out_tracks - 1, f"Max absolute channel index {max(io_mappings_df['absolute_channel'])} does not match out_tracks {self.out_tracks}"
     
     def get_io_mappings_df(self):
