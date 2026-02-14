@@ -31,13 +31,13 @@ scaleup_block/methylseqnet.layers.ConvFinal.in_channels=%dilated_residual_filter
 scaleup_block/methylseqnet.layers.ConvFinal.filters=65
 scaleup_block/methylseqnet.layers.ConvFinal.kernel_size=1
 
-embeddings_to_methyl_indep_seq_rep/AvgPool1d.kernel_size=4
+embeddings_to_unconditional_seq_rep/AvgPool1d.kernel_size=4
 
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.filters=2048
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.filters=2048
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
 
 methyl_rep_to_film/methylseqnet.layers.ConvBlock.in_channels=1
 methyl_rep_to_film/methylseqnet.layers.ConvBlock.filters=4096
@@ -67,12 +67,12 @@ methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [
     @embeddings_to_methyl_rep/ConvFinal,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_indep_seq_rep = [
-    @embeddings_to_methyl_indep_seq_rep/AvgPool1d,
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
+    @embeddings_to_unconditional_seq_rep/AvgPool1d,
     @ZeroChannels,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_dep_seq_rep = [
-    @embeddings_to_methyl_dep_seq_rep/ConvBlock,
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [
+    @embeddings_to_conditional_seq_rep/ConvBlock,
     @Softplus,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
@@ -81,8 +81,8 @@ methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
     @input_to_methyl_rep/Hardtanh,
     @methyl_rep_to_film/ConvBlock,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe=[]
-methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe=[]
+methylseqnet.methylseqnn.MethylSeqNN.unconditional_seq_rep_probe=[]
+methylseqnet.methylseqnn.MethylSeqNN.conditional_seq_rep_probe=[]
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @integrate_embs/ConvBlock,
     @DilatedResidual,
@@ -91,7 +91,7 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
 ]
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output_submodel_per_task=False
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output_submodels_shared=False
-methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.true_conditioning_state_rep_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
@@ -102,8 +102,8 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_output_head':True,
                     'input_to_methyl_rep':True,
                     'embeddings_to_methyl_rep':True,
-                    'embeddings_to_methyl_indep_seq_rep':True,
-                    'embeddings_to_methyl_dep_seq_rep':True,
+                    'embeddings_to_unconditional_seq_rep':True,
+                    'embeddings_to_conditional_seq_rep':True,
                     'factorized_reps_to_output':True,
                 },
                 'epochs':100,

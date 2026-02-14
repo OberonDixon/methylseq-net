@@ -35,33 +35,31 @@ class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
 
-        # Encoder
-        encoder_cfg: Callable | list[nn.Module],
-        encoder_input_head=None,
+        # Input encoders
+        sequence_encoder: list[nn.Module, Callable] = [],
+        conditioning_state_encoder: list[nn.Module, Callable] = [],
+        concat_pretrained_embeddings_at: dict[int: int]={},
 
-        # Conditioned output head
-        embeddings_to_unconditional_seq_rep=None,
-        embeddings_to_conditional_seq_rep=None,
-
-        embeddings_to_conditioning_state_rep=None,
-        input_to_conditioning_state_rep=None,
-        concat_pretrained_embeddings_at={},
+        # Conditioning head
+        embeddings_to_unconditional_seq_rep: list[nn.Module, Callable] = [],
+        embeddings_to_conditional_seq_rep: list[nn.Module, Callable] = [],
+        embeddings_to_conditioning_state_rep: list[nn.Module, Callable] = [],
+        output_head: list[nn.Module, Callable] = [],
 
         conditioning_operation='multiply',
         true_conditioning_state_weight=1.0,
-        interpolate_conditioning_state_location='representation',
-        merged_reps_to_output=None,
+        interpolate_conditioning_state_location='representation', 
 
         # Cropping
-        crop_off_conditioning_input=None,
-        crop_off_output=None,
+        crop_off_conditioning_input=0,
+        crop_off_output=0,
 
         # Task details
         out_tracks=None,
         total_stride=128,
         data_types_subset=None,
         regression=True,
-        label_threshold_cts=5,
+        label_threshold_cts=None,
         
         # Training stages
         train_stages={},
@@ -84,31 +82,38 @@ class MethylSeqNN(L.LightningModule):
         # Check config validity
         if true_conditioning_state_weight>1 or true_conditioning_state_weight<0:
             raise ValueError("MethylSeqNN true_conditioning_state_weight must be between 0 and 1.")
+        if out_tracks is None:
+            raise ValueError("MethylSeqNN out_tracks must be specified.")
+        if not regression:
+            if label_threshold_cts is None:
+                raise ValueError("MethylSeqNN label_threshold_cts must be specified for classification tasks.")
+            elif label_threshold_cts < 0:
+                raise ValueError("MethylSeqNN label_threshold_cts must be non-negative.")
         
-        # Set up encoder
-        self.encoder = self._prepare_encoder(encoder_cfg)
-        self.encoder_input_head = nn.Sequential(*self._build_modulelist_with_padding(encoder_input_head))
-
-        # Set up conditioning head
-        self.embeddings_to_unconditional_seq_rep = nn.Sequential(*self._build_modulelist_with_padding(embeddings_to_unconditional_seq_rep))
-        self.embeddings_to_conditional_seq_rep = nn.Sequential(*self._build_modulelist_with_padding(embeddings_to_conditional_seq_rep))
-
-        self.embeddings_to_conditioning_state_rep = nn.Sequential(*self._build_modulelist_with_padding(embeddings_to_conditioning_state_rep))
-        self.input_to_conditioning_state_rep = self._build_modulelist_with_padding(input_to_conditioning_state_rep)
-        if input_to_conditioning_state_rep:
+        # Set up encoders
+        self.sequence_encoder = self._sequential_from_constructors(sequence_encoder)
+        self.conditioning_state_encoder = self._modulelist_from_constructors(conditioning_state_encoder)
+        if len(self.conditioning_state_encoder)>0:
             self.concat_pretrained_embeddings_at = { # adjust negative indices to positive
-                (i if i >= 0 else len(input_to_conditioning_state_rep) + i): v
+                (i if i >= 0 else len(conditioning_state_encoder) + i): v
                 for i, v in concat_pretrained_embeddings_at.items()
             }
         else:
             if concat_pretrained_embeddings_at:
-                raise ValueError("MethylSeqNN concat_pretrained_embeddings_at provided but no input_to_conditioning_state_rep, nowhere to concatenate.")
+                raise ValueError("MethylSeqNN concat_pretrained_embeddings_at provided but no conditioning_state_encoder, nowhere to concatenate.")
 
+        # Set up conditioning head modules
+        self.embeddings_to_unconditional_seq_rep = self._sequential_from_constructors(embeddings_to_unconditional_seq_rep)
+        self.embeddings_to_conditional_seq_rep = self._sequential_from_constructors(embeddings_to_conditional_seq_rep)
+        self.embeddings_to_conditioning_state_rep = self._sequential_from_constructors(embeddings_to_conditioning_state_rep)
+        self.output_head = self._sequential_from_constructors(output_head)
+
+        # Conditioning logic configuration
         self.conditioning_operation = conditioning_operation
         self.true_conditioning_state_weight = true_conditioning_state_weight
         self.interpolate_conditioning_state_location = interpolate_conditioning_state_location
-        self.merged_reps_to_output = nn.Sequential(*self._build_modulelist_with_padding(merged_reps_to_output))
 
+        # Activation captures for auxiliary losses and predict time outputs
         self.capture_true_conditioning_state_rep = ActivationCapture()
         self.capture_imputed_conditioning_state_rep = ActivationCapture()
         self.capture_unconditional_seq_rep = ActivationCapture()
@@ -152,24 +157,18 @@ class MethylSeqNN(L.LightningModule):
             warnings.warn("CpG density supplemental output is hardcoded to 128bp bins with no cropping.")
         self.hooked_supplemental_outputs = {}
 
-    def _build_modulelist_with_padding(self, modulelist_layers):
+    def _modulelist_from_constructors(self, modulelist_constructors):
         modulelist = nn.ModuleList()
-        if modulelist_layers is not None:
-            for layer in modulelist_layers:
-                try:
-                    modulelist.append(layer(pad=True))
-                except TypeError:
-                    modulelist.append(layer())
+        for module_constructor in modulelist_constructors:
+            try:
+                modulelist.append(module_constructor(pad=True))
+            except TypeError:
+                modulelist.append(module_constructor())
         return modulelist
 
-    def _prepare_encoder(self, cfg):
-            if callable(cfg):
-                return cfg()
-            elif isinstance(cfg, list):
-                return nn.Sequential(*self._build_modulelist_with_padding(cfg))
-            else:
-                raise TypeError(f"Expected callable or list, got {type(cfg)}")
-    
+    def _sequential_from_constructors(self, modulelist_constructors):
+        return nn.Sequential(*self._modulelist_from_constructors(modulelist_constructors))
+
     def forward(self, sequence, conditioning_state, dataset_key="all"):
         if conditioning_state.shape[1] > 1 and conditioning_state.shape[1]!=self.num_cell_types[dataset_key]:
             raise ValueError(
@@ -177,7 +176,7 @@ class MethylSeqNN(L.LightningModule):
                 f"Expected either 1 (shared conditioning_state) or {self.num_cell_types[dataset_key] if dataset_key in self.num_cell_types else self.num_cell_types}."
                 )
         # TODO: add shape assertions
-        embeddings = self._encoder_forward(sequence)
+        embeddings = self._sequence_encoder_forward(sequence)
         x = self._conditioning_forward(sequence, conditioning_state, embeddings, dataset_key)
         return x
     
@@ -507,7 +506,7 @@ class MethylSeqNN(L.LightningModule):
             subsets.append(channels)
         return subsets
     
-    def _encoder_forward(self, sequence):
+    def _sequence_encoder_forward(self, sequence):
         if 'cpg_density' in self.supplemental_predict_outputs:
             bin_size = self.total_stride
             cpgs = (sequence[:,1,:-1].bool() & sequence[:,2,1:].bool()).float()
@@ -516,29 +515,28 @@ class MethylSeqNN(L.LightningModule):
             cpgs_binned = cpgs[:, :num_bins*bin_size].reshape(cpgs.shape[0], num_bins, bin_size)
             cpg_density = cpgs_binned.sum(dim=2) / bin_size
             self.hooked_supplemental_outputs['cpg_density'] = cpg_density
-        x_seq = self.encoder_input_head(sequence)
-        embeddings = self.encoder(x_seq)
-        if "pretrained_embedder_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['pretrained_embedder_rep'] = embeddings
+        embeddings = self.sequence_encoder(sequence)
+        if "sequence_embedding" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['sequence_embedding'] = embeddings
         return embeddings
 
     def _conditioning_forward(self, sequence, conditioning_state, embeddings, dataset_key):
         unconditional_seq_rep = self._embeddings_to_unconditional_seq_rep_forward(embeddings)
         conditional_seq_rep = self._embeddings_to_conditional_seq_rep_forward(embeddings)
-        true_conditioning_state_rep = self._input_to_conditioning_state_rep_forward(sequence, conditioning_state, embeddings, dataset_key)
+        true_conditioning_state_rep = self._conditioning_state_encoder_forward(sequence, conditioning_state, embeddings, dataset_key)
         # TODO: add shape assertions for the representations to make sure they are what we expect
         if math.isclose(self.true_conditioning_state_weight,1.0) and self.conditioning_state_rep_loss_weight==0:
             imputed_conditioning_state_rep = torch.zeros_like(true_conditioning_state_rep)
         else:
             imputed_conditioning_state_rep = self._embeddings_to_conditioning_state_rep_forward(embeddings, dataset_key)
-        if "methyl_indep_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['methyl_indep_seq_rep'] = unconditional_seq_rep
-        if "methyl_dep_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['methyl_dep_seq_rep'] = conditional_seq_rep
-        if "true_methyl_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['true_methyl_rep'] = true_conditioning_state_rep
-        if "imputed_methyl_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['imputed_methyl_rep'] = imputed_conditioning_state_rep
+        if "unconditional_seq_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['unconditional_seq_rep'] = unconditional_seq_rep
+        if "conditional_seq_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['conditional_seq_rep'] = conditional_seq_rep
+        if "true_conditioning_state_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['true_conditioning_state_rep'] = true_conditioning_state_rep
+        if "imputed_conditioning_state_rep" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['imputed_conditioning_state_rep'] = imputed_conditioning_state_rep
         match self.interpolate_conditioning_state_location:
             case 'output':
                 if math.isclose(self.true_conditioning_state_weight,1.0):
@@ -572,7 +570,7 @@ class MethylSeqNN(L.LightningModule):
         self.capture_imputed_conditioning_state_rep(conditioning_state_rep_sliced)
         return conditioning_state_rep_sliced
 
-    def _input_to_conditioning_state_rep_forward(self, sequence, conditioning_state, embeddings, dataset_key):
+    def _conditioning_state_encoder_forward(self, sequence, conditioning_state, embeddings, dataset_key):
         """
         This should always return a representation of shape (N,num_cell_types,rep_dim,L')
         Note: input_to_conditional_state_rep must encode from (N,3,L) to (N,1,rep_dim,L') per cell type
@@ -592,7 +590,7 @@ class MethylSeqNN(L.LightningModule):
             x_conditioning_pseudobatch_list.append(x_methyl)
         pseudobatch_scaleup = len(x_conditioning_pseudobatch_list)
         x_conditioning_pseudobatch = torch.cat(x_conditioning_pseudobatch_list, dim=0)
-        for layer_index, layer in enumerate(self.input_to_conditioning_state_rep):
+        for layer_index, layer in enumerate(self.conditioning_state_encoder):
             if layer_index in self.concat_pretrained_embeddings_at:
                 rbs = self.concat_pretrained_embeddings_at[layer_index]
                 x_conditioning_pseudobatch = self._concat_pretrained_embeddings(
@@ -629,19 +627,19 @@ class MethylSeqNN(L.LightningModule):
         x_methylseq_pseudobatch_list = []
         for cell_type_idx in range(conditioning_state_rep.shape[1]):
             celltype_conditioning_state_rep = conditioning_state_rep[:, cell_type_idx, :, :]
-            methyl_dep_seq_rep_celltype = FEATURE_MODULATION_OPS[self.conditioning_operation](
+            conditional_seq_rep_celltype = FEATURE_MODULATION_OPS[self.conditioning_operation](
                 features = conditional_seq_rep,
                 modulator = celltype_conditioning_state_rep,
                 )
-            x_methylseq_rep = torch.cat([unconditional_seq_rep, methyl_dep_seq_rep_celltype], dim=1)
+            x_methylseq_rep = torch.cat([unconditional_seq_rep, conditional_seq_rep_celltype], dim=1)
             x_methylseq_pseudobatch_list.append(x_methylseq_rep)
         pseudobatch_scaleup = len(x_methylseq_pseudobatch_list)
         x_methylseq_pseudobatch = torch.cat(x_methylseq_pseudobatch_list, dim=0)
-        x_methylseq_pseudobatch = self.merged_reps_to_output(x_methylseq_pseudobatch)
+        x_methylseq_pseudobatch = self.output_head(x_methylseq_pseudobatch)
         if conditioning_state_rep.shape[1]==1:
             x_output_allchannels = x_methylseq_pseudobatch
         else:
-            assert x_methylseq_pseudobatch.shape[1] == self.out_tracks, f"merged_reps_to_output output channels {x_methylseq_pseudobatch.shape[1]} does not match out_tracks {self.out_tracks}"
+            assert x_methylseq_pseudobatch.shape[1] == self.out_tracks, f"output_head output channels {x_methylseq_pseudobatch.shape[1]} does not match out_tracks {self.out_tracks}"
             x_output_allchannels = x_methylseq_pseudobatch.new_zeros(unconditional_seq_rep.size(0), self.out_tracks, x_methylseq_pseudobatch.size(2))
             batch_size = unconditional_seq_rep.size(0)
             for cell_type_idx, (cell_type, channel_tuples) in enumerate(self.get_input_to_outputs_dict(dataset_key,absolute_and_relative_channels=True).items()):

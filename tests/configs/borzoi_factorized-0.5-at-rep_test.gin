@@ -43,8 +43,7 @@ methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 
-methylseqnet.methylseqnn.MethylSeqNN.encoder_cfg = @borzoi_pytorch
-methylseqnet.methylseqnn.MethylSeqNN.encoder_input_head = [@seq_model/EncodingSelector]
+methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@borzoi_pytorch]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = []
 methylseqnet.methylseqnn.MethylSeqNN.conditioning_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditioning_state_rep = [
@@ -55,11 +54,11 @@ methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
     @embeddings_to_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = []
-methylseqnet.methylseqnn.MethylSeqNN.input_to_conditioning_state_rep = [
+methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_encoder = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.merged_reps_to_output = [
+methylseqnet.methylseqnn.MethylSeqNN.output_head = [
     @factorized_reps_to_output_first/ConvBlock,
     @factorized_reps_to_output_second/ConvBlock,
     @factorized_reps_to_output_third/ConvBlock,
@@ -70,12 +69,11 @@ methylseqnet.methylseqnn.MethylSeqNN.interpolate_conditioning_state_location='re
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'grad_dict':{
-                    'input_to_conditioning_state_rep':False,
-                    'encoder':False,
-                    'encoder_input_head':False,
+                    'conditioning_state_encoder':False,
+                    'sequence_encoder':False,
                     'embeddings_to_unconditional_seq_rep':True,
                     'embeddings_to_conditional_seq_rep':True,
-                    'merged_reps_to_output':True,
+                    'output_head':True,
                 },
                 'epochs':1,
                 'conditioning_operation':'keep_modulator',

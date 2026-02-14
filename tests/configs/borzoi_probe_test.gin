@@ -49,23 +49,21 @@ methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 
-methylseqnet.methylseqnn.MethylSeqNN.encoder_cfg = @borzoi_pytorch
-methylseqnet.methylseqnn.MethylSeqNN.encoder_input_head = [@seq_model/EncodingSelector]
-methylseqnet.methylseqnn.MethylSeqNN.merged_reps_to_output = []
+methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@borzoi_pytorch]
+methylseqnet.methylseqnn.MethylSeqNN.output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [@seq_model/ConvFinal,@Softplus]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [@pool_embeddings/AvgPool1d,@ZeroChannels]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditioning_state_rep = [@pool_embeddings/AvgPool1d,@ZeroChannels]
-methylseqnet.methylseqnn.MethylSeqNN.input_to_conditioning_state_rep = [@pool_sequence/AvgPool1d,@ZeroChannels]
+methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_encoder = [@pool_sequence/AvgPool1d,@ZeroChannels]
 methylseqnet.methylseqnn.MethylSeqNN.conditioning_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-probe-only':{
                 'grad_dict':{
-                    'encoder':False,
-                    'encoder_input_head':False,
+                    'sequence_encoder':False,
                     'embeddings_to_unconditional_seq_rep':True,
                     'embeddings_to_conditional_seq_rep':False,
                     'embeddings_to_conditioning_state_rep':False,
-                    'input_to_conditioning_state_rep':False,
+                    'conditioning_state_encoder':False,
                 },
                 'epochs':1,
             },

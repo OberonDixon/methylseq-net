@@ -36,17 +36,17 @@ methylseq_model/methylseqnet.layers.ConvFinal.in_channels=100
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=1024
 
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
 
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
 
 methyl_reps_probe/Conv1d.in_channels=1024
 methyl_reps_probe/Conv1d.out_channels=42
@@ -73,11 +73,11 @@ methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = None
 methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [@Softplus]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_indep_seq_rep = [
-    @embeddings_to_methyl_indep_seq_rep/ConvBlock,
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
+    @embeddings_to_unconditional_seq_rep/ConvBlock,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_dep_seq_rep = [
-    @embeddings_to_methyl_dep_seq_rep/ConvBlock,
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [
+    @embeddings_to_conditional_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
     @input_to_methyl_rep/EncodingSelector,
@@ -87,13 +87,13 @@ methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
     @penultimate_block/ConvBlock,
     @methylseq_model/ConvFinal,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.methyl_indep_seq_rep_probe=[]
-methylseqnet.methylseqnn.MethylSeqNN.methyl_dep_seq_rep_probe=[]
+methylseqnet.methylseqnn.MethylSeqNN.unconditional_seq_rep_probe=[]
+methylseqnet.methylseqnn.MethylSeqNN.conditional_seq_rep_probe=[]
 methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.true_conditioning_state_rep_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
@@ -104,8 +104,8 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'seq_output_head':True,
                     'input_to_methyl_rep':True,
                     'embeddings_to_methyl_rep':True,
-                    'embeddings_to_methyl_indep_seq_rep':True,
-                    'embeddings_to_methyl_dep_seq_rep':True,
+                    'embeddings_to_unconditional_seq_rep':True,
+                    'embeddings_to_conditional_seq_rep':True,
                     'factorized_reps_to_output':True,
                 },
                 'epochs':30,

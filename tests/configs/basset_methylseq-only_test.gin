@@ -52,12 +52,11 @@ methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
 
 pool_sequence/AvgPool1d.kernel_size=128
 
-methylseqnet.methylseqnn.MethylSeqNN.input_to_conditioning_state_rep = [@methylseq_model/EncodingSelector,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
-methylseqnet.methylseqnn.MethylSeqNN.encoder_cfg = [@pool_sequence/AvgPool1d]
-methylseqnet.methylseqnn.MethylSeqNN.encoder_input_head = []
+methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_encoder = [@methylseq_model/EncodingSelector,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
+methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@pool_sequence/AvgPool1d]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [@ZeroChannels]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [@ZeroChannels]
-methylseqnet.methylseqnn.MethylSeqNN.merged_reps_to_output = []
+methylseqnet.methylseqnn.MethylSeqNN.output_head = []
 methylseqnet.methylseqnn.MethylSeqNN.conditioning_operation = 'keep_modulator'
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
 methylseqnet.methylseqnn.MethylSeqNN.regression=True

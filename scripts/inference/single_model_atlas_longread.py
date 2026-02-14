@@ -17,7 +17,7 @@ def main(model_identifier, gpus, mode='factorized-from-pretrained', checkpoint_t
         } for fold in range(8)
     ]
     no_targets = False
-    supplemental_predict_outputs = {"methyl_dep_seq_rep","methyl_indep_seq_rep","true_methyl_rep","imputed_methyl_rep","cpg_density","pretrained_embedder_rep"}
+    supplemental_predict_outputs = {"conditional_seq_rep","unconditional_seq_rep","true_conditioning_state_rep","imputed_conditioning_state_rep","cpg_density","sequence_embedding"}
     for dataset_path in dataset_paths:
         dataset_name = Path(list(dataset_path.values())[0]).stem
         dataset_dir = Path(list(dataset_path.values())[0]).parent

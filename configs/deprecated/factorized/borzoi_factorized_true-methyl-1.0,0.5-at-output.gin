@@ -52,7 +52,7 @@ methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [
     @embeddings_to_methyl_rep/ConvFinal,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_indep_seq_rep = [
+methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
     @embeddings_to_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
@@ -66,7 +66,7 @@ methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_final/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.true_methyl_rep_weight=1.0
+methylseqnet.methylseqnn.MethylSeqNN.true_conditioning_state_rep_weight=1.0
 methylseqnet.methylseqnn.MethylSeqNN.interpolate_methyl_reps_location='rep'
 methylseqnet.methylseqnn.MethylSeqNN.train_stages={
             'train-factorized-true-methyl-1.0':{
@@ -82,7 +82,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'factorized_reps_to_output':True,
                 },
                 'epochs':10,
-                'true_methyl_rep_weight':1.0,
+                'true_conditioning_state_rep_weight':1.0,
             },
             'train-factorized-true-methyl-0.0':{
                 'mode':'factorized-from-pretrained',
@@ -97,7 +97,7 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                     'factorized_reps_to_output':False,
                 },
                 'epochs':20,
-                'true_methyl_rep_weight':0.5,
+                'true_conditioning_state_rep_weight':0.5,
             },
         }
 methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63

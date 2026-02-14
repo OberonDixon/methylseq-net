@@ -12,17 +12,17 @@ input_to_methyl_rep/AvgPool1d.kernel_size=128
 input_to_methyl_rep/Hardtanh.min_val=0.0
 input_to_methyl_rep/Hardtanh.max_val=1.0
 
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_indep_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
-embeddings_to_methyl_dep_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.in_channels=1920
 embeddings_to_methyl_rep/methylseqnet.layers.ConvBlock.filters=43
@@ -36,24 +36,23 @@ factorized_reps_to_output/methylseqnet.layers.ConvFinal.kernel_size=1
 
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 
-methylseqnet.methylseqnn.MethylSeqNN.encoder_cfg = @borzoi_pytorch
-methylseqnet.methylseqnn.MethylSeqNN.encoder_input_head = [@seq_model/EncodingSelector]
+methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@borzoi_pytorch]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
-    @embeddings_to_methyl_indep_seq_rep/ConvBlock,
+    @embeddings_to_unconditional_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [
-    @embeddings_to_methyl_dep_seq_rep/ConvBlock,
+    @embeddings_to_conditional_seq_rep/ConvBlock,
 ]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditioning_state_rep = [
     @embeddings_to_methyl_rep/ConvBlock,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.input_to_conditioning_state_rep = [
+methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_encoder = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
     @input_to_methyl_rep/Hardtanh,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.merged_reps_to_output = [
+methylseqnet.methylseqnn.MethylSeqNN.output_head = [
     @factorized_reps_to_output/ConvFinal,
     @Softplus,
 ]
@@ -69,11 +68,10 @@ methylseqnet.methylseqnn.MethylSeqNN.optimizer_class = @AdamOptimizer
 methylseqnet.methylseqnn.MethylSeqNN.train_stages = {
     'train-factorized-pretrained-embeddings': {
         'grad_dict': {
-            'encoder': False,
-            'encoder_input_head': False,
-            'merged_reps_to_output': True,
+            'sequence_encoder': False,
+            'output_head': True,
         },
-        'true_methyl_rep_weight': 1.0,
+        'true_conditioning_state_rep_weight': 1.0,
         'epochs': 1,
     },
 }

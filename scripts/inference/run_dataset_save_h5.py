@@ -66,7 +66,7 @@ def main(model_identifier, no_targets, dataset_type='atlas', dataset_path=None, 
             no_targets = no_targets,
             transforms = transforms,
             variable_input_length=variable_input_length,
-            supplemental_predict_outputs = {"methyl_dep_seq_rep","methyl_indep_seq_rep","true_methyl_rep","imputed_methyl_rep","cpg_density"},
+            supplemental_predict_outputs = {"conditional_seq_rep","unconditional_seq_rep","true_conditioning_state_rep","imputed_conditioning_state_rep","cpg_density"},
         )
 
 if __name__ == "__main__":

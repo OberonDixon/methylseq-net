@@ -657,7 +657,7 @@ class HaplotypedPredLogger(Callback):
         ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
         with torch.no_grad():
             # training_mode = pl_module.mode
-            # training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
+            # training_true_conditioning_state_rep_weight = pl_module.true_conditioning_state_rep_weight
             pl_module.eval()
             # if pl_module.layers:
             #     pl_module.mode = 'full-model'
@@ -665,25 +665,25 @@ class HaplotypedPredLogger(Callback):
             #     pl_module.mode = 'factorized-from-pretrained'
             # else:
             #     pl_module.mode = 'pretrained-only'
-            # pl_module.true_methyl_rep_weight = 1.0
+            # pl_module.true_conditioning_state_rep_weight = 1.0
             hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
             hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp1_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
+                pl_module.hooked_activations[id(pl_module.capture_imputed_conditioning_state_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+                if id(pl_module.capture_imputed_conditioning_state_rep) in pl_module.hooked_activations
                 else np.ones_like(hp1_methylation)
             )
             hp2_output = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))
             hp2_accessibility_pred = hp2_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
             hp2_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
+                pl_module.hooked_activations[id(pl_module.capture_imputed_conditioning_state_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+                if id(pl_module.capture_imputed_conditioning_state_rep) in pl_module.hooked_activations
                 else np.zeros_like(hp2_methylation)
             )
             # pl_module.mode = training_mode
-            # pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+            # pl_module.true_conditioning_state_rep_weight = training_true_conditioning_state_rep_weight
         if hp1_methylation is not None and hp2_methylation is not None and hp1_methylation.ndim>1 and hp2_methylation.ndim>1:
             hp1_methylation = hp1_methylation.mean(axis=0)
             hp2_methylation = hp2_methylation.mean(axis=0)
