@@ -81,6 +81,18 @@ class MethylSeqNN(L.LightningModule):
         # Predict time config
         supplemental_predict_outputs: Set = set(),
     ):
+        """
+                            ┌─► [unconditional_seq_rep] ────────────────┐
+                            │                                           ▼
+        [sequence_encoder] ─┤                                        concat ─► [output_head]
+                            │                                           ▲
+                            └─► [conditional_seq_rep] ────────► ⊗ ──────┘
+                                                                │ [conditioning_operation]
+                            ┌─► [conditioning_state_rep] ───────┘
+                            │
+        [conditioning_encoder] (optional; can be imputed from sequence)
+        """
+        
         super().__init__()
         # Check config validity
         if true_conditioning_state_weight>1 or true_conditioning_state_weight<0:
