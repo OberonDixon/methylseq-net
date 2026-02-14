@@ -1,0 +1,1 @@
+grep '^chrX\b' sequences_human.bed > sequences_human_chrX.bed
