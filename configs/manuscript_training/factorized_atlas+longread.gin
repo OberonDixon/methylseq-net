@@ -107,16 +107,35 @@ methylseqnet.callbacks.HaplotypedPredLogger.rna_outputs_slice=[1]
 
 methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file={
     "atlas":[
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold0.h5",
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold1.h5",
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold2.h5",
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold5.h5",
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold6.h5",
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold7.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold1.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold2.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold5.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold6.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold7.h5",
     ],
+    "longread":[
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold1.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold2.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold5.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold6.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold7.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold0.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold1.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold2.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold5.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold6.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_chrX/fold7.h5",
+    ]
 }
 methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
-    "atlas":["/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold4.h5",],
+    "atlas":[
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold4.h5",
+    ],
+    "longread":[
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold4.h5"
+    ],
 }
 methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
 methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
