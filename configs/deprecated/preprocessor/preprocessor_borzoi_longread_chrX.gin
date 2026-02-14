@@ -4,7 +4,7 @@ methylation_files_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp1_whole_genome_CpG/pileup.sorted.bed.gz',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_hp2_whole_genome_CpG/pileup.sorted.bed.gz',
 )
-fiberseq_bigwigs_by_phase = (
+fiberseq_files_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap1.acc.bw',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap2.acc.bw',
 )
@@ -27,7 +27,7 @@ RegionBedParser.seq_length = %seq_length
 
 PhasedFiberRNA.ref_genome = %ref_genome
 PhasedFiberRNA.methylation_files_by_phase = %methylation_files_by_phase
-PhasedFiberRNA.fiberseq_bigwigs_by_phase = %fiberseq_bigwigs_by_phase
+PhasedFiberRNA.fiberseq_files_by_phase = %fiberseq_files_by_phase
 PhasedFiberRNA.rna_files_by_phase = %rna_bams_by_phase
 PhasedFiberRNA.label_bin_size = %label_bin_size
 PhasedFiberRNA.label_num_bins = %label_num_bins

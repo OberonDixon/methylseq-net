@@ -1291,7 +1291,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
             self,
             ref_genome,
             methylation_files_by_phase,
-            fiberseq_bigwigs_by_phase,
+            fiberseq_files_by_phase,
             rna_files_by_phase,     
             label_bin_size,
             label_num_bins,
@@ -1307,7 +1307,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
             phase_normalization_pseudocount: float=0.1,
             normalize_label_counts: bool=False,
     ):
-        assert len(methylation_files_by_phase)==len(fiberseq_bigwigs_by_phase)==len(rna_files_by_phase), \
+        assert len(methylation_files_by_phase)==len(fiberseq_files_by_phase)==len(rna_files_by_phase), \
             "The number of phases must be the same for methylation, fiber-seq, and RNA-seq data."
         self.max_chunks_in_mem = max_chunks_in_mem
         self.label_num_bins = label_num_bins
@@ -1335,7 +1335,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 threshold=None,
                 **kwargs_by_data_type['fiberseq'],
             )
-            for bigwig_file in fiberseq_bigwigs_by_phase
+            for bigwig_file in fiberseq_files_by_phase
         ]
         self.rna_label_handlers = [
             rna_handler_cls(
@@ -1359,7 +1359,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 'data_type':'Fiber-seq',
                 'genome':ref_genome,
                 'methylation_files':methylation_files_by_phase,
-                'label_files':fiberseq_bigwigs_by_phase,
+                'label_files':fiberseq_files_by_phase,
             },
             {
                 'channel':1,
