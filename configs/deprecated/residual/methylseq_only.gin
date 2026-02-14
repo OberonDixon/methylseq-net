@@ -42,16 +42,16 @@ methylseqnet.layers.ConvFinal.in_channels=1536
 methylseqnet.layers.ConvFinal.shared_head=False
 methylseqnet.layers.ConvFinal.filters=63
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [@methylseq_model/EncodingAdjuster,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@ConvFinal,@Softplus]
-methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = None
-methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingAdjuster]
-methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = [@ConvFinal,@Softplus]
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
-methylseqnet.methylseqnn.MethylSeqNN.regression=True
-methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=True
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=64
-methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
-methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
+methylseqnet.model.ConditionedSeqNN.layers = [@methylseq_model/EncodingAdjuster,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@ConvFinal,@Softplus]
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_generator = None
+methylseqnet.model.ConditionedSeqNN.seq_input_head = [@seq_model/EncodingAdjuster]
+methylseqnet.model.ConditionedSeqNN.seq_output_head = [@ConvFinal,@Softplus]
+methylseqnet.model.ConditionedSeqNN.out_tracks=63
+methylseqnet.model.ConditionedSeqNN.regression=True
+methylseqnet.model.ConditionedSeqNN.pad_all_layers=True
+methylseqnet.model.ConditionedSeqNN.crop_off_final=64
+methylseqnet.model.ConditionedSeqNN.label_threshold_cts=0.5
+methylseqnet.model.ConditionedSeqNN.learning_rate=0.002
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"

@@ -3,7 +3,7 @@ import sys
 import traceback
 from methylseqnet.io_handlers import *
 from methylseqnet.datawriter import *
-from methylseqnet.methylseqnn import *
+from methylseqnet.model import *
 from methylseqnet.dataset import *
 from tqdm.auto import tqdm
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -126,7 +126,7 @@ class PreprocessingPipeline:
 
 def pretrained_model_embeddings():
     parser = argparse.ArgumentParser(description="Save model embeddings for one or more datasets.")
-    parser.add_argument("--config", required=True, help="Path to the the gin config file for a MethylSeqNN trainer containing a pretrained model.")
+    parser.add_argument("--config", required=True, help="Path to the the gin config file for a ConditionedSeqNN trainer containing a pretrained model.")
     parser.add_argument("--embeddings-shape", nargs="+", type=int, help="Space separated integers for shape of embeddings.")
     parser.add_argument("--input-datasets-directory", required=True, help="Path to the input directory from which to run datasets.")
     parser.add_argument("--subset", required=False, nargs="*", help="Dataset subset(s) to run. Defaults to all.")
@@ -149,7 +149,7 @@ def pretrained_model_embeddings():
 
     embeddings_shape = tuple(args.embeddings_shape)
 
-    model = MethylSeqNN()
+    model = ConditionedSeqNN()
 
     model.seq_output_head = None
     model.mode = "pretrained-only"

@@ -34,7 +34,7 @@ gin.external_configurable(optim.AdamW, module='torch.optim')
 gin.external_configurable(optim.SGD, module='torch.optim')
 
 @gin.configurable
-class MethylSeqNN(L.LightningModule):
+class ConditionedSeqNN(L.LightningModule):
     def __init__(
         self, 
 
@@ -82,13 +82,13 @@ class MethylSeqNN(L.LightningModule):
         supplemental_predict_outputs: Set = set(),
     ):
         """
-        MethylSeqNN forward pass diagram. Simplified processing can be achieved by mapping either
+        ConditionedSeqNN forward pass diagram. Simplified processing can be achieved by mapping either
         the conditional or unconditional sequence representations to zero-channel (thus keeping only
         the other one in the concatenation operation) or by setting a conditioning_operation that keeps
         only the `features`, i.e. the conditional_seq_rep, or only the `modulator`, i.e. the
         conditioning_state_rep. 
 
-        sequence:             ┌────► [unconditional_seq_rep] ──────────┐       output:
+        DNA sequence:         ┌────► [unconditional_seq_rep] ──────────┐       output:
         (N,4,L)               │                                        ▼       (N,out_tracks,L)
         [sequence_encoder] ─┬─┤                                      concat ─► [output_head]
                             │ │                                        ▲
@@ -103,14 +103,14 @@ class MethylSeqNN(L.LightningModule):
         super().__init__()
         # Check config validity
         if true_conditioning_state_weight>1 or true_conditioning_state_weight<0:
-            raise ValueError("MethylSeqNN true_conditioning_state_weight must be between 0 and 1.")
+            raise ValueError("ConditionedSeqNN true_conditioning_state_weight must be between 0 and 1.")
         if out_tracks is None:
-            raise ValueError("MethylSeqNN out_tracks must be specified.")
+            raise ValueError("ConditionedSeqNN out_tracks must be specified.")
         if not regression:
             if label_threshold_cts is None:
-                raise ValueError("MethylSeqNN label_threshold_cts must be specified for classification tasks.")
+                raise ValueError("ConditionedSeqNN label_threshold_cts must be specified for classification tasks.")
             elif label_threshold_cts < 0:
-                raise ValueError("MethylSeqNN label_threshold_cts must be non-negative.")
+                raise ValueError("ConditionedSeqNN label_threshold_cts must be non-negative.")
         
         # Set up encoders
         self.sequence_encoder = self._sequential_from_constructors(sequence_encoder)
@@ -122,7 +122,7 @@ class MethylSeqNN(L.LightningModule):
             }
         else:
             if concat_pretrained_embeddings_at:
-                raise ValueError("MethylSeqNN concat_pretrained_embeddings_at provided but no conditioning_state_encoder, nowhere to concatenate.")
+                raise ValueError("ConditionedSeqNN concat_pretrained_embeddings_at provided but no conditioning_state_encoder, nowhere to concatenate.")
 
         # Set up conditioning head modules
         self.embeddings_to_unconditional_seq_rep = self._sequential_from_constructors(embeddings_to_unconditional_seq_rep)
@@ -194,7 +194,7 @@ class MethylSeqNN(L.LightningModule):
     def forward(self, sequence, conditioning_state, dataset_key="all"):
         if conditioning_state.shape[1] > 1 and conditioning_state.shape[1]!=self.num_cell_types[dataset_key]:
             raise ValueError(
-                f"MethylSeqNN residual forward received conditioning_state input with {conditioning_state.shape[1]} cell types."+
+                f"ConditionedSeqNN residual forward received conditioning_state input with {conditioning_state.shape[1]} cell types."+
                 f"Expected either 1 (shared conditioning_state) or {self.num_cell_types[dataset_key] if dataset_key in self.num_cell_types else self.num_cell_types}."
                 )
         assert sequence.shape[0] == conditioning_state.shape[0], f"Batch size mismatch between sequence and conditioning_state: {sequence.shape[0]} vs {conditioning_state.shape[0]}"

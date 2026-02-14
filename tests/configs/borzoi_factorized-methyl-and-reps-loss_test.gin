@@ -39,35 +39,35 @@ methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borz
 torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
 
-methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@borzoi_pytorch]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
+methylseqnet.model.ConditionedSeqNN.sequence_encoder = [@borzoi_pytorch]
+methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = [
     @embeddings_to_unconditional_seq_rep/ConvBlock,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditional_seq_rep = [
+methylseqnet.model.ConditionedSeqNN.embeddings_to_conditional_seq_rep = [
     @embeddings_to_conditional_seq_rep/ConvBlock,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_conditioning_state_rep = [
+methylseqnet.model.ConditionedSeqNN.embeddings_to_conditioning_state_rep = [
     @embeddings_to_methyl_rep/ConvBlock,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_encoder = [
+methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
     @input_to_methyl_rep/Hardtanh,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.output_head = [
+methylseqnet.model.ConditionedSeqNN.output_head = [
     @factorized_reps_to_output/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.conditioning_operation = 'multiply'
-methylseqnet.methylseqnn.MethylSeqNN.interpolate_conditioning_state_location = 'representation'
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks = 65
-methylseqnet.methylseqnn.MethylSeqNN.regression = True
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_conditioning_input = 163840
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_output = 0
-methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_rep_loss_weight = 1.0
-methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight = 1.0
-methylseqnet.methylseqnn.MethylSeqNN.train_stages = {
+methylseqnet.model.ConditionedSeqNN.conditioning_operation = 'multiply'
+methylseqnet.model.ConditionedSeqNN.interpolate_conditioning_state_location = 'representation'
+methylseqnet.model.ConditionedSeqNN.out_tracks = 65
+methylseqnet.model.ConditionedSeqNN.regression = True
+methylseqnet.model.ConditionedSeqNN.crop_off_conditioning_input = 163840
+methylseqnet.model.ConditionedSeqNN.crop_off_output = 0
+methylseqnet.model.ConditionedSeqNN.conditioning_state_rep_loss_weight = 1.0
+methylseqnet.model.ConditionedSeqNN.seq_reps_orthogonality_loss_weight = 1.0
+methylseqnet.model.ConditionedSeqNN.train_stages = {
     'train-factorized-pretrained-embeddings': {
         'grad_dict': {
             'sequence_encoder': False,

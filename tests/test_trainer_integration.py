@@ -8,7 +8,7 @@ import torch
 import wandb
 
 import methylseqnet.trainer as trainer
-from test_methylseqnn import MethylSeqNN, get_config_files_with_names, nuke_gin_config
+from test_model import ConditionedSeqNN, get_config_files_with_names, nuke_gin_config
 
 import gin
 import gin.config
@@ -48,8 +48,8 @@ def test_trainer_integration(config_file):
             assert "best-checkpoint.ckpt" in checkpoint_files
         # Check that checkpoints can be loaded
         for ckpt_file in checkpoint_files:
-            model = MethylSeqNN.load_from_checkpoint(checkpoints_dir / ckpt_file)
-            assert isinstance(model, MethylSeqNN)
+            model = ConditionedSeqNN.load_from_checkpoint(checkpoints_dir / ckpt_file)
+            assert isinstance(model, ConditionedSeqNN)
         # Check wandb directory contains a run folder
         wandb_dir = Path(f"{temp_dir}/test/wandb")
         assert any(wandb_dir.iterdir())

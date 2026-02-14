@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.trainer import Trainer
 from methylseqnet.io_handlers import *
 from methylseqnet.dna_io import one_hot_encode_dna
@@ -37,7 +37,7 @@ def run_dataset_save_h5(
     variable_input_length: bool = False,
     **kwargs,
 ):
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model = methylseqnet.model.ConditionedSeqNN.load_from_checkpoint(model_path)
     model.eval()
     model.mode=mode
     model.supplemental_predict_outputs = supplemental_predict_outputs
@@ -117,7 +117,7 @@ def run_whole_dataset(
     #         raise ValueError(f"Layer {layer_name} not found in the model")
     #     hook_handle = layer.register_forward_hook(hook)
     
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model = methylseqnet.model.ConditionedSeqNN.load_from_checkpoint(model_path)
 
     dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
@@ -154,7 +154,7 @@ def run_whole_dataset_specify_dtype(
 ):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path).to(device)
+    model = methylseqnet.model.ConditionedSeqNN.load_from_checkpoint(model_path).to(device)
 
     dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
@@ -216,7 +216,7 @@ def run_one_locus(
     label_paths,
     label_index,
 ):
-    model = methylseqnet.methylseqnn.MethylSeqNN.load_from_checkpoint(model_path)
+    model = methylseqnet.model.ConditionedSeqNN.load_from_checkpoint(model_path)
     if Path(sequence_path).suffix in ['.fa','.fasta']:
         sequence_handler = SingleFastaHandler(ref_genome=sequence_path)
     else:

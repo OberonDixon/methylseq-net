@@ -44,7 +44,7 @@ seq_model/methylseqnet.layers.ConvFinal.pool_size=4
 torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [
+methylseqnet.model.ConditionedSeqNN.layers = [
     @methylseq_model/EncodingSelector,
     @ConvDNA,@ConvTower,
     @scaleup_block/ConvBlock,
@@ -52,13 +52,13 @@ methylseqnet.methylseqnn.MethylSeqNN.layers = [
     @methylseq_model/ConvFinal,
     @Softplus
 ]
-methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
-methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
-methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingSelector]
-methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = [@seq_model/ConvFinal,@Softplus]
-methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
-methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
-methylseqnet.methylseqnn.MethylSeqNN.train_stages={
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
+methylseqnet.model.ConditionedSeqNN.seq_input_head = [@seq_model/EncodingSelector]
+methylseqnet.model.ConditionedSeqNN.seq_output_head = [@seq_model/ConvFinal,@Softplus]
+methylseqnet.model.ConditionedSeqNN.merged_output_head = []
+methylseqnet.model.ConditionedSeqNN.model_merge_operation = 'multiply'
+methylseqnet.model.ConditionedSeqNN.train_stages={
             'train-probe-only':{
                 'mode':'pretrained-only',
                 'grad_dict':{
@@ -70,13 +70,13 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':30,
             },
         }
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=65
-methylseqnet.methylseqnn.MethylSeqNN.regression=True
-methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163520
-methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
-methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
+methylseqnet.model.ConditionedSeqNN.out_tracks=65
+methylseqnet.model.ConditionedSeqNN.regression=True
+methylseqnet.model.ConditionedSeqNN.pad_all_layers=False
+methylseqnet.model.ConditionedSeqNN.crop_off_final=0
+methylseqnet.model.ConditionedSeqNN.crop_off_sequence=163520
+methylseqnet.model.ConditionedSeqNN.residual_activation_loss_weight=0
+methylseqnet.model.ConditionedSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.callbacks.HaplotypedPredLogger.accessibility_outputs_slice=[0]
 methylseqnet.callbacks.HaplotypedPredLogger.rna_outputs_slice=[1]

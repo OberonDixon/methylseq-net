@@ -1,5 +1,5 @@
 from methylseqnet.dataset import CustomH5Dataset
-from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.model import ConditionedSeqNN
 from torch.utils.data import DataLoader
 import torch.optim as optim
 import torch.nn as nn
@@ -86,7 +86,7 @@ validation_dataloader = DataLoader(validation_dataset, batch_size=None, shuffle=
 
 # print('Dataset loaded successfully and batches retrieved.')
 
-model = MethylSeqNN(hyperparams)
+model = ConditionedSeqNN(hyperparams)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = model.to(device)

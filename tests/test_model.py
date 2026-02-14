@@ -1,7 +1,7 @@
 from pathlib import Path
 import pytest
 
-from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.model import ConditionedSeqNN
 
 import gin
 import gin.config
@@ -63,8 +63,8 @@ def get_config_files_with_names(config_subdir: str = "configs"):
     ]
 
 @pytest.mark.parametrize("config_file", get_config_files_with_names())
-def test_methylseqnn_initialization(config_file):
+def test_model_initialization(config_file):
     nuke_gin_config()
     gin.parse_config_file(config_file)
-    model = MethylSeqNN()
-    assert isinstance(model, MethylSeqNN)
+    model = ConditionedSeqNN()
+    assert isinstance(model, ConditionedSeqNN)

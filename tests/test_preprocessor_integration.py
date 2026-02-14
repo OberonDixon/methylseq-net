@@ -8,7 +8,7 @@ import multiprocessing
 import h5py
 
 import methylseqnet.preprocessor as preprocessor
-from test_methylseqnn import MethylSeqNN, get_config_files_with_names, nuke_gin_config
+from test_model import ConditionedSeqNN, get_config_files_with_names, nuke_gin_config
 
 import gin
 import gin.config

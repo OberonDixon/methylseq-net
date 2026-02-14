@@ -14,7 +14,7 @@ from pathlib import Path
 import argparse
 from methylseqnet.dataset import MultiMethylDataset
 from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
-from methylseqnet.methylseqnn import MethylSeqNN
+from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.datamodule import MultiKeyDataset
 from collections import defaultdict
 import pynvml
@@ -175,7 +175,7 @@ def main(
     track_gradients_for_modules = [],
 ):
     """
-    Train a MethylSeqNN model based on a training gin config file that specifies both architecture and training plan
+    Train a ConditionedSeqNN model based on a training gin config file that specifies both architecture and training plan
 
     Args:
         config: the path to a gin config files
@@ -197,7 +197,7 @@ def main(
 
     gin.parse_config_file(config)
     
-    model = MethylSeqNN()
+    model = ConditionedSeqNN()
 
     if len(model.train_stages)>0:
         total_stage_epochs = sum([stage_dict['epochs'] for stage_name,stage_dict in model.train_stages.items()])
@@ -425,7 +425,7 @@ def create_callbacks(
     return callbacks
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Train a MethylSeqNN model.')
+    parser = argparse.ArgumentParser(description='Train a ConditionedSeqNN model.')
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
     parser.add_argument('--output_dir', type=str, required=False, default='/clusterfs/nilah/oberon/lightning/', help='Directory to store outputs.')
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')

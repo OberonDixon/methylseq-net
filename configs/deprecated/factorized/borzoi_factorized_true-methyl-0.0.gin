@@ -41,33 +41,33 @@ factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.filters=1
 torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = None
-methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
-methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
-methylseqnet.methylseqnn.MethylSeqNN.seq_input_head = [@seq_model/EncodingSelector]
-methylseqnet.methylseqnn.MethylSeqNN.seq_output_head = None
-methylseqnet.methylseqnn.MethylSeqNN.merged_output_head = []
-methylseqnet.methylseqnn.MethylSeqNN.model_merge_operation = 'multiply'
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_methyl_rep = [
+methylseqnet.model.ConditionedSeqNN.layers = None
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
+methylseqnet.model.ConditionedSeqNN.seq_input_head = [@seq_model/EncodingSelector]
+methylseqnet.model.ConditionedSeqNN.seq_output_head = None
+methylseqnet.model.ConditionedSeqNN.merged_output_head = []
+methylseqnet.model.ConditionedSeqNN.model_merge_operation = 'multiply'
+methylseqnet.model.ConditionedSeqNN.embeddings_to_methyl_rep = [
     @embeddings_to_methyl_rep/ConvFinal,
     @Sigmoid,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
+methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = [
     @embeddings_to_seq_rep/ConvBlock,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.input_to_methyl_rep = [
+methylseqnet.model.ConditionedSeqNN.input_to_methyl_rep = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.factorized_reps_to_output = [
+methylseqnet.model.ConditionedSeqNN.factorized_reps_to_output = [
     @factorized_reps_to_output_first/ConvBlock,
     @factorized_reps_to_output_second/ConvBlock,
     @factorized_reps_to_output_third/ConvBlock,
     @factorized_reps_to_output_final/ConvFinal,
     @Softplus,
 ]
-methylseqnet.methylseqnn.MethylSeqNN.true_conditioning_state_rep_weight=0.0
-methylseqnet.methylseqnn.MethylSeqNN.train_stages={
+methylseqnet.model.ConditionedSeqNN.true_conditioning_state_rep_weight=0.0
+methylseqnet.model.ConditionedSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'mode':'factorized-from-pretrained',
                 'grad_dict':{
@@ -83,14 +83,14 @@ methylseqnet.methylseqnn.MethylSeqNN.train_stages={
                 'epochs':30,
             },
         }
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
-methylseqnet.methylseqnn.MethylSeqNN.regression=True
-methylseqnet.methylseqnn.MethylSeqNN.pad_all_layers=False
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_final=0
-methylseqnet.methylseqnn.MethylSeqNN.crop_off_sequence=163840
-# methylseqnet.methylseqnn.MethylSeqNN.concat_pretrained_embeddings_at={}
-methylseqnet.methylseqnn.MethylSeqNN.residual_activation_loss_weight=0
-methylseqnet.methylseqnn.MethylSeqNN.activation_criterion=@LogL2Loss
+methylseqnet.model.ConditionedSeqNN.out_tracks=63
+methylseqnet.model.ConditionedSeqNN.regression=True
+methylseqnet.model.ConditionedSeqNN.pad_all_layers=False
+methylseqnet.model.ConditionedSeqNN.crop_off_final=0
+methylseqnet.model.ConditionedSeqNN.crop_off_sequence=163840
+# methylseqnet.model.ConditionedSeqNN.concat_pretrained_embeddings_at={}
+methylseqnet.model.ConditionedSeqNN.residual_activation_loss_weight=0
+methylseqnet.model.ConditionedSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
 methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"

@@ -1,4 +1,4 @@
-from methylseqnet import dna_io, inference, metrics, trainer, methylseqnn, io_handlers, preprocessor
+from methylseqnet import dna_io, inference, metrics, trainer, model, io_handlers, preprocessor
 import methylseqnet
 # from dimelo import load_processed, plot_enrichment_profile, utils
 from matplotlib import pyplot as plt
