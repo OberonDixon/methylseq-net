@@ -215,8 +215,7 @@ class MethylSeqNN(L.LightningModule):
 
     def predict_step(self, batch, batch_idx):
         sequence_all_variants = batch['sequence']
-        methylation_all_variants = batch['methylation']
-        embeddings = batch.get('embeddings',None)
+        conditioning_state_all_variants = batch['conditioning_state']
         specifiers = batch['specifier']
         io_mappings_df = self.get_io_mappings_df()
         dataset_key = batch['dataset_key'][0]
@@ -229,8 +228,8 @@ class MethylSeqNN(L.LightningModule):
         outputs_list = []
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
-            methylation = methylation_all_variants[:,variant_idx]
-            outputs = self(sequence, methylation, embeddings, dataset_key)
+            conditioning_state = conditioning_state_all_variants[:,variant_idx]
+            outputs = self(sequence, conditioning_state, embeddings, dataset_key)
             if outputs.shape[1] > len(output_tracks_slice):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
@@ -246,7 +245,7 @@ class MethylSeqNN(L.LightningModule):
     
     def _shared_step(self, batch, batch_idx, log_descriptor):
         sequence_all_variants = batch['sequence']
-        methylation_all_variants = batch['methylation']
+        conditioning_state_all_variants = batch['conditioning_state']
         targets_all_variants = batch['target']
         mask_all_variants = batch.get('mask',torch.ones_like(targets_all_variants,dtype=torch.bool))
 
@@ -260,11 +259,11 @@ class MethylSeqNN(L.LightningModule):
         dataset_log_descriptor = log_descriptor + "/" + dataset_key if log_descriptor else None
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
-            methylation = methylation_all_variants[:,variant_idx]
+            conditioning_state = conditioning_state_all_variants[:,variant_idx]
             targets = targets_all_variants[:,variant_idx]
             mask = mask_all_variants[:,variant_idx]
 
-            outputs = self(sequence, methylation, dataset_key)
+            outputs = self(sequence, conditioning_state, dataset_key)
             if outputs.shape[1] > len(output_tracks_slice):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
@@ -640,7 +639,7 @@ class MethylSeqNN(L.LightningModule):
 
     def _split_reps_to_output_forward(self, unconditional_seq_rep, conditional_seq_rep, conditioning_state_rep, dataset_key):
         """
-        Combine methylation-independent and methylation-dependent sequence representations
+        Combine unconditional and conditioned sequence representations after applying conditioning states
 
         Args:
             unconditional_seq_rep: (N, C_indep, L)

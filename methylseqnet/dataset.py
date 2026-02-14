@@ -207,7 +207,7 @@ class MultiMethylDataset(Dataset):
                 
                 return {
                     'sequence': sequence,
-                    'methylation': methylation,
+                    'conditioning_state': methylation,
                     'target': target,
                     'mask': mask,
                     'specifier': specifiers,
