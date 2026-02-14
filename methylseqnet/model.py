@@ -403,8 +403,8 @@ class ConditionedSeqNN(L.LightningModule):
     def on_train_start(self):
         if self.start_epoch > 0:
             # this lets us start at a specified epoch (relevant especially for epoch-based stage-wise training)
-            self.trainer.fit_loop.epoch_progress.current.completed = self.start_epoch
-            self.trainer.fit_loop.epoch_progress.current.processed = self.start_epoch      
+            self.train.fit_loop.epoch_progress.current.completed = self.start_epoch
+            self.train.fit_loop.epoch_progress.current.processed = self.start_epoch      
 
     def on_save_checkpoint(self, checkpoint):
         checkpoint["operative_config_str"] = gin.operative_config_str()

@@ -58,7 +58,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_peaks_5cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_peaks_5cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -81,7 +81,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_peaks_10cts.gin
 
 # python create_motif_insertion_fastas.py \
 #     /global/scratch/users/arbajwa/scbasset_data/Homo_sapiens_motif_fasta/ \
@@ -91,7 +91,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -116,7 +116,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_cpg.05_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_cpg.05_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -141,7 +141,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_cpg.025_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_cpg.025_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -166,7 +166,7 @@ source activate methylseqnet
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_cpg.10_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_cpg.10_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -191,7 +191,7 @@ python create_motif_insertion_fastas.py \
     --SHUFFLE_LEN 2048 \
     --OVERWRITE
 
-python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_cpg.05-.15_peaks_10cts.gin
+python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_cpg.05-.15_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -216,7 +216,7 @@ python create_motif_insertion_fastas.py \
     --SHUFFLE_LEN 2048 \
     --OVERWRITE
 
-python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_cpg0-.05_peaks_10cts.gin
+python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_cpg0-.05_peaks_10cts.gin
 
 # python create_motif_insertion_fastas.py \
 #     /global/scratch/users/arbajwa/scbasset_data/Homo_sapiens_motif_fasta/ \
@@ -226,7 +226,7 @@ python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/mo
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_peaks_10cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_peaks_10cts.gin
 
 # python ../../methylseqnet/peaks.py --dataset-paths \
 #     /global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5 \
@@ -249,7 +249,7 @@ python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/mo
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_alltypes_peaks_15cts.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_alltypes_peaks_15cts.gin
 
 # python create_motif_insertion_fastas.py \
 #     /global/scratch/users/arbajwa/scbasset_data/Homo_sapiens_motif_fasta/ \
@@ -267,6 +267,6 @@ python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/mo
 #     --SHUFFLE_LEN 2048 \
 #     --OVERWRITE
 
-# python ../../methylseqnet/preprocessor.py --config ../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_nonpeaks.gin
+# python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_nonpeaks.gin
 
 # sbatch ../inference/sbatch_run_motif_insertions.sh

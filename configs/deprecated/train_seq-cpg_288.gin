@@ -26,7 +26,7 @@ ConditionedSeqNN.in_channels=5
 ConditionedSeqNN.out_tracks=35 
 ConditionedSeqNN.out_bins=1018
 
-methylseqnet.trainer.Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5"
-methylseqnet.trainer.Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/valid.h5"
-methylseqnet.trainer.Trainer.batch_size=16
-methylseqnet.trainer.Trainer.training_epoch_stop=5000
+methylseqnet.train.Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5"
+methylseqnet.train.Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/regression/valid.h5"
+methylseqnet.train.Trainer.batch_size=16
+methylseqnet.train.Trainer.training_epoch_stop=5000

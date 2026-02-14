@@ -1,21 +1,21 @@
 from . import (
     dataset,
-    dna_io,
+    encoding,
     layers,
     model,
     inference,
-    datawriter,
+    writers,
     metrics,
     motifs,
 )
 
 __all__ = [
     "dataset",
-    "dna_io",
+    "encoding",
     "layers",
     "model",
     "inference",
-    "datawriter",
+    "writers",
     "metrics",
     "motifs",
 ]

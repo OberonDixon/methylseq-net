@@ -38,4 +38,4 @@ else
 fi
 
 source activate basenji2-pytorch
-python ../methylseqnet/preprocessor.py pretrained_model_embeddings --config $CONFIG_FILE --embeddings-shape 1920 6144 --input-datasets-directory $INPUT_DIR --output-datasets-directory $OUTPUT_DIR --subset $FOLD --batch-size 2 --write-batch-size 16 $EXTA_ARGS
+python ../methylseqnet/preprocess.py pretrained_model_embeddings --config $CONFIG_FILE --embeddings-shape 1920 6144 --input-datasets-directory $INPUT_DIR --output-datasets-directory $OUTPUT_DIR --subset $FOLD --batch-size 2 --write-batch-size 16 $EXTA_ARGS

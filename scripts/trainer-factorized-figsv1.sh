@@ -37,7 +37,7 @@ CHECKPOINT=${CHECKPOINTS[$SLURM_ARRAY_TASK_ID]}
 UNIQUE_IDENTIFIER="slurm${SLURM_ARRAY_JOB_ID}task${SLURM_ARRAY_TASK_ID}"
 source activate methylseqnet
 if [ -n "$CHECKPOINT" ]; then
-    python ../methylseqnet/trainer.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1 --checkpoint $CHECKPOINT
+    python ../methylseqnet/train.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1 --checkpoint $CHECKPOINT
 else
-    python ../methylseqnet/trainer.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1
+    python ../methylseqnet/train.py --config $CONFIG_FILE --unique_identifier $UNIQUE_IDENTIFIER --batch_size 1
 fi

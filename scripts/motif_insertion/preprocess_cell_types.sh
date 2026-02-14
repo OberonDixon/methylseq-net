@@ -29,7 +29,7 @@ CELL_TYPES=(
     "cnhs12498"
 )
 
-CONFIG_FILE="../../configs/preprocessor/motif_inserts_by_cell_type/preprocessor_config_motif_insert_${CELL_TYPES[$SLURM_ARRAY_TASK_ID]}.gin"
+CONFIG_FILE="../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_${CELL_TYPES[$SLURM_ARRAY_TASK_ID]}.gin"
 
 source activate methylseqnet
-python ../../methylseqnet/preprocessor.py --config $CONFIG_FILE
+python ../../methylseqnet/preprocess.py --config $CONFIG_FILE

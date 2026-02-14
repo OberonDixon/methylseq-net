@@ -18,7 +18,7 @@ import pandas as pd
 import pyBigWig
 import gin
 
-from methylseqnet import dna_io
+from methylseqnet import encoding
 from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
 from methylseqnet.readers import load_sequence, load_track, load_masked_track
@@ -29,7 +29,7 @@ class ConditionalBestScoreReset(Callback):
         self.checkpoint_callback = checkpoint_callback
         self.reset_on_train_start = reset_on_train_start
     
-    def on_train_start(self, trainer, pl_module):
+    def on_train_start(self, train, pl_module):
         if self.reset_on_train_start:
             # resets the callback as if it were freshly initialized
             self.checkpoint_callback.best_model_score = None
@@ -54,12 +54,12 @@ class BaseHDF5Writer(ABC):
             os.makedirs(output_dir, exist_ok=True)
         self.no_targets = no_targets
 
-    def append_batch_to_h5(self, trainer, pl_module, prediction_dict, batch_indices, batch):
+    def append_batch_to_h5(self, train, pl_module, prediction_dict, batch_indices, batch):
         if "predictions" not in prediction_dict or "specifier" not in prediction_dict:
             raise ValueError("dictionary output from predict_step method must contain 'predictions' and 'specifier' keys.")
         inputs, targets = self._input_target_from_batch(batch, pl_module)
         # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
-        rank = trainer.global_rank
+        rank = train.global_rank
         if rank!=0:
             raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
         path = os.path.join(self.output_dir, f"predictions.h5")
@@ -140,10 +140,10 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
         BasePredictionWriter.__init__(self,write_interval)
         BaseHDF5Writer.__init__(self,output_dir=output_dir,no_targets=no_targets,)
 
-    def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        if trainer.world_size > 1:
-            rank = trainer.global_rank
-            world_size = trainer.world_size
+    def write_on_batch_end(self, train, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
+        if train.world_size > 1:
+            rank = train.global_rank
+            world_size = train.world_size
             
             batch_to_gather = batch.copy()
             # these huge input tensors may slow down gathering
@@ -163,7 +163,7 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
                 gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v 
                                 for k, v in batch_to_gather.items()}
                 
-                self.append_batch_to_h5(trainer, pl_module, gathered_prediction, gathered_indices, gathered_batch)
+                self.append_batch_to_h5(train, pl_module, gathered_prediction, gathered_indices, gathered_batch)
             else:
                 # Non-root ranks just send
                 for v in prediction.values():
@@ -174,9 +174,9 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
                     if isinstance(v, torch.Tensor):
                         gather_to_rank0(v, world_size, rank)
         else:
-            self.append_batch_to_h5(trainer, pl_module, prediction, batch_indices, batch)
+            self.append_batch_to_h5(train, pl_module, prediction, batch_indices, batch)
 
-    def on_predict_end(self, trainer, pl_module):
+    def on_predict_end(self, train, pl_module):
         self._close_all()
 
 class ValidationMetricsLogger(Callback, BaseHDF5Writer):
@@ -214,7 +214,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
             raise ValueError("split_by_target_type is True but no data types found in io_mappings.")
         return channels_dict
 
-    def on_validation_epoch_start(self, trainer, pl_module):
+    def on_validation_epoch_start(self, train, pl_module):
         io_mappings_df = pl_module.get_io_mappings_df()
         for dataset_key in io_mappings_df['dataset_key'].unique():
             if self.split_by_target_type:
@@ -227,7 +227,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                     metric_name = metric.__class__.__name__
                     self.metric_values_dict[metric_name][dataset_key] = [float('nan')]
     
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         _, targets = self._input_target_from_batch(batch, pl_module)
         targets = targets.detach().cpu()
         dataset_key = batch['dataset_key'][0]
@@ -259,9 +259,9 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                 self.predictions_dict[dataset_key].extend([predictions[i] for i in range(batch_size)])
                 self.targets_dict[dataset_key].extend([targets[i] for i in range(batch_size)])
             else:
-                self.append_batch_to_h5(trainer, pl_module, predictions, ["" for _ in predictions], None, batch)
+                self.append_batch_to_h5(train, pl_module, predictions, ["" for _ in predictions], None, batch)
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def on_validation_epoch_end(self, train, pl_module):
         if self.metrics_per_sample:
             for metric in self.metrics:
                 metric_name = metric.__class__.__name__
@@ -271,7 +271,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                         mean_metric_value = np.nanmean(metric_values)
                         # valid_values = [v for v in metric_values if not np.isnan(v)]
                         # if len(valid_values) == 0:
-                        #     print(f"[Rank {trainer.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
+                        #     print(f"[Rank {train.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
                         pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=True)
         if self.metrics_across_dataset:
             io_mappings_df = pl_module.get_io_mappings_df()
@@ -308,31 +308,31 @@ class GPUMemoryLogger(Callback):
     def __init__(self, log_interval=10):
         super().__init__()
         self.log_interval = log_interval
-    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+    def on_train_batch_start(self, train, pl_module, batch, batch_idx):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_train_batch_end(self, train, pl_module, outputs, batch, batch_idx):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6  # MB
             if batch_idx % self.log_interval == 0:
                 pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
-    def on_validation_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_start(self, train, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             if batch_idx % self.log_interval == 0:
                 pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
-    def on_test_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+    def on_test_batch_start(self, train, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_test_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             if batch_idx % self.log_interval == 0:
@@ -343,12 +343,12 @@ class CPUMemoryLogger(Callback):
         super().__init__()
         self.log_interval = log_interval
         
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_train_batch_end(self, train, pl_module, outputs, batch, batch_idx):
         if batch_idx % self.log_interval == 0:
             mem = psutil.virtual_memory()
             pl_module.log("memory/train_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
     
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if batch_idx % self.log_interval == 0:
             mem = psutil.virtual_memory()
             pl_module.log("memory/val_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
@@ -357,7 +357,7 @@ class SubmodulesGradientNormLogger(Callback):
     def __init__(self, submodule_names: list[str]):
         super().__init__()
         self.submodule_names = submodule_names
-    def on_after_backward(self, trainer, pl_module):
+    def on_after_backward(self, train, pl_module):
         grad_norms = {}
         for name, param in pl_module.named_parameters():
             for submodule_name in self.submodule_names:
@@ -430,11 +430,11 @@ class HaplotypedPredLogger(Callback):
             nn.AvgPool1d(kernel_size=128),
         )
 
-    def on_validation_epoch_end(self, trainer, pl_module) -> None:
-        if trainer.is_global_zero:
+    def on_validation_epoch_end(self, train, pl_module) -> None:
+        if train.is_global_zero:
             # Get the wandb Run (works when WandbLogger is enabled)
-            run = getattr(getattr(trainer, "logger", None), "experiment", None)
-            epoch = getattr(trainer, "current_epoch", -1)
+            run = getattr(getattr(train, "logger", None), "experiment", None)
+            epoch = getattr(train, "current_epoch", -1)
             if run is not None and hasattr(run, "log"):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
@@ -736,7 +736,7 @@ class HaplotypedPredLogger(Callback):
         )
         x_methylseq = torch.permute(
             torch.tensor(
-                dna_io.one_hot_encode_dna(
+                encoding.one_hot_encode_dna(
                     dna_strand=sequence, 
                     cpg_methylation=exp_cpg_ratio, 
                     valid_cpgs=non_zero_mask,

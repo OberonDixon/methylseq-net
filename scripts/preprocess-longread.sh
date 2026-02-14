@@ -10,7 +10,7 @@
 
 source activate methylseqnet
 
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_allchr_pbcpg.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_chrX_pbcpg.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_allchr.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_chrX.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_allchr_pbcpg.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX_pbcpg.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_allchr.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX.gin

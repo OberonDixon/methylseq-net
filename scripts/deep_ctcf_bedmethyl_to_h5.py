@@ -1,6 +1,6 @@
-from methylseqnet import dna_io
+from methylseqnet import encoding
 from dimelo import parse_bam, load_processed
-from methylseqnet.datawriter import DatasetWriter
+from methylseqnet.writers import DatasetWriter
 from pathlib import Path
 import pysam
 import numpy as np
@@ -139,8 +139,8 @@ for dataset_path,chromosomes in datasets_dict.items():
                             cpg_ratio[non_zero_mask] = cpg_mod[non_zero_mask] / cpg_val[non_zero_mask]
                         else:
                             cpg_ratio = None
-                        onehot_seq_list.append(dna_io.one_hot_encode_dna(sequence,cpg_ratio))
-                        onehot_seq_list.append(dna_io.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
+                        onehot_seq_list.append(encoding.one_hot_encode_dna(sequence,cpg_ratio))
+                        onehot_seq_list.append(encoding.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
                         track_value_list.append(np.array([track_value]))
                         track_value_list.append(np.array([track_value]))
             else: # if there are not peaks, that's ok, just add the chunk
@@ -166,8 +166,8 @@ for dataset_path,chromosomes in datasets_dict.items():
                     cpg_ratio[non_zero_mask] = cpg_mod[non_zero_mask] / cpg_val[non_zero_mask]
                 else:
                     cpg_ratio = None    
-                onehot_seq_list.append(dna_io.one_hot_encode_dna(sequence,cpg_ratio))
-                onehot_seq_list.append(dna_io.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
+                onehot_seq_list.append(encoding.one_hot_encode_dna(sequence,cpg_ratio))
+                onehot_seq_list.append(encoding.one_hot_encode_dna(rev_comp_sequence,cpg_ratio[::-1]))
                 track_value_list.append(np.array([False]))
                 track_value_list.append(np.array([False]))
                     

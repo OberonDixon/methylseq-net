@@ -37,7 +37,7 @@ PhasedFiberRNA.kwargs_by_data_type = {
     'fiberseq': {'normalize_counts':False,'scale':2, 'clip':32},
     'rna': {'normalize_counts':False,'scale':128, 'clip':384},
 }
-PhasedFiberRNA.rna_handler_cls = @methylseqnet.io_handlers.MultiBedGzLabelHandler
+PhasedFiberRNA.rna_handler_cls = @methylseqnet.builders.MultiBedGzLabelHandler
 PhasedFiberRNA.unphased_rna_file = %unphased_rna_file
 PhasedFiberRNA.normalize_phased_to_unphased_counts=True
 PhasedFiberRNA.phase_normalization_pseudocount=1e-6

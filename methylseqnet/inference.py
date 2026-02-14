@@ -1,15 +1,15 @@
 import torch
 from torch import nn
 from methylseqnet.model import ConditionedSeqNN
-from methylseqnet.trainer import Trainer
-from methylseqnet.io_handlers import *
-from methylseqnet.dna_io import one_hot_encode_dna
-from methylseqnet.datawriter import BigWigWriter
+from methylseqnet.train import Trainer
+from methylseqnet.builders import *
+from methylseqnet.encoding import one_hot_encode_dna
+from methylseqnet.writers import BigWigWriter
 import json
 from pathlib import Path
 from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
 from methylseqnet.callbacks import HDF5PredictionWriter
-from methylseqnet.trainer import MethylSeqDataModule
+from methylseqnet.train import MethylSeqDataModule
 from tqdm.auto import tqdm
 from torch.utils.data import DataLoader
 import gin
@@ -74,7 +74,7 @@ def run_dataset_save_h5(
     data_module.setup(stage="predict")
     pred_writer = HDF5PredictionWriter(output_dir=output_path, write_interval="batch", no_targets=no_targets)
 
-    trainer = Trainer(
+    train = Trainer(
         accelerator="auto",
         devices=gpus,
         strategy="auto",
@@ -82,7 +82,7 @@ def run_dataset_save_h5(
         logger=False,
     )
 
-    trainer.predict(
+    train.predict(
         model=model,
         dataloaders=data_module,
         return_predictions=False,
@@ -122,14 +122,14 @@ def run_whole_dataset(
     dataset = MethylSeqDataset(dataset_path,batch_size=batch_size)
     dataloader = DataLoader(dataset, batch_size=None, shuffle=False, num_workers=3)
     
-    trainer = Trainer(accelerator='gpu',**kwargs)
+    train = Trainer(accelerator='gpu',**kwargs)
 
     layers = list(model.layers)
     for preprend_layer in layers_to_prepend[::-1]:
         layers.insert(0, preprend_layer)
     model.layers = nn.ModuleList(layers)
     
-    result = trainer.test(model=model,dataloaders=dataloader)
+    result = train.test(model=model,dataloaders=dataloader)
     targets_list = model.test_targets_list
     outputs_list = model.test_outputs_list
 
@@ -143,7 +143,7 @@ def run_whole_dataset(
     # targets = torch.tensor(targets_list).numpy()
     # probabilities = torch.sigmoid(torch.tensor(outputs_list)).numpy()
     
-    return targets_list,outputs_list,trainer.global_rank
+    return targets_list,outputs_list,train.global_rank
 
 def run_whole_dataset_specify_dtype(
     model_path: str | Path,
@@ -322,11 +322,11 @@ def run_whole_genome_write_methylation(
 
     with pysam.FastaFile(ref_genome) as fasta:
         contigs =  [(name, fasta.get_reference_length(name)) for name in fasta.references if '_' not in name]
-        bigwig_datawriters_dict = {channel: BigWigWriter(str(path),contigs) for channel,path in output_file_paths_dict.items()}
+        bigwig_writerss_dict = {channel: BigWigWriter(str(path),contigs) for channel,path in output_file_paths_dict.items()}
         for contig,length in tqdm(contigs):
-            methylation_predictions = {channel:np.zeros(length) for channel in bigwig_datawriters_dict.keys()}
-            motif_sites = {channel:np.zeros(length,dtype=bool) for channel in bigwig_datawriters_dict.keys()}
-            for channel in bigwig_datawriters_dict.keys():
+            methylation_predictions = {channel:np.zeros(length) for channel in bigwig_writerss_dict.keys()}
+            motif_sites = {channel:np.zeros(length,dtype=bool) for channel in bigwig_writerss_dict.keys()}
+            for channel in bigwig_writerss_dict.keys():
                 genome_channels_dict[channel][contig]['start']=0 
                 genome_channels_dict[channel][contig]['end']=length
             for start in tqdm(range(0,length-chunk_size,chunk_size-trim_off_targets*bin_size),leave=False):
@@ -355,7 +355,7 @@ def run_whole_genome_write_methylation(
                 
                 logits = model(input)
                 output = torch.sigmoid(logits)
-                for channel,writer in bigwig_datawriters_dict.items():
+                for channel,writer in bigwig_writerss_dict.items():
                     unbinned_output = np.repeat(output[0,channel,:].detach().cpu().numpy(),bin_size)
                     methylation_predictions[channel][pred_start:pred_end] = unbinned_output
                     motif_sites[channel][pred_start:pred_end] = cg_motifs
@@ -374,7 +374,7 @@ def run_whole_genome_write_methylation(
         # Prepare arguments for parallel processing
         args = [
             (channel, writer, genome_channels_dict[channel])
-            for channel, writer in bigwig_datawriters_dict.items()
+            for channel, writer in bigwig_writerss_dict.items()
         ]       
         
         # Use multiprocessing Pool for parallel writes

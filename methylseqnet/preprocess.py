@@ -1,8 +1,8 @@
 import argparse
 import sys
 import traceback
-from methylseqnet.io_handlers import *
-from methylseqnet.datawriter import *
+from methylseqnet.builders import *
+from methylseqnet.writers import *
 from methylseqnet.model import *
 from methylseqnet.dataset import *
 from tqdm.auto import tqdm
@@ -54,7 +54,7 @@ class PreprocessingPipeline:
         The region_index can be used downstream to enable parallel dataset writing while maintaining a
         direct mapping from order-in-bed-file to order-in-dataset even if the order of processing 
         has stochasticity. The region_dict gives the chrom,start,end for the region in a way that can
-        be directly passed to loading function in io_handlers.
+        be directly passed to loading function in builders.
         """
         sample_list_by_split = self.sample_generator.create_samples()
         self.sample_batches_by_split = {split:[] for split in sample_list_by_split.keys()}
@@ -126,7 +126,7 @@ class PreprocessingPipeline:
 
 def pretrained_model_embeddings():
     parser = argparse.ArgumentParser(description="Save model embeddings for one or more datasets.")
-    parser.add_argument("--config", required=True, help="Path to the the gin config file for a ConditionedSeqNN trainer containing a pretrained model.")
+    parser.add_argument("--config", required=True, help="Path to the the gin config file for a ConditionedSeqNN train containing a pretrained model.")
     parser.add_argument("--embeddings-shape", nargs="+", type=int, help="Space separated integers for shape of embeddings.")
     parser.add_argument("--input-datasets-directory", required=True, help="Path to the input directory from which to run datasets.")
     parser.add_argument("--subset", required=False, nargs="*", help="Dataset subset(s) to run. Defaults to all.")

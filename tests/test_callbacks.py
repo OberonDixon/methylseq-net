@@ -25,10 +25,10 @@ def test_hdf5_prediction_writer():
             write_interval="batch",
         )
         
-        # Create mock trainer and pl_module
-        mock_trainer = Mock()
-        mock_trainer.global_rank = 0  # Simulate rank 0
-        mock_trainer.world_size = 1
+        # Create mock train and pl_module
+        mock_train = Mock()
+        mock_train.global_rank = 0  # Simulate rank 0
+        mock_train.world_size = 1
         mock_pl_module = Mock()
         mock_pl_module.crop_targets = lambda targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = io_mappings_str
@@ -71,7 +71,7 @@ def test_hdf5_prediction_writer():
         
         # Test writing first batch
         writer.write_on_batch_end(
-            trainer=mock_trainer,
+            train=mock_train,
             pl_module=mock_pl_module,
             prediction=prediction_1,
             batch_indices=batch_indices_1,
@@ -82,7 +82,7 @@ def test_hdf5_prediction_writer():
         
         # Test writing second batch
         writer.write_on_batch_end(
-            trainer=mock_trainer,
+            train=mock_train,
             pl_module=mock_pl_module,
             prediction=prediction_2,
             batch_indices=batch_indices_2,
@@ -92,7 +92,7 @@ def test_hdf5_prediction_writer():
         )
         
         # Test prediction end (closes files)
-        writer.on_predict_end(mock_trainer, mock_pl_module)
+        writer.on_predict_end(mock_train, mock_pl_module)
         
         # Verify the HDF5 file was created and contains expected data
         h5_path = os.path.join(temp_dir, "predictions.h5")
@@ -144,9 +144,9 @@ def test_hdf5_prediction_writer_file_cleanup():
         writer = HDF5PredictionWriter(output_dir=temp_dir)
         
         # Create mock data
-        mock_trainer = Mock()
-        mock_trainer.global_rank = 0
-        mock_trainer.world_size = 1
+        mock_train = Mock()
+        mock_train.global_rank = 0
+        mock_train.world_size = 1
         mock_pl_module = Mock()
         mock_pl_module.crop_targets = lambda targets: targets  # Identity function for trimming
         mock_pl_module.io_mappings_str = ""
@@ -170,7 +170,7 @@ def test_hdf5_prediction_writer_file_cleanup():
         
         # Write some data to create file handles
         writer.write_on_batch_end(
-            trainer=mock_trainer,
+            train=mock_train,
             pl_module=mock_pl_module,
             prediction=prediction,
             batch_indices=batch_indices,

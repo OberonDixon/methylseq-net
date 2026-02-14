@@ -7,8 +7,9 @@ import pytest
 import torch
 import wandb
 
-import methylseqnet.trainer as trainer
-from test_model import ConditionedSeqNN, get_config_files_with_names, nuke_gin_config
+import methylseqnet.train as train
+from methylseqnet.model import ConditionedSeqNN
+from test_model import get_config_files_with_names, nuke_gin_config
 
 import gin
 import gin.config
@@ -18,12 +19,12 @@ import gin.config
     reason="Test requires at least one GPU",
 )
 @pytest.mark.parametrize("config_file", get_config_files_with_names())
-def test_trainer_integration(config_file):
+def test_train_integration(config_file):
     nuke_gin_config()
     wandb.finish()
     with tempfile.TemporaryDirectory() as temp_dir:
         os.environ["WANDB_MODE"] = "offline"
-        model = trainer.main(
+        model = train.main(
             config=config_file,
             output_dir=temp_dir,
             unique_identifier="test",

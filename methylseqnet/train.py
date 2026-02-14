@@ -82,7 +82,7 @@ def main(
         if total_stage_epochs != max_epochs:
             warnings.warn(f"Training stages detected in gin config; max_epochs={max_epochs} will be ignored in favor of total stage epochs {total_stage_epochs}.")
     
-    from methylseqnet.trainer import MethylSeqDataModule
+    from methylseqnet.train import MethylSeqDataModule
     if batch_size>0:
         # if the script was provided with a batch_size
         data_module = MethylSeqDataModule(batch_size=batch_size)
@@ -106,7 +106,7 @@ def main(
 
     # Try to retrieve the io_mappings string from the train dataset
     # The value here lies in the fact that the task structure is dynamically created from the
-    # preprocessor matches file, so having a record of what the mappings is for a given model
+    # preprocess matches file, so having a record of what the mappings is for a given model
     # may be useful when trying different datasets, etc
     data_module.setup(stage='fit')
     model.set_io_mappings(data_module.get_io_mappings_str())
@@ -178,7 +178,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 if start_checkpoint_epoch > 0 and current_epoch == 0:
                     model.start_epoch = start_checkpoint_epoch
                 
-                trainer = Trainer(
+                train = Trainer(
                     callbacks = create_callbacks(
                         model_dir=model_dir,
                         no_checkpoints=no_checkpoints,
@@ -198,7 +198,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 )  
                 # Check if Lightning set any seed internally
                 print(f"PyTorch seed after Trainer init: {torch.initial_seed()}")
-                trainer.fit(
+                train.fit(
                     model,
                     datamodule=data_module,
                     ckpt_path=checkpoint_to_use
@@ -210,7 +210,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 
             epochs_elapsed+=stage_dict["epochs"]
     else:
-        trainer = Trainer(
+        train = Trainer(
             callbacks = create_callbacks(
                 model_dir=model_dir,
                 no_checkpoints=no_checkpoints,
@@ -228,7 +228,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             accumulate_grad_batches=accumulate_grad_batches,
             log_every_n_steps=samples_per_log//accumulate_grad_batches,
         )    
-        trainer.fit(
+        train.fit(
             model,
             datamodule=data_module,
             ckpt_path=checkpoint_to_use

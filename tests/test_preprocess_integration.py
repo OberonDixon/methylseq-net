@@ -7,18 +7,19 @@ import pytest
 import multiprocessing
 import h5py
 
-import methylseqnet.preprocessor as preprocessor
-from test_model import ConditionedSeqNN, get_config_files_with_names, nuke_gin_config
+import methylseqnet.preprocess as preprocess
+from methylseqnet.model import ConditionedSeqNN
+from test_model import get_config_files_with_names, nuke_gin_config
 
 import gin
 import gin.config
 
-@pytest.mark.parametrize("config_file", get_config_files_with_names("preprocessor_configs"))
-def test_trainer_integration(config_file):
+@pytest.mark.parametrize("config_file", get_config_files_with_names("preprocess_configs"))
+def test_train_integration(config_file):
     nuke_gin_config()
     with tempfile.TemporaryDirectory() as temp_dir:
         gin.parse_config_file(config_file)
-        pipeline = preprocessor.PreprocessingPipeline(output_directory=temp_dir)
+        pipeline = preprocess.PreprocessingPipeline(output_directory=temp_dir)
         cores_avail = multiprocessing.cpu_count()
         pipeline.process_samples(subset='all',sequential=True,max_workers=cores_avail)
         # Check that output files are created

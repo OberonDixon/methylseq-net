@@ -2,7 +2,7 @@ import gin, pyBigWig, pysam
 from Bio import SeqIO
 import os
 import numpy as np
-from methylseqnet.dna_io import one_hot_encode_dna
+from methylseqnet.encoding import one_hot_encode_dna
 from methylseqnet.readers import load_sequence, load_track, load_masked_track
 from pathlib import Path
 import matplotlib.pyplot as plt

@@ -31,26 +31,26 @@ DATASET_SPLITS=(
 )
 
 CONFIG_FILES=(
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi128_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
-    "../configs/preprocessor/preprocessor_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi128_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
+    "../configs/preprocess/preprocess_borzoi_multimethyl.gin"
 ) 
 # Get the config for this array task
 DATASET_SPLIT=${DATASET_SPLITS[$SLURM_ARRAY_TASK_ID]}
 CONFIG_FILE=${CONFIG_FILES[$SLURM_ARRAY_TASK_ID]}
 
 source activate basenji2-pytorch
-python ../methylseqnet/preprocessor.py --config $CONFIG_FILE --subset $DATASET_SPLIT --mode parallel
+python ../methylseqnet/preprocess.py --config $CONFIG_FILE --subset $DATASET_SPLIT --mode parallel
