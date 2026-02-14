@@ -4,7 +4,7 @@ import inspect
 import math
 import logging
 import warnings
-from typing import Callable
+from typing import Callable, Any, Set, Type
 logger = logging.getLogger(__name__)
 
 import torch
@@ -19,9 +19,8 @@ import zipfile
 import pandas as pd
 from io import StringIO
 
-from methylseqnet.layers import ActivationCapture, GradientReversalLayer
-from methylseqnet.losses import PoissonLoss, LogL1Loss, BCELoss, OrthogonalityLoss, MSELoss
-from methylseqnet.optimizers import AdamOptimizer
+from methylseqnet.layers import ActivationCapture
+from methylseqnet.losses import MaskedLoss, PoissonLoss, LogL1Loss, BCELoss, OrthogonalityLoss, MSELoss
 from methylseqnet.pretrained import basenji2_pytorch, borzoi_pytorch
 from methylseqnet.tensor_ops import FEATURE_MODULATION_OPS
 
@@ -30,53 +29,57 @@ gin.register(nn.Sigmoid)
 gin.register(nn.Hardtanh)
 gin.register(nn.Conv1d)
 
+gin.external_configurable(optim.Adam, module='torch.optim')
+gin.external_configurable(optim.AdamW, module='torch.optim')
+gin.external_configurable(optim.SGD, module='torch.optim')
+
 @gin.configurable
 class MethylSeqNN(L.LightningModule):
     def __init__(
         self, 
 
         # Input encoders
-        sequence_encoder: list[nn.Module, Callable] = [],
-        conditioning_state_encoder: list[nn.Module, Callable] = [],
+        sequence_encoder: list[Type[nn.Module] | Callable] = [],
+        conditioning_state_encoder: list[Type[nn.Module] | Callable] = [],
         concat_pretrained_embeddings_at: dict[int: int]={},
 
         # Conditioning head
-        embeddings_to_unconditional_seq_rep: list[nn.Module, Callable] = [],
-        embeddings_to_conditional_seq_rep: list[nn.Module, Callable] = [],
-        embeddings_to_conditioning_state_rep: list[nn.Module, Callable] = [],
-        output_head: list[nn.Module, Callable] = [],
+        embeddings_to_unconditional_seq_rep: list[Type[nn.Module] | Callable] = [],
+        embeddings_to_conditional_seq_rep: list[Type[nn.Module] | Callable] = [],
+        embeddings_to_conditioning_state_rep: list[Type[nn.Module] | Callable] = [],
+        output_head: list[Type[nn.Module] | Callable] = [],
 
-        conditioning_operation='multiply',
-        true_conditioning_state_weight=1.0,
-        interpolate_conditioning_state_location='representation', 
+        conditioning_operation: str = 'multiply',
+        true_conditioning_state_weight: float = 1.0,
+        interpolate_conditioning_state_location: str = 'representation', 
 
         # Cropping
-        crop_off_conditioning_input=0,
-        crop_off_output=0,
+        crop_off_conditioning_input: int = 0,
+        crop_off_output: int = 0,
 
         # Task details
-        out_tracks=None,
-        total_stride=128,
-        data_types_subset=None,
-        regression=True,
-        label_threshold_cts=None,
+        out_tracks: int | None = None,
+        total_stride: int = 128,
+        data_types_subset: int | str = None,
+        regression: bool = True,
+        label_threshold_cts: int | None = None,
         
         # Training stages
-        train_stages={},
+        train_stages: dict[str, dict[str: Any]] = {},
 
         # Optimization config
-        optimizer_class=AdamOptimizer,
+        optimizer_class: Type[torch.optim.Optimizer] = optim.Adam,
 
-        conditioning_state_rep_loss_weight=0,
-        seq_reps_orthogonality_loss_weight=0,
+        conditioning_state_rep_loss_weight: float = 0.0,
+        seq_reps_orthogonality_loss_weight: float = 0.0,
 
-        prediction_criterion=PoissonLoss,
-        conditioning_state_rep_criterion=BCELoss,
-        seq_reps_orthogonality_criterion=OrthogonalityLoss,
-        seq_reps_to_conditioning_state_criterion=MSELoss,
+        prediction_criterion: Type[MaskedLoss] = PoissonLoss,
+        conditioning_state_rep_criterion: Type[MaskedLoss] = BCELoss,
+        seq_reps_orthogonality_criterion: Type[MaskedLoss] = OrthogonalityLoss,
+        seq_reps_to_conditioning_state_criterion: Type[MaskedLoss] = MSELoss,
 
         # Predict time config
-        supplemental_predict_outputs=set(),
+        supplemental_predict_outputs: Set = set(),
     ):
         super().__init__()
         # Check config validity

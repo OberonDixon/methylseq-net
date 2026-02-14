@@ -47,8 +47,8 @@ methylseq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.001
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.001
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = [@methylseq_model/EncodingAdjuster,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch

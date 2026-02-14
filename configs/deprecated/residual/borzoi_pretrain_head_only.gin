@@ -18,8 +18,8 @@ methylseqnet.layers.ConvFinal.pool_size=4
 methylseqnet.layers.ConvFinal.kernel_size=1
 methylseqnet.layers.ConvFinal.stride=1
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.001
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.001
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = [] 
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch

@@ -36,6 +36,9 @@ factorized_reps_to_output/methylseqnet.layers.ConvFinal.kernel_size=1
 
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
+
 methylseqnet.methylseqnn.MethylSeqNN.sequence_encoder = [@borzoi_pytorch]
 methylseqnet.methylseqnn.MethylSeqNN.embeddings_to_unconditional_seq_rep = [
     @embeddings_to_unconditional_seq_rep/ConvBlock,
@@ -64,7 +67,6 @@ methylseqnet.methylseqnn.MethylSeqNN.crop_off_conditioning_input = 163840
 methylseqnet.methylseqnn.MethylSeqNN.crop_off_output = 0
 methylseqnet.methylseqnn.MethylSeqNN.conditioning_state_rep_loss_weight = 1.0
 methylseqnet.methylseqnn.MethylSeqNN.seq_reps_orthogonality_loss_weight = 1.0
-methylseqnet.methylseqnn.MethylSeqNN.optimizer_class = @AdamOptimizer
 methylseqnet.methylseqnn.MethylSeqNN.train_stages = {
     'train-factorized-pretrained-embeddings': {
         'grad_dict': {

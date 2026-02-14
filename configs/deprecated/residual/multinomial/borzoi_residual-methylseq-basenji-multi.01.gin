@@ -49,8 +49,8 @@ methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 methylseq_model/methylseqnet.layers.ConvFinal.init_weight=0
 methylseq_model/methylseqnet.layers.ConvFinal.init_bias=0.542
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.002
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.losses.PoissonMultinomialLoss.poisson_weight=1.0
 methylseqnet.losses.PoissonMultinomialLoss.multinomial_weight=0.01

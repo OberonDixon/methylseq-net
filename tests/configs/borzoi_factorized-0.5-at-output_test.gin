@@ -38,8 +38,8 @@ factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.in_channels=10
 factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.shared_head=False
 factorized_reps_to_output_final/methylseqnet.layers.ConvFinal.filters=63
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.002
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 

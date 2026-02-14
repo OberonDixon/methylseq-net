@@ -61,8 +61,8 @@ factorized_reps_to_output/methylseqnet.layers.ConvFinal.in_channels=2048
 factorized_reps_to_output/methylseqnet.layers.ConvFinal.filters=1
 factorized_reps_to_output/methylseqnet.layers.ConvFinal.kernel_size=1
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.002
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = None
 methylseqnet.methylseqnn.MethylSeqNN.pretrained_seq_model_generator = @borzoi_pytorch

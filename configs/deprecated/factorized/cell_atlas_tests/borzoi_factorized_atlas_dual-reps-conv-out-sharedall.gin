@@ -54,8 +54,8 @@ embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=4
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.shared_head=True
 
-methylseqnet.optimizers.AdamOptimizer.lr=0.002
-methylseqnet.optimizers.AdamOptimizer.betas=(0.9,0.999)
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.methylseqnn.MethylSeqNN.layers = None
 # methylseqnet.methylseqnn.MethylSeqNN.data_types_subset=["ATAC-seq","Fiber-seq"]

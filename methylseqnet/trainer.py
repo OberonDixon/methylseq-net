@@ -12,8 +12,7 @@ from datetime import datetime as dt
 import time
 from pathlib import Path
 import argparse
-from methylseqnet.activations import *
-from methylseqnet.dataset import *
+from methylseqnet.dataset import MultiMethylDataset
 from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
 from methylseqnet.methylseqnn import MethylSeqNN
 from methylseqnet.datamodule import MultiKeyDataset
