@@ -78,15 +78,15 @@ methylseqnet.model.ConditionedSeqNN.train_stages = {
     },
 }
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file={
     "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
     "longread":"./tests/data/longread_fold0-downsampled.h5",
 }
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
     "atlas":"./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
     "longread":"./tests/data/longread_fold0-downsampled.h5",
 }
-methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=()
-methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.trainer.MethylSeqDataModule.epoch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.transforms=()
+methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.datamodule.MethylSeqDataModule.epoch_size=1

@@ -61,7 +61,7 @@ methylseqnet.model.ConditionedSeqNN.crop_off_final=64
 methylseqnet.model.ConditionedSeqNN.label_threshold_cts=0.5
 methylseqnet.model.ConditionedSeqNN.learning_rate=0.002
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
-methylseqnet.trainer.MethylSeqDataModule.batch_size=16
-methylseqnet.trainer.MethylSeqDataModule.transforms=[@ReverseComplement,@SequenceJitter]
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=16
+methylseqnet.datamodule.MethylSeqDataModule.transforms=[@ReverseComplement,@SequenceJitter]

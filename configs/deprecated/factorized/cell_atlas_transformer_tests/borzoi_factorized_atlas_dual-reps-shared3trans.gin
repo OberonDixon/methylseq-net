@@ -124,7 +124,7 @@ methylseqnet.model.ConditionedSeqNN.seq_reps_orthogonality_loss_weight=0.0
 methylseqnet.callbacks.HaplotypedPredLogger.accessibility_outputs_slice=[0]
 methylseqnet.callbacks.HaplotypedPredLogger.rna_outputs_slice=[1]
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file={
     "atlas":[
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold2.h5",
@@ -132,11 +132,11 @@ methylseqnet.trainer.MethylSeqDataModule.train_dataset_file={
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold6.h5",
     ],
 }
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file={
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
     "atlas":["/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"],
 }
-methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
-methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.trainer.MethylSeqDataModule.epoch_size=1000
-methylseqnet.trainer.MethylSeqDataModule.val_epoch_size=(500,)
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
+methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.datamodule.MethylSeqDataModule.epoch_size=1000
+methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=(500,)

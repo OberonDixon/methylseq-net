@@ -63,10 +63,10 @@ methylseqnet.model.ConditionedSeqNN.pad_all_layers=True
 methylseqnet.model.ConditionedSeqNN.crop_off_sequence=155648
 methylseqnet.model.ConditionedSeqNN.crop_off_final=64
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=[
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file=[
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
 ]
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
-methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=()
-methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiMethylDataset
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.transforms=()
+methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset

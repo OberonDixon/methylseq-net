@@ -39,6 +39,6 @@ methylseqnet.model.ConditionedSeqNN.out_tracks=35
 methylseqnet.model.ConditionedSeqNN.regression=False
 methylseqnet.model.ConditionedSeqNN.label_threshold_cts=0.5
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/train.h5"
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/valid.h5"
-methylseqnet.trainer.MethylSeqDataModule.batch_size=16
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/train.h5"
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5_untrimmed_reordered/valid.h5"
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=16

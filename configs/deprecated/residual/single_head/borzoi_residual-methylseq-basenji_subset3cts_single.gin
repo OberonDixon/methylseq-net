@@ -102,14 +102,14 @@ methylseqnet.model.ConditionedSeqNN.activation_criterion=@LogL2Loss
 
 methylseqnet.dataset.MultiDataset.dataset_classes=(@MultiMethylDataset,@EmbeddingsDataset)
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file=(
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file=(
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5",
         "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold0.h5",
 )
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file=(
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file=(
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5",
     "/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-embeddings/fold1.h5",
 )
-methylseqnet.trainer.MethylSeqDataModule.batch_size=1
-methylseqnet.trainer.MethylSeqDataModule.transforms=()
-methylseqnet.trainer.MethylSeqDataModule.dataset_class=@MultiDataset
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.transforms=()
+methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiDataset
