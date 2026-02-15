@@ -246,8 +246,8 @@ class ConditionedSeqNN(L.LightningModule):
     def _shared_step(self, batch, batch_idx, log_descriptor):
         sequence_all_variants = batch['sequence']
         conditioning_state_all_variants = batch['conditioning_state']
-        targets_all_variants = batch['target']
-        mask_all_variants = batch.get('mask',torch.ones_like(targets_all_variants,dtype=torch.bool))
+        targets_all_variants = self.targets_from_batch(batch)
+        mask_all_variants = self.mask_from_batch(batch)
 
         io_mappings_df = self.get_io_mappings_df()
         dataset_key = batch['dataset_key'][0]
@@ -268,8 +268,6 @@ class ConditionedSeqNN(L.LightningModule):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))
 
-            targets = self.crop_targets(targets)
-            mask = self.crop_targets(mask)
             # additionally mask out tasks that aren't in the data_types_subset, if provided
             if self.data_types_subset is not None:
                 subset_indices = io_mappings_df[io_mappings_df['data_type'].isin(self.data_types_subset)]['channel'].tolist()
@@ -743,6 +741,12 @@ class ConditionedSeqNN(L.LightningModule):
         # Use id(module) or module.__class__.__name__ to distinguish them
         self.hooked_activations[id(module)] = outputs
 
+    def targets_from_batch(self, batch):
+        return self.crop_targets(batch['target'])
+
+    def mask_from_batch(self, batch):
+        return self.crop_targets(batch['mask'])
+    
     def crop_targets(self, targets):
         crop_off_targets = self.crop_off_output + (self.crop_off_conditioning_input // self.total_stride)
         if crop_off_targets > 0:

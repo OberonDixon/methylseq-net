@@ -36,19 +36,20 @@ methylseq_model/methylseqnet.layers.ConvFinal.in_channels=3456
 methylseq_model/methylseqnet.layers.ConvFinal.shared_head=False
 methylseq_model/methylseqnet.layers.ConvFinal.filters=63
 
-seq_model/methylseqnet.layers.ConvFinal.in_channels=1920
+seq_model/methylseqnet.layers.ConvFinal.in_channels=1536
 seq_model/methylseqnet.layers.ConvFinal.shared_head=False
 seq_model/methylseqnet.layers.ConvFinal.filters=63
-seq_model/methylseqnet.layers.ConvFinal.pool_size=4
+seq_model/methylseqnet.layers.ConvFinal.pool_size=1
 
 pool_sequence/AvgPool1d.kernel_size=128
-pool_embeddings/AvgPool1d.kernel_size=4
+pool_embeddings/AvgPool1d.kernel_size=1
 
 torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.pretrained.basenji2_pytorch.pretrained_seq_model_weights=None
 methylseqnet.pretrained.basenji2_pytorch.reinitialize=True
+methylseqnet.pretrained.basenji2_pytorch.remove_crop=True
 methylseqnet.pretrained.basenji2_pytorch.rewrite_conv_dna_channels_to=4
 
 methylseqnet.model.ConditionedSeqNN.sequence_encoder = [@basenji2_pytorch,@seq_model/ConvFinal,@Softplus]
@@ -56,7 +57,7 @@ methylseqnet.model.ConditionedSeqNN.output_head = []
 methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = []
 methylseqnet.model.ConditionedSeqNN.embeddings_to_conditional_seq_rep = [@pool_embeddings/AvgPool1d,@ZeroChannels]
 methylseqnet.model.ConditionedSeqNN.embeddings_to_conditioning_state_rep = [@pool_embeddings/AvgPool1d,@ZeroChannels]
-methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = []
+methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = [@pool_sequence/AvgPool1d,@ZeroChannels]
 methylseqnet.model.ConditionedSeqNN.conditioning_operation = 'multiply'
 methylseqnet.model.ConditionedSeqNN.train_stages={
             'train-probe-only':{
@@ -68,8 +69,8 @@ methylseqnet.model.ConditionedSeqNN.train_stages={
         }
 methylseqnet.model.ConditionedSeqNN.out_tracks=63
 methylseqnet.model.ConditionedSeqNN.regression=True
-methylseqnet.model.ConditionedSeqNN.crop_off_output=0
-methylseqnet.model.ConditionedSeqNN.crop_off_conditioning_input=163840
+methylseqnet.model.ConditionedSeqNN.crop_off_output=1280
+methylseqnet.model.ConditionedSeqNN.crop_off_conditioning_input=0
 
 methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file=[
     "./tests/data/borzoi_multimethyl_128/fold0-downsampled.h5",
