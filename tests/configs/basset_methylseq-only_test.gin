@@ -10,7 +10,7 @@ methylseqnet.transforms.SequenceJitter.max_jitter=3
 methylseqnet.transforms.SequenceJitter.batch_wise=False
 
 seq_model/methylseqnet.transforms.EncodingSelector.encoding_str='seq-only'
-methylseq_model/methylseqnet.transforms.EncodingSelector.encoding_str='seq+methyl_binary-seq'
+methylseq_model/methylseqnet.transforms.EncodingSelector.encoding_str='seq+interp-methyl+cpg-density'
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=15
@@ -52,7 +52,7 @@ torch.optim.Adam.betas=(0.9,0.999)
 
 pool_sequence/AvgPool1d.kernel_size=128
 
-methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = [@methylseq_model/EncodingSelector,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
+methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = [@methylseq_model/EncodingSelector,@SmoothChannels,@ConvDNA,@ConvTower,@DilatedResidual,@ConvBlock,@methylseq_model/ConvFinal,@Softplus]
 methylseqnet.model.ConditionedSeqNN.sequence_encoder = [@pool_sequence/AvgPool1d]
 methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = [@ZeroChannels]
 methylseqnet.model.ConditionedSeqNN.embeddings_to_conditional_seq_rep = [@ZeroChannels]
