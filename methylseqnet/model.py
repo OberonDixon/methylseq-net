@@ -94,44 +94,6 @@ class ConditionedSeqNN(L.LightningModule):
         conditioning_state: │    │                                    conditioning states
         (N,states,C,L)      ▼    │
         [conditioning_state_encoder] (optional; can be imputed from sequence)
-
-        Args:
-             - Input Encoders
-                 - sequence_encoder: list of nn.Modules or callables that take in the raw sequence and output sequence embeddings. The first module must be able to take in the raw sequence shape (N,4,L) and the last module must output a tensor of shape (N,embedding_dim,L').
-                 - conditioning_state_encoder: list of nn.Modules or callables that take in the raw sequence+conditioning state and output a conditioning state representation. The first module must be able to take in the concatenated input shape (N,4+C,L) and the last module must output a tensor of shape (N,num_cell_types,rep_dim,L') where num_cell_types is the number of conditioning states (cell types) for the dataset.
-                 - concat_pretrained_embeddings_at: dict mapping layer indices in conditioning_state_encoder to indices in sequence encoder embeddings to concatenate at those layers. For example, {0: -1} would concatenate the final sequence encoder embeddings to the input of the first conditioning state encoder layer. Adjust negative indices to positive internally.
-             - Conditioning head
-                 - embeddings_to_unconditional_seq_rep: list of nn.Modules or callables that take in sequence encoder embeddings and output an unconditional sequence representation. The last module must output a tensor of shape (N,seq_rep_dim,L'').
-                 - embeddings_to_conditional_seq_rep: list of nn.Modules or callables that take in sequence encoder embeddings and output a conditional sequence representation. The last module must output a tensor of shape (N,seq_rep_dim,L'').
-                 - embeddings_to_conditioning_state_rep: list of nn.Modules or callables that take in sequence encoder embeddings and output an imputed conditioning state representation. The last module must output a tensor of shape (N,num_cell_types*rep_dim,L'').
-                 - output_head: list of nn.Modules or callables that take in the combined representations after applying the conditioning operation and output final predictions. The first module must be able to take in a tensor of shape (N,seq_rep_dim,L'') for the unconditional component and a tensor of shape (N,num_cell_types,rep_dim,L') for the conditional component, and the last module must output a tensor of shape (N,out_tracks,L''').
-    
-                 - conditioning_operation: how to combine the unconditional sequence rep, conditional sequence rep, and conditioning state rep before applying the output head. Options are 'multiply' for feature-wise modulation (i.e. FiLM-style) or 'concat' for simple concatenation along the channel dimension.
-                 - true_conditioning_state_weight: how much weight to put on the true conditioning state representation vs the imputed conditioning state representation. This can be used to control the strength of the conditioning signal and encourage the model to learn a good imputed conditioning state representation even when the true conditioning state is available during training. Should be between 0 and 1.
-                 - interpolate_conditioning_state_location: where to apply the true vs imputed conditioning state interpolation. Options are 'representation' to interpolate the conditioning state representation before applying the conditioning operation, or 'output' to apply the conditioning operation separately with the true and imputed conditioning state representations and then interpolate the outputs.
-             - Cropping
-                 - crop_off_conditioning_input: how many bases to crop off the edges of the sequence when feeding into the conditioning_state_encoder. This can be used to prevent the conditioning state representation from being influenced by edge effects in the sequence.
-                 - crop_off_output: how many bases to crop off the edges of the final output predictions. This can be used if the output head produces predictions for a larger sequence than the input sequence (e.g. due to upsampling) and we want to only keep the central part of the predictions that correspond to the input sequence.
-             - Task details
-                 - out_tracks: number of output tracks (channels) in the final predictions. This must be specified to set up the model output head and to parse the io_mappings for calculating losses.
-                 - total_stride: the total stride of the model from input sequence to output predictions. This is used to calculate the expected sequence length at each stage of the model and to set up the cropping of the conditioning state input and output predictions.
-                 - data_types_subset: if specified, a subset of data types to calculate losses on. This can be used to train on a subset of tasks or to hold out certain tasks for zero-shot evaluation. Should be a set of data type strings that are present in the io_mappings.
-                 - regression: whether the task is regression or classification. This controls how the targets are processed and which loss function is used for the prediction loss.
-                 - label_threshold_cts: for classification tasks, the threshold number of counts to call a positive label. This should be set based on the distribution of counts in the data and the desired precision-recall tradeoff.
-             - Training stages
-                 - train_stages: a dictionary defining different training stages with different configurations. The keys are stage names and the values are dictionaries that can contain 'grad_dict' to specify which modules should have requires_grad=True, 'true_conditioning_state_weight' to adjust the weight of the true conditioning state representation, 'interpolate_conditioning_state_location' to adjust where the interpolation between true and imputed conditioning state happens, and 'conditioning_operation' to adjust how the conditioning operation is performed. This can be used to implement stage-wise training where different parts of the model are trained at different stages or where the strength of the conditioning signal is gradually increased.
-             - Optimizer config
-                 - optimizer_class: the optimizer class to use for training. This should be a subclass of torch.optim.Optimizer and can be configured with gin.
-                
-                 - conditioning_state_rep_loss_weight: the weight of the auxiliary loss term that encourages the imputed conditioning state representation to match the true conditioning state representation. This can be used to encourage the model to learn a good imputed conditioning state representation even when the true conditioning state is available during training.
-                 - seq_reps_orthogonality_loss_weight: the weight of the auxiliary loss term that encourages the unconditional and conditional sequence representations to be orthogonal. This can be used to encourage the model to learn disentangled representations for the unconditional and conditional components.
-                
-                 - prediction_criterion: the loss function to use for the main prediction loss. This should be a subclass of MaskedLoss and can be configured with gin.
-                 - conditioning_state_rep_criterion: the loss function to use for the conditioning state representation loss. This should be a subclass of MaskedLoss and can be configured with gin.
-                 - seq_reps_orthogonality_criterion: the loss function to use for the sequence representations orthogonality loss. This should be a subclass of MaskedLoss and can be configured with gin.
-                 - seq_reps_to_conditioning_state_criterion: the loss function to use for directly encouraging the sequence representations to predict the conditioning state representation. This should be a subclass of MaskedLoss and can be configured with gin.
-            - Predict-time config
-                 - supplemental_predict_outputs: a set of strings specifying which intermediate representations to include in the output of the predict_step. This can be used to extract embeddings or other representations from the model at prediction time for downstream analysis. Options are 'unconditional_seq_rep', 'conditional_seq_rep', 'true_conditioning_state_rep', 'imputed_conditioning_state_rep', and 'cpg_density'.
         """
         
         super().__init__()
