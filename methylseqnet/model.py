@@ -457,7 +457,7 @@ class ConditionedSeqNN(L.LightningModule):
         self.num_cell_types['all'] = sum([cell_types for cell_types in self.num_cell_types.values()])
         self.cell_type_list_per_dataset['all'] = [cell_type for cell_types in self.cell_type_list_per_dataset.values() for cell_type in cell_types]
         self.dataset_keys = set(self.num_cell_types.keys())
-        assert max(io_mappings_df['absolute_channel']) == self.out_tracks - 1, f"Max absolute channel index {max(io_mappings_df['absolute_channel'])} does not match out_tracks {self.out_tracks}"
+        assert max(io_mappings_df['absolute_channel']) == self.out_tracks - 1, f"Absolute channel counts from io_mappings {max(io_mappings_df['absolute_channel'])+1} does not match out_tracks {self.out_tracks} passed to __init__"
     
     def get_io_mappings_df(self):
         io_mappings_df = pd.read_csv(StringIO(self.io_mappings_str),sep='\t',header=0)
@@ -589,6 +589,7 @@ class ConditionedSeqNN(L.LightningModule):
 
     def _embeddings_to_conditioning_state_rep_forward(self, embeddings, dataset_key):
         conditioning_state_rep = self.embeddings_to_conditioning_state_rep(embeddings)
+        assert conditioning_state_rep.shape[1] % self.num_cell_types['all'] == 0, f"Imputed conditioning state representation channels {conditioning_state_rep.shape[1]} not divisible by composite dataset num_cell_types {self.num_cell_types['all']}."
         conditioning_state_rep = conditioning_state_rep.view(conditioning_state_rep.shape[0],self.num_cell_types['all'],-1,conditioning_state_rep.shape[2])
         conditioning_state_rep_sliced = conditioning_state_rep[:,self.cell_type_list_per_dataset[dataset_key],:,:]
         self.capture_imputed_conditioning_state_rep(conditioning_state_rep_sliced)
@@ -634,6 +635,7 @@ class ConditionedSeqNN(L.LightningModule):
                 x_conditioning_allchannels[:, cell_type, :, :] = x_cell_type
         else:
             x_conditioning_allchannels = x_conditioning_pseudobatch.unsqueeze(1)
+        assert x_conditioning_allchannels.shape[1] in (1, self.num_cell_types[dataset_key]), f"Conditioning state representation cell type dimension {x_conditioning_allchannels.shape[1]} is not 1 and does not match expected num_cell_types {self.num_cell_types[dataset_key]} for dataset {dataset_key}."
         x_conditioning_allchannels = self.capture_true_conditioning_state_rep(x_conditioning_allchannels)
         return x_conditioning_allchannels
 
@@ -647,7 +649,7 @@ class ConditionedSeqNN(L.LightningModule):
             conditioning_state_rep: (N, num_cell_types, C_methyl, L)
             dataset_key: which dataset is being processed (to select output channels)
         """
-        # TODO: add improved shape assertions
+        assert unconditional_seq_rep.shape[0] == conditional_seq_rep.shape[0] == conditioning_state_rep.shape[0], f"Batch size mismatch among representations: {unconditional_seq_rep.shape[0]}, {conditional_seq_rep.shape[0]}, {conditioning_state_rep.shape[0]}"
         x_methylseq_pseudobatch_list = []
         for cell_type_idx in range(conditioning_state_rep.shape[1]):
             celltype_conditioning_state_rep = conditioning_state_rep[:, cell_type_idx, :, :]
@@ -674,6 +676,8 @@ class ConditionedSeqNN(L.LightningModule):
                     x_output_allchannels[:, absolute_task_index:absolute_task_index+1, :] = x_cell_type[:, absolute_task_index:absolute_task_index+1, :]
         if self.crop_off_output:
             x_output_allchannels = x_output_allchannels[:,:,self.crop_off_output:-self.crop_off_output]
+        assert x_output_allchannels.shape[1] == self.out_tracks, f"Final output channels {x_output_allchannels.shape[1]} does not match out_tracks {self.out_tracks}"
+        assert x_output_allchannels.shape[0] == unconditional_seq_rep.shape[0], f"Final output batch size {x_output_allchannels.shape[0]} does not match input batch size {unconditional_seq_rep.shape[0]}"
         return x_output_allchannels
     
     def _concat_pretrained_embeddings(self, embeddings, rbs, x, embeddings_pseudobatch_scaleup=1):
