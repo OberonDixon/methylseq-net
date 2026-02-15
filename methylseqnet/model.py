@@ -635,7 +635,7 @@ class ConditionedSeqNN(L.LightningModule):
                 x_conditioning_allchannels[:, cell_type, :, :] = x_cell_type
         else:
             x_conditioning_allchannels = x_conditioning_pseudobatch.unsqueeze(1)
-        assert x_conditioning_allchannels.shape[1] in (1, self.num_cell_types[dataset_key]), f"Conditioning state representation cell type dimension {x_conditioning_allchannels.shape[1]} is not 1 and does not match expected num_cell_types {self.num_cell_types[dataset_key]} for dataset {dataset_key}."
+        assert x_conditioning_allchannels.shape[1] in (0, 1, self.num_cell_types[dataset_key]), f"Conditioning state representation cell type dimension {x_conditioning_allchannels.shape[1]} is not 1 and does not match expected num_cell_types {self.num_cell_types[dataset_key]} for dataset {dataset_key}."
         x_conditioning_allchannels = self.capture_true_conditioning_state_rep(x_conditioning_allchannels)
         return x_conditioning_allchannels
 

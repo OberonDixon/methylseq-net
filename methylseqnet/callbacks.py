@@ -185,7 +185,7 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
         split_by_target_type=True,
         metrics=[PearsonAcrossPositions(), PearsonAcrossTasks()],
         in_memory=True,
-        metrics_per_sample=True,
+        metrics_per_sample=False,
         metrics_across_dataset=True,
     ):
         Callback.__init__(self)

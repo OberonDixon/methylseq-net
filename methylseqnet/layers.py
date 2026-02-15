@@ -136,7 +136,7 @@ class ConvBlock(nn.Module):
         self.kernel_size=kernel_size
         self.dilation=dilation
         self.pool_size=pool_size
-        self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=(kernel_size -1) // 2 if pad else 0)
+        self.conv = nn.Conv1d(in_channels, filters, kernel_size, dilation=dilation, padding=dilation*(kernel_size -1) // 2 if pad else 0)
         self.weight_decay = weight_decay
         self.pool = pool_class(pool_size) if pool_size>1 else None
 

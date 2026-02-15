@@ -19,7 +19,7 @@ input_to_methyl_rep/AvgPool1d.kernel_size=128
 input_to_methyl_rep/Hardtanh.min_val=0.0
 input_to_methyl_rep/Hardtanh.max_val=1.0
 
-integrate_embs/methylseqnet.layers.ConvBlock.in_channels=2048
+integrate_embs/methylseqnet.layers.ConvBlock.in_channels=1024
 integrate_embs/methylseqnet.layers.ConvBlock.filters=%initial_filters
 integrate_embs/methylseqnet.layers.ConvBlock.kernel_size=1
 integrate_embs/methylseqnet.layers.ConvBlock.pool_size=1
@@ -35,21 +35,11 @@ scaleup_block/methylseqnet.layers.ConvFinal.in_channels=%dilated_residual_filter
 scaleup_block/methylseqnet.layers.ConvFinal.filters=%model_tasks
 scaleup_block/methylseqnet.layers.ConvFinal.kernel_size=1
 
-embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=%embedding_dim
-embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
-embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
-embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=%embedding_pool
-embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
-
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=%embedding_dim
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=%embedding_pool
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
-
-methyl_reps_probe/Conv1d.in_channels=1024
-methyl_reps_probe/Conv1d.out_channels=%cell_types
-methyl_reps_probe/Conv1d.kernel_size=1
 
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.in_channels=%embedding_dim
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=%cell_types
@@ -57,21 +47,28 @@ embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=%embedding_pool
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
 
+methyl_rep_to_film/methylseqnet.layers.ConvBlock.in_channels=1
+methyl_rep_to_film/methylseqnet.layers.ConvBlock.filters=2048
+methyl_rep_to_film/methylseqnet.layers.ConvBlock.kernel_size=1
+
 torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
+
+pool_embeddings/AvgPool1d.kernel_size=4
 
 methylseqnet.pretrained.borzoi_pytorch.remove_crop=False
 methylseqnet.pretrained.borzoi_pytorch.reinitialize=False
 methylseqnet.pretrained.borzoi_pytorch.pretrained_seq_model_weights='johahi/borzoi-replicate-0'
 
 methylseqnet.model.ConditionedSeqNN.sequence_encoder = [@borzoi_pytorch]
-methylseqnet.model.ConditionedSeqNN.conditioning_operation = 'multiply'
+methylseqnet.model.ConditionedSeqNN.conditioning_operation = 'film'
 methylseqnet.model.ConditionedSeqNN.embeddings_to_conditioning_state_rep = [
-    @embeddings_to_methyl_rep/ConvFinal,
-    @Sigmoid,
+    @pool_embeddings/AvgPool1d,
+    @ZeroChannels
 ]
 methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = [
-    @embeddings_to_unconditional_seq_rep/ConvBlock,
+    @pool_embeddings/AvgPool1d,
+    @ZeroChannels,
 ]
 methylseqnet.model.ConditionedSeqNN.embeddings_to_conditional_seq_rep = [
     @embeddings_to_conditional_seq_rep/ConvBlock,
@@ -80,6 +77,7 @@ methylseqnet.model.ConditionedSeqNN.conditioning_state_encoder = [
     @input_to_methyl_rep/EncodingSelector,
     @input_to_methyl_rep/AvgPool1d,
     @input_to_methyl_rep/Hardtanh,
+    @methyl_rep_to_film/ConvBlock,
 ]
 methylseqnet.model.ConditionedSeqNN.output_head = [
     @integrate_embs/ConvBlock,
@@ -101,7 +99,7 @@ methylseqnet.model.ConditionedSeqNN.regression=True
 methylseqnet.model.ConditionedSeqNN.crop_off_output=0
 methylseqnet.model.ConditionedSeqNN.crop_off_conditioning_input=163840
 methylseqnet.model.ConditionedSeqNN.concat_pretrained_embeddings_at={}
-methylseqnet.model.ConditionedSeqNN.conditioning_state_rep_loss_weight=1.0
+methylseqnet.model.ConditionedSeqNN.conditioning_state_rep_loss_weight=0.0
 methylseqnet.model.ConditionedSeqNN.seq_reps_orthogonality_loss_weight=0.0
 
 methylseqnet.callbacks.HaplotypedPredLogger.accessibility_outputs_slice=[0]
@@ -142,5 +140,5 @@ methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
 methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
 methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.datamodule.MethylSeqDataModule.epoch_size=100
-methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=(10,10,)
+methylseqnet.datamodule.MethylSeqDataModule.epoch_size=10000
+methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=None
