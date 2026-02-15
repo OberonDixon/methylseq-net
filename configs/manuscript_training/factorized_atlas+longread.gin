@@ -2,6 +2,8 @@ initial_filters = 512
 dilated_residual_filters = 512
 embedding_dim = 1920
 embedding_pool = 4
+model_tasks = 65
+cell_types = 43
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
@@ -30,7 +32,7 @@ methylseqnet.layers.DilatedResidual.repeat=5
 methylseqnet.layers.DilatedResidual.dropout=0.3
 
 scaleup_block/methylseqnet.layers.ConvFinal.in_channels=%dilated_residual_filters
-scaleup_block/methylseqnet.layers.ConvFinal.filters=63
+scaleup_block/methylseqnet.layers.ConvFinal.filters=%model_tasks
 scaleup_block/methylseqnet.layers.ConvFinal.kernel_size=1
 
 embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=%embedding_dim
@@ -46,11 +48,11 @@ embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=%embed
 embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@AvgPool1d
 
 methyl_reps_probe/Conv1d.in_channels=1024
-methyl_reps_probe/Conv1d.out_channels=42
+methyl_reps_probe/Conv1d.out_channels=%cell_types
 methyl_reps_probe/Conv1d.kernel_size=1
 
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.in_channels=%embedding_dim
-embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=42
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=%cell_types
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=%embedding_pool
 embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
@@ -94,7 +96,7 @@ methylseqnet.model.ConditionedSeqNN.train_stages={
                 'epochs':100,
             },
         }
-methylseqnet.model.ConditionedSeqNN.out_tracks=63
+methylseqnet.model.ConditionedSeqNN.out_tracks=%model_tasks
 methylseqnet.model.ConditionedSeqNN.regression=True
 methylseqnet.model.ConditionedSeqNN.crop_off_output=0
 methylseqnet.model.ConditionedSeqNN.crop_off_conditioning_input=163840
@@ -131,7 +133,7 @@ methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file={
 }
 methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
     "atlas":[
-        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/fold4.h5",
+        "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/atlas/fold4.h5",
     ],
     "longread":[
         "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/fold4.h5"
@@ -140,5 +142,5 @@ methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
 methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
 methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.datamodule.MethylSeqDataModule.epoch_size=2500
-methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=(1000,)
+methylseqnet.datamodule.MethylSeqDataModule.epoch_size=100
+methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=(10,10,)
