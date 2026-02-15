@@ -99,7 +99,7 @@ def run_whole_dataset(
     **kwargs,
 ):
     """
-    This function takes an h5 dataset (could be train, valid, test, etc) and runs through inference end-to-end for all
+    This function takes an h5 dataset (could be train, valid, test, etc) and runs through predict end-to-end for all
     samples, with a specified model (which must include it's own hyperparamter gin str). Batch size goes to a reasonable
     default. 
     """ 

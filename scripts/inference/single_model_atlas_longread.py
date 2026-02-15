@@ -1,5 +1,5 @@
 import argparse
-from methylseqnet.inference import run_dataset_save_h5
+from methylseqnet.predict import run_dataset_save_h5
 from methylseqnet.transforms import InsertSyntheticCpG
 from pathlib import Path
 from functools import partial
@@ -46,10 +46,10 @@ def main(model_identifier, gpus, mode='factorized-from-pretrained', checkpoint_t
         )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run inference with a specified model.")
+    parser = argparse.ArgumentParser(description="Run predict with a specified model.")
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference to /clusterfs/nilah/oberon/lightning/")
-    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use for inference.")
-    parser.add_argument("--mode", choices=['factorized-from-pretrained', 'pretrained-only'], default='factorized-from-pretrained', help="Mode of inference.")
+    parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use for predict.")
+    parser.add_argument("--mode", choices=['factorized-from-pretrained', 'pretrained-only'], default='factorized-from-pretrained', help="Mode of predict.")
     parser.add_argument("--checkpoint-type", choices=['best', 'temp'], default='best', help="Type of checkpoint to use.")
     args = parser.parse_args()
     main(args.model_identifier, args.gpus, args.mode, args.checkpoint_type)

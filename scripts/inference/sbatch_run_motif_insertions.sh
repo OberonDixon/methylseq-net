@@ -9,8 +9,8 @@
 #SBATCH --gres=gpu:1
 #SBATCH --requeue
 #SBATCH --time=10:00:00
-#SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.out
-#SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/inference_methylseqnet_%A_%a.err
+#SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.out
+#SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.err
 #SBATCH --array=0-2
 # Command(s) to run:
 # Define an array of model paths

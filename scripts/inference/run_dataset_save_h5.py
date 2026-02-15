@@ -1,5 +1,5 @@
 import argparse
-from methylseqnet.inference import run_dataset_save_h5
+from methylseqnet.predict import run_dataset_save_h5
 from methylseqnet.transforms import InsertSyntheticCpG
 from pathlib import Path
 from functools import partial
@@ -70,10 +70,10 @@ def main(model_identifier, no_targets, dataset_type='atlas', dataset_path=None, 
         )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run inference with a specified model.")
+    parser = argparse.ArgumentParser(description="Run predict with a specified model.")
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference to /clusterfs/nilah/oberon/lightning/")
     parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
-    parser.add_argument("--dataset-type", choices=['atlas', 'synthetic'], default='atlas', help="Type of dataset to run inference on.")
+    parser.add_argument("--dataset-type", choices=['atlas', 'synthetic'], default='atlas', help="Type of dataset to run predict on.")
     parser.add_argument("--dataset-path", type=str, default=None, help="Path to the dataset H5 file. If not provided, defaults will be used based on dataset type.")
     parser.add_argument("--synthetic-cpg", action='store_true', help="If set, add synthetic CpG data.")
     parser.add_argument("--variable-input-length", action='store_true', help="If set, sequence length can be any integer multiple of 128 that is >=16384.")

@@ -225,7 +225,7 @@ class ConditionedSeqNN(L.LightningModule):
         for variant_idx in range(sequence_all_variants.shape[1]):
             sequence = sequence_all_variants[:,variant_idx]
             conditioning_state = conditioning_state_all_variants[:,variant_idx]
-            outputs = self(sequence, conditioning_state, embeddings, dataset_key)
+            outputs = self(sequence, conditioning_state, dataset_key)
             if outputs.shape[1] > len(output_tracks_slice):
                 outputs = outputs[:,output_tracks_slice,:]
             outputs_list.append(outputs.unsqueeze(1))

@@ -13,13 +13,13 @@ Provide a:
 Provide a:
    - Gin config file (containing the preprocessed and output dirs, plue information about the sequence) see the example. Uses the MultiMethylWriter, default (zero) methylation written during preprocessing.
 
-### `run_inference_save_h5.{py/sh}`
+### `run_predict_save_h5.{py/sh}`
 Provide a:
    - MODEL_IDENTIFIER
    - optionally, a SYNTHETIC_CPG and DATASET_TYPE (atlas is default as opposed to synthetic)
    - leave NO_TARGETS as True (default) for this analysis.
 
-### `after_inference.ipynb`
+### `after_predict.ipynb`
 
 Provides an example of how to load and appropriately split/aggregate the predictions using some helper functions.
 

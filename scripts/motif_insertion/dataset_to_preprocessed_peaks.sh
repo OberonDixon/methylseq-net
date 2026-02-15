@@ -269,4 +269,4 @@ python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_
 
 # python ../../methylseqnet/preprocess.py --config ../../configs/preprocess/motif_inserts_by_cell_type/preprocess_config_motif_insert_nonpeaks.gin
 
-# sbatch ../inference/sbatch_run_motif_insertions.sh
+# sbatch ../predict/sbatch_run_motif_insertions.sh

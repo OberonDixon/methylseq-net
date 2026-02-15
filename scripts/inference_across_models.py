@@ -1,4 +1,4 @@
-from methylseqnet import encoding, inference, metrics, train, model, builders, preprocess
+from methylseqnet import encoding, predict, metrics, train, model, builders, preprocess
 import methylseqnet
 # from dimelo import load_processed, plot_enrichment_profile, utils
 from matplotlib import pyplot as plt
@@ -48,7 +48,7 @@ model_results_dict = {}
 test_dataset = '/global/scratch/users/dixonluinenburg/atlas_datasets/regression/test.h5'
 for model_path in model_paths:
     name = str(model_path)
-    targets_list,outputs_list,rank = inference.run_whole_dataset(
+    targets_list,outputs_list,rank = predict.run_whole_dataset(
         model_path,
         test_dataset,
         # layers_to_prepend=[SmoothMethylationTransform(window_size=window_size)],
@@ -59,5 +59,5 @@ for model_path in model_paths:
     # print('rank is',rank)
     # Saving to file
     if rank == 0:
-        with open(f'/global/scratch/users/dixonluinenburg/atlas_datasets/regression/models/inference_across_models_2.pkl', 'wb') as file:
+        with open(f'/global/scratch/users/dixonluinenburg/atlas_datasets/regression/models/predict_across_models_2.pkl', 'wb') as file:
             pickle.dump(model_results_dict, file)
