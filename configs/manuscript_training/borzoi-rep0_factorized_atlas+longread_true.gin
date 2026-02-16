@@ -138,5 +138,5 @@ methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file={
 methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
 methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
 methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset
-methylseqnet.datamodule.MethylSeqDataModule.epoch_size=10000
-methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=None
+methylseqnet.datamodule.MethylSeqDataModule.epoch_size=2500
+methylseqnet.datamodule.MethylSeqDataModule.val_epoch_size=(1000,1000)
