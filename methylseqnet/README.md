@@ -11,4 +11,4 @@ The preprocess pipeline instantiates objects from the `builders` and `writers` m
 The training pipeline instantiates a lightning module from `model` and a lightning data module from `dataset` and `datamodule`, with training callbacks from `callbacks` collecting training metrics. `layers`, `losses`, `metrics`, `pretrained`, `tensor_ops`, and `transforms` contain training pipeline submodules.
 
 ## predict
-`predict.run_dataset_save_h5` runs a dataset through a trained model and writes a predictions h5 file using `callbacks::HDF5PredictionWriter`. 
+`predict.py --model-identifier model_descriptor --dataset-keys key1 key2 --dataset-files /path/to/file1.h5 /path/to/file2.h5` runs datasets through a trained model, using `readers->builders->encoding` to construct tensors, optionally runs `transforms`, and writes a predictions h5 file using `callbacks::HDF5PredictionWriter`. 
