@@ -144,101 +144,80 @@ class PearsonAcrossPositions(GenomicTensorMetric):
 
 class PearsonAcrossTasks(GenomicTensorMetric):
     """
-    Computes Pearson correlation across channels for each variant×position pair, then returns
-    a variance-weighted mean.
+    Computes Pearson correlation across channels (tasks) for each variant×position pair,
+    then returns a variance-weighted mean.
 
-    Filtering: variant×position pairs where all channels have counts ≤ min_counts are excluded.
-    Weighting: each pair's correlation is weighted by the target variance across channels at
-               that pair, accumulated incrementally via sufficient statistics.
-    Returns: variance-weighted mean correlation, or NaN if channels=1 or no active data.
+    Filtering: variant×position pairs where all channels have counts ≤ min_counts are dropped.
+    Weighting: each pair's correlation is weighted by the target variance across channels.
+    Returns: variance-weighted mean correlation, or NaN if channels ≤ 1 or no active data.
 
-    Sufficient statistics accumulated per channel (shape: (channels,)), treating the
-    population of active variant×position pairs as the "positions" dimension:
-        n:      total number of active variant×position pairs seen
-        sum_x:  sum of target values across active pairs
-        sum_y:  sum of prediction values across active pairs
-        sum_xx: sum of squared target values across active pairs
-        sum_yy: sum of squared prediction values across active pairs
-        sum_xy: sum of target*prediction products across active pairs
-    
-    Note: unlike PearsonAcrossPositions, n is a scalar here (same active pairs used for
-    all channels after the any(dim=0) filter), so all channels share the same n.
+    Incremental strategy:
+        At each position we can compute r_p (Pearson across C channels) and var_p
+        (target variance across channels) entirely from the current batch — no need
+        to remember per-position state across batches.  We then accumulate just two
+        running scalars:
+            weighted_r_sum  += sum_over_positions(r_p * var_p)
+            var_sum         += sum_over_positions(var_p)
+        Final result = weighted_r_sum / var_sum.
+
+    Memory: O(channels × positions) per batch — never grows with dataset size.
     """
+
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
         self.reset()
 
     def reset(self):
-        self.n = 0
-        self.sum_x  = None
-        self.sum_y  = None
-        self.sum_xx = None
-        self.sum_yy = None
-        self.sum_xy = None
+        self.weighted_r_sum = 0.0
+        self.var_sum = 0.0
 
     def update(self, targets, predictions):
         """
         targets, predictions: (num_variants, channels, positions)
-        Reshapes to (channels, num_variants*positions), filters inactive columns,
-        then accumulates sufficient statistics over the active columns.
+        Computes per-position cross-channel Pearson r and target variance,
+        then accumulates the variance-weighted sum.
         """
         targets, predictions = self._reshape_inputs(targets, predictions)
         num_variants, channels, positions = targets.shape
 
-        t = targets.float().permute(1, 0, 2).reshape(channels, -1)   # (channels, num_variants*positions)
+        if channels <= 1:
+            return
+
+        # Reshape to (channels, num_variants * positions) so each column is one
+        # variant×position pair and correlation runs across channels (rows)
+        t = targets.float().permute(1, 0, 2).reshape(channels, -1)  # (C, V*P)
         p = predictions.float().permute(1, 0, 2).reshape(channels, -1)
 
-        active = (t > self.min_counts).any(dim=0)   # (num_variants*positions,)
+        # Filter: keep only positions where at least one channel > min_counts
+        active = (t > self.min_counts).any(dim=0)  # (V*P,)
         if not active.any():
             return
 
-        t = t[:, active]   # (channels, n_active)
+        t = t[:, active]  # (C, n_active)
         p = p[:, active]
 
-        self.n      = self.n + active.sum().item()
-        sum_x_new   = t.sum(dim=-1)       # (channels,)
-        sum_y_new   = p.sum(dim=-1)
-        sum_xx_new  = (t * t).sum(dim=-1)
-        sum_yy_new  = (p * p).sum(dim=-1)
-        sum_xy_new  = (t * p).sum(dim=-1)
+        # Pearson r across channels (dim=0) at each active position
+        t_mean = t.mean(dim=0, keepdim=True)  # (1, n_active)
+        p_mean = p.mean(dim=0, keepdim=True)
+        t_c = t - t_mean
+        p_c = p - p_mean
 
-        if self.sum_x is None:
-            self.sum_x  = sum_x_new
-            self.sum_y  = sum_y_new
-            self.sum_xx = sum_xx_new
-            self.sum_yy = sum_yy_new
-            self.sum_xy = sum_xy_new
-        else:
-            self.sum_x  = self.sum_x  + sum_x_new
-            self.sum_y  = self.sum_y  + sum_y_new
-            self.sum_xx = self.sum_xx + sum_xx_new
-            self.sum_yy = self.sum_yy + sum_yy_new
-            self.sum_xy = self.sum_xy + sum_xy_new
+        cov = (t_c * p_c).sum(dim=0)                          # (n_active,)
+        std_t = torch.sqrt((t_c ** 2).sum(dim=0))
+        std_p = torch.sqrt((p_c ** 2).sum(dim=0))
+        r = cov / (std_t * std_p + 1e-8)                      # (n_active,)
+
+        # Target variance across channels at each position
+        var_t = t.var(dim=0)                                   # (n_active,)
+
+        # Accumulate
+        self.weighted_r_sum += (r * var_t).sum().item()
+        self.var_sum += var_t.sum().item()
 
     def compute(self):
-        """
-        Returns variance-weighted mean Pearson r across channels.
-        Weights are the per-channel target variance across all accumulated active pairs.
-        Returns NaN if channels=1 or no active data was accumulated.
-        """
-        if self.sum_x is None or self.n <= 1:
+        if self.var_sum < 1e-12:
             return torch.tensor(float('nan'))
-        if self.sum_x.shape[0] == 1:
-            return torch.tensor(float('nan'))
-
-        n      = float(self.n)
-        mean_x = self.sum_x  / n
-        mean_y = self.sum_y  / n
-        var_x  = (self.sum_xx / n - mean_x ** 2).clamp(min=0)   # per-channel target variance
-        var_y  = (self.sum_yy / n - mean_y ** 2).clamp(min=0)
-        cov    = self.sum_xy  / n - mean_x * mean_y
-
-        r = cov / (torch.sqrt(var_x * var_y) + 1e-8)
-
-        total_var = var_x.sum()
-        if total_var < 1e-8:
-            return torch.tensor(float('nan'))
-        return (r * var_x).sum() / total_var   
+        return torch.tensor(self.weighted_r_sum / self.var_sum) 
 
 class CCCAcrossVariants(GenomicTensorMetric):
     """
