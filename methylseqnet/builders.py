@@ -552,6 +552,22 @@ class MultiFileCpGHandler(CpGHandler):
         self.extend_cpg_sites = extend_cpg_sites
         self.cpg_values_rescale = cpg_values_rescale
 
+    def _check_cpg_valid(self, cpg_valid: np.ndarray) -> None:
+        if not np.any(cpg_valid):
+            return  # all false, nothing to check
+        consecutive_pairs = cpg_valid[:-1] & cpg_valid[1:]
+        if not np.any(consecutive_pairs):
+            warnings.warn(
+                "cpg_valid has non-false entries but no consecutive pairs — "
+                "CpG dinucleotides may be incomplete. Check that your methylation "
+                "file covers both C and G positions of each CpG site, or set extend_cpg_sites=True.",
+                UserWarning,
+                stacklevel=2,
+            )
+    def _check_cpg_ratio(self, cpg_ratio: np.ndarray) -> None:
+        if np.any(cpg_ratio>1):
+            raise ValueError(f"cpg_ratio values greater than 1 found, which is unexpected. Please check the input data and verify that cpg_values_rescale is set appropriately. Values: {cpg_ratio[cpg_ratio>1]}")
+
     def load_cpg(self,source,start,end):
         cpg_fractions_list = []
         valid_sites_list = []
@@ -565,7 +581,9 @@ class MultiFileCpGHandler(CpGHandler):
                 nan_to_zero=True,
                 file_type='bedmethyl' if Path(cpg_file).name.endswith(".bed.gz") else None,
             )
+            self._check_cpg_valid(valid_mask)
             raw_values *= self.cpg_values_rescale
+            self._check_cpg_ratio(raw_values)
             if self.extend_cpg_sites:
                 indices = np.where(valid_mask > 0)[0]
                 indices = indices[indices < len(raw_values) - 1]  # Remove last index if present
@@ -1461,3 +1479,32 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 label_list,
                 mask_list,
             )   
+@gin.register
+@gin.configurable
+class MultiFastaSequenceOnly(MultimethylMultitaskIOHandler):
+    def __init__(self,num_tracks=1):
+        self.num_tracks = num_tracks
+        self.multi_fasta_handler = MultiFastaHandler()
+        self.io_mappings_list = []
+    def process_batch(
+        self,
+        indices_list,
+        sample_list,
+        dataset_writer,
+        lock,
+    ):    
+        sequence_list = self.multi_fasta_handler.load_sequence_batch(sample_list)
+
+        onehot_dna_list = [one_hot_encode_dna(dna_strand=sequence)[:,0:4] for sequence in sequence_list]
+
+        sample_specifier_list = [
+            f"{sample['source']}:{sample['start']}-{sample['end']}" 
+            for sample in sample_list 
+        ]
+
+        with lock:
+            dataset_writer.write_chunk(
+                indices_list,
+                sample_specifier_list,
+                onehot_dna_list,
+            )

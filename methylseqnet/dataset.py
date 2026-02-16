@@ -246,7 +246,7 @@ class MultiMethylDataset(BaseHDF5Dataset):
             batch_size=batch_size,
             transforms=(),   # base class raises on non-empty; transforms handled above
             return_specifiers=return_specifiers,
-            datasets=['sequence', 'methylation', 'tracks', 'mask'],
+            datasets={'sequence', 'methylation', 'tracks', 'mask'},
             max_retries=max_retries,
             retry_delay=retry_delay,
         )

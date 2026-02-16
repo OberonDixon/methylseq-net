@@ -23,7 +23,7 @@ dependencies = [
     "pyBigWig",
     "wandb>=0.21",
     "borzoi-pytorch",
-    "basenji2-pytorch",
+    "basenji2-pytorch>=0.1.2",
     "umap-learn",
     "numba>=0.58.0",
     "numpy<2.0.0",
