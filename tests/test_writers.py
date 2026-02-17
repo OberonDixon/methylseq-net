@@ -7,11 +7,7 @@ import numpy as np
 import torch
 from unittest.mock import Mock, MagicMock
 
-from methylseqnet.callbacks import (
-    HDF5PredictionWriter,
-    GPUMemoryLogger,
-    HaplotypedPredLogger,
-)
+from methylseqnet.writers import HDF5PredictionWriter
 
 def test_hdf5_prediction_writer():
     """Test HDF5PredictionWriter callback with dummy data and temporary directory."""

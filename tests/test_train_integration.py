@@ -31,7 +31,7 @@ def test_train_integration(config_file):
             gpus='auto',
             batch_size=-1,
             max_epochs=1,
-            no_haplotype_metrics=True,
+            no_haplotype_metrics=False,
             track_gradients_for_modules=[
                 'embeddings_to_methyl_rep',
                 'embeddings_to_seq_rep',

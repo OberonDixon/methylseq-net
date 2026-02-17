@@ -19,12 +19,13 @@ import re
 from multiprocessing import Pool
 import warnings
 
+from lightning import Trainer
+
 from methylseqnet.model import ConditionedSeqNN
-from methylseqnet.train import Trainer
 from methylseqnet.encoding import one_hot_encode_dna
 from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
-from methylseqnet.callbacks import HDF5PredictionWriter
-from methylseqnet.train import MethylSeqDataModule
+from methylseqnet.writers import HDF5PredictionWriter
+from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import InsertSyntheticCpG
 
