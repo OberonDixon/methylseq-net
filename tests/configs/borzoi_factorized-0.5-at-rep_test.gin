@@ -66,6 +66,7 @@ methylseqnet.model.ConditionedSeqNN.output_head = [
     @Softplus,
 ]
 methylseqnet.model.ConditionedSeqNN.interpolate_conditioning_state_location='representation'
+methylseqnet.model.ConditionedSeqNN.conditioning_operation='keep_modulator'
 methylseqnet.model.ConditionedSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'grad_dict':{

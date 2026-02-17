@@ -178,7 +178,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 if start_checkpoint_epoch > 0 and current_epoch == 0:
                     model.start_epoch = start_checkpoint_epoch
                 
-                train = Trainer(
+                trainer = Trainer(
                     callbacks = create_callbacks(
                         model_dir=model_dir,
                         no_checkpoints=no_checkpoints,
@@ -198,7 +198,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 )  
                 # Check if Lightning set any seed internally
                 print(f"PyTorch seed after Trainer init: {torch.initial_seed()}")
-                train.fit(
+                trainer.fit(
                     model,
                     datamodule=data_module,
                     ckpt_path=checkpoint_to_use
@@ -210,7 +210,7 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
                 
             epochs_elapsed+=stage_dict["epochs"]
     else:
-        train = Trainer(
+        trainer = Trainer(
             callbacks = create_callbacks(
                 model_dir=model_dir,
                 no_checkpoints=no_checkpoints,
@@ -228,13 +228,13 @@ Current epoch: {current_epoch+start_checkpoint_epoch}, target epoch: {target_epo
             accumulate_grad_batches=accumulate_grad_batches,
             log_every_n_steps=samples_per_log//accumulate_grad_batches,
         )    
-        train.fit(
+        trainer.fit(
             model,
             datamodule=data_module,
             ckpt_path=checkpoint_to_use
         )
 
-    return model
+    return trainer
 
 def create_callbacks(
     model_dir,
