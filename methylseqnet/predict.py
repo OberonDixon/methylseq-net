@@ -17,6 +17,7 @@ from io import StringIO
 import ast
 import re
 from multiprocessing import Pool
+import warnings
 
 from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.train import Trainer
@@ -37,17 +38,20 @@ class Predictor:
     ):
         if isinstance(model, nn.Module):
             self.model = model
+            if remove_crop_for_variable_input_length:
+                warnings.warn("Model provided directly as nn.Module; it may be unsafe to change crop settings so this will be skipped.")
         else:
             self.model = ConditionedSeqNN.load_from_checkpoint(model)
+            if remove_crop_for_variable_input_length:
+                self.model.crop_off_output = 0
+                self.model.crop_off_conditioning_input = 0
+                try:
+                    self.model.pretrained_seq_model.crop = nn.Identity()
+                except:
+                    pass
         self.model.eval()
+        self.supplemental_predict_outputs_at_load_time = self.model.supplemental_predict_outputs
         self.model.supplemental_predict_outputs = supplemental_outputs
-        if remove_crop_for_variable_input_length:
-            self.model.crop_off_output = 0
-            self.model.crop_off_conditioning_input = 0
-            try:
-                self.model.pretrained_seq_model.crop = nn.Identity()
-            except:
-                pass
         if device == 'auto':
             self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
@@ -200,6 +204,19 @@ class Predictor:
         label_paths,
     ):
         pass
+
+    def _restore_supplemental_outputs(self):
+        self.model.supplemental_predict_outputs = self.supplemental_predict_outputs_at_load_time
+
+    def __enter__(self):
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._restore_supplemental_outputs()
+        return False
+
+    def __del__(self):
+        self._restore_supplemental_outputs()
 
 def main():
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
