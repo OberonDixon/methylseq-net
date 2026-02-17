@@ -240,8 +240,6 @@ class HaplotypedPredLogger(Callback):
         hp2_genome_fasta: str | None = None,
         accessibility_outputs_slice: slice | list = [0],
         rna_outputs_slice: slice | list = [-1],
-        crop_for_accessibility: int = 163840,
-        label_bin_size: int = 128,
         log_stats: bool = True,
         upload_plots: bool = False,
         plot_methylation: bool = False,
@@ -265,8 +263,6 @@ class HaplotypedPredLogger(Callback):
         self.regions = regions
         self.accessibility_outputs_slice = accessibility_outputs_slice
         self.rna_outputs_slice = rna_outputs_slice
-        self.crop_for_accessibility = crop_for_accessibility
-        self.label_bin_size = label_bin_size
         self.log_stats = log_stats
         self.upload_plots = upload_plots
         self.plot_methylation = plot_methylation
@@ -285,6 +281,7 @@ class HaplotypedPredLogger(Callback):
         )
 
     def on_validation_epoch_end(self, train, pl_module) -> None:
+        self.total_stride = pl_module.total_stride
         if train.is_global_zero:
             # Get the wandb Run (works when WandbLogger is enabled)
             run = getattr(getattr(train, "logger", None), "experiment", None)
@@ -321,8 +318,8 @@ class HaplotypedPredLogger(Callback):
                         region_str = f"{chromosome}:{start}-{end}"
                         center_coord = (start + end) // 2
                         num_bins = len(hp1_accessibility_pred)
-                        start_pos = center_coord - (num_bins * self.label_bin_size) // 2
-                        positions = start_pos + np.arange(num_bins) * self.label_bin_size
+                        start_pos = center_coord - (num_bins * pl_module.total_stride) // 2
+                        positions = start_pos + np.arange(num_bins) * pl_module.total_stride
 
                         # signal_ys = [hp1_pred, -hp2_pred]
                         # signal_keys = ["Haplo 1 Prediction", "Haplo 2 Prediction"]
@@ -463,81 +460,83 @@ class HaplotypedPredLogger(Callback):
         end: int,
     ):
         device = pl_module.device
-        hp1_sequence, hp1_methylation_encoding = self._construct_input_tensor(
-            genome_track_file=self.hp1_cpg_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
-            genome=self.hp1_genome,
-        )
-        hp2_sequence, hp2_methylation_encoding = self._construct_input_tensor(
-            genome_track_file=self.hp2_cpg_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
-            genome=self.hp2_genome,
-        )
-        hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp2_methylation = self.input_to_methylation(torch.cat([hp2_sequence, hp2_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp1_accessibility_target = self._construct_target_tensor(
-            genome_track_file=self.hp1_accessibility_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp1_accessibility_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp1_accessibility_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp1_accessibility_file is not None else None
-        hp2_accessibility_target = self._construct_target_tensor(
-            genome_track_file=self.hp2_accessibility_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp2_accessibility_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp2_accessibility_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp2_accessibility_file is not None else None
-        hp1_rna_target = self._construct_target_tensor(
-            genome_track_file=self.hp1_rna_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp1_rna_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp1_rna_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp1_rna_file is not None else None
-        hp2_rna_target = self._construct_target_tensor(
-            genome_track_file=self.hp2_rna_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp2_rna_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp2_rna_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
-        with torch.no_grad():
-            # training_mode = pl_module.mode
-            # training_true_conditioning_state_rep_weight = pl_module.true_conditioning_state_rep_weight
-            pl_module.eval()
-            # if pl_module.layers:
-            #     pl_module.mode = 'full-model'
-            # elif pl_module.input_to_methyl_rep:
-            #     pl_module.mode = 'factorized-from-pretrained'
-            # else:
-            #     pl_module.mode = 'pretrained-only'
-            # pl_module.true_conditioning_state_rep_weight = 1.0
-            hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
-            hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp1_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_conditioning_state_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_conditioning_state_rep) in pl_module.hooked_activations
-                else np.ones_like(hp1_methylation)
+        with Predictor(pl_module,supplemental_outputs = {"imputed_conditioning_state_rep","true_conditioning_state_rep"}) as predictor:
+            hp1_output = predictor.predict_locus(
+                chromosome,
+                start,
+                end,
+                sequence_path=self.hp1_genome,
+                methylation_paths=self.hp1_cpg_file,
+                channel_subset = None,
+                methylation_load_kwargs = {
+                    'extend_cpg_sites':True,
+                    'cpg_values_rescale':0.01,
+                },
             )
-            hp2_output = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))
-            hp2_accessibility_pred = hp2_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp2_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_conditioning_state_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_conditioning_state_rep) in pl_module.hooked_activations
-                else np.zeros_like(hp2_methylation)
+            hp1_accessibility_pred = hp1_output["predictions"][:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_rna_pred = hp1_output["predictions"][:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_pred_methylation = hp1_output["imputed_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp1_pred_methylation.shape!=hp1_accessibility_pred.shape:
+                hp1_pred_methylation = np.ones_like(hp1_accessibility_pred)
+            hp1_methylation = hp1_output["true_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp1_methylation.shape!=hp1_accessibility_pred.shape:
+                hp1_methylation = np.ones_like(hp1_accessibility_pred)
+            hp2_output = predictor.predict_locus(
+                chromosome,
+                start,
+                end,
+                sequence_path=self.hp2_genome,
+                methylation_paths=self.hp2_cpg_file,
+                channel_subset = None,
+                methylation_load_kwargs = {
+                    'extend_cpg_sites':True,
+                    'cpg_values_rescale':0.01,
+                },
             )
-            # pl_module.mode = training_mode
-            # pl_module.true_conditioning_state_rep_weight = training_true_conditioning_state_rep_weight
+            hp2_accessibility_pred = hp2_output["predictions"][:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_rna_pred = hp2_output["predictions"][:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_pred_methylation = hp2_output["imputed_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp2_pred_methylation.shape!=hp2_accessibility_pred.shape:
+                hp2_pred_methylation = np.ones_like(hp2_accessibility_pred)
+            hp2_methylation = hp2_output["true_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp2_methylation.shape!=hp2_accessibility_pred.shape:
+                hp2_methylation = np.ones_like(hp2_accessibility_pred)
         if hp1_methylation is not None and hp2_methylation is not None and hp1_methylation.ndim>1 and hp2_methylation.ndim>1:
             hp1_methylation = hp1_methylation.mean(axis=0)
             hp2_methylation = hp2_methylation.mean(axis=0)
@@ -559,64 +558,6 @@ class HaplotypedPredLogger(Callback):
             hp2_rna_pred,
         )
 
-
-    def _construct_input_tensor(
-        self,
-        genome_track_file,
-        chromosome,
-        start,
-        end,
-        device,
-        genome=None,
-    ) -> torch.Tensor:
-        cpg_ratio, non_zero_mask = load_masked_track(
-            file_path=genome_track_file,
-            contig=chromosome,
-            start=start,
-            end=end,
-            motif="CG,0",
-            negative_to_value=0.0,
-        )
-        if np.any(cpg_ratio>1):
-            cpg_ratio = cpg_ratio/100
-        exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
-        if genome is None:
-            genome = self.genome
-        sequence = load_sequence(
-            file_path=genome,
-            contig=chromosome,
-            start=start,
-            end=end,
-        )
-        x_methylseq = torch.permute(
-            torch.tensor(
-                encoding.one_hot_encode_dna(
-                    dna_strand=sequence, 
-                    cpg_methylation=exp_cpg_ratio, 
-                    valid_cpgs=non_zero_mask,
-                ),
-                dtype=torch.float32,
-                device=device,
-            ).unsqueeze(0),
-            (0,2,1),
-        )
-        sequence = x_methylseq[:, :4, :]
-        methylation = x_methylseq[:, 4:, :]
-        return sequence, methylation
-    
-    def _exaggerate_methylation(self, cpg_ratio, non_zero_mask, eps=1e-7) -> np.ndarray:
-        if self.methylation_exaggeration==1.0:
-            return cpg_ratio
-        else:
-            result = cpg_ratio.copy()
-            
-            # Clip to avoid numerical issues, then convert to logits, scale, convert back
-            clipped = np.clip(result[non_zero_mask], eps, 1 - eps)
-            logits = np.log(clipped / (1 - clipped))
-            result[non_zero_mask] = 1 / (1 + np.exp(-self.methylation_exaggeration * logits))
-            
-            return result
-
     def _construct_target_tensor(
         self,
         genome_track_file,
@@ -631,8 +572,7 @@ class HaplotypedPredLogger(Callback):
             chromosome=chromosome,
             start=start,
             end=end,
-            bin_size=self.label_bin_size,
-            crop=self.crop_for_accessibility,
+            bin_size=self.total_stride,
         )
         return torch.tensor(
             accessibility_ratio,

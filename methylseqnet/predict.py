@@ -112,7 +112,7 @@ class Predictor:
             ref_genome=sequence_path,
         )
         cpg_ratio, cpg_valid = cpg_handler.load_cpg(source=chromosome,start=start,end=end)
-        sequence = fasta_handler.load_sequence(source=chromosome,start=start,end=end)
+        sequence = fasta_handler.load_sequences(source=chromosome,start=start,end=end)
         prediction_dict = self.predict_from_sequence(sequence, cpg_ratio, cpg_valid, channel_subset)
         prediction_dict["specifier"] = f"{chromosome}:{start}-{end}|{channel_subset}"
 
@@ -164,7 +164,7 @@ class Predictor:
     ) -> dict[str,torch.Tensor]:
         x_methylseq = torch.permute(
             torch.tensor(
-                encoding.one_hot_encode_dna(
+                one_hot_encode_dna(
                     dna_strand=sequence, 
                     cpg_methylation=methylation, 
                     valid_cpgs=valid_cpgs,

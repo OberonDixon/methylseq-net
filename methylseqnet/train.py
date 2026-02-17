@@ -289,8 +289,6 @@ def create_callbacks(
             hp2_rna_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.tss.counts.bed.gz',
             ref_genome_fasta = "/clusterfs/nilah/oberon/genomes/hg38.fa",
             regions = [('chrX',131789298-262_144,131789298+262_144),('chrX',149575782-262_144,149575782+262_144)],
-            crop_for_accessibility = 163840,
-            label_bin_size = 128,
             log_stats = True,
             upload_plots = True,    
             plot_methylation = True,   

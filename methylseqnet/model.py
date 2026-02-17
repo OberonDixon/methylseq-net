@@ -532,7 +532,7 @@ class ConditionedSeqNN(L.LightningModule):
             num_bins = sequence.shape[2] // bin_size
             cpgs_binned = cpgs[:, :num_bins*bin_size].reshape(cpgs.shape[0], num_bins, bin_size)
             cpg_density = cpgs_binned.sum(dim=2) / bin_size
-            self.hooked_supplemental_outputs['cpg_density'] = cpg_density
+            self.hooked_supplemental_outputs['cpg_density'] = self.crop_targets(cpg_density)
         embeddings = self.sequence_encoder(sequence)
         if "sequence_embedding" in self.supplemental_predict_outputs:
             self.hooked_supplemental_outputs['sequence_embedding'] = embeddings
@@ -551,13 +551,13 @@ class ConditionedSeqNN(L.LightningModule):
         else:
             imputed_conditioning_state_rep = self._embeddings_to_conditioning_state_rep_forward(embeddings, dataset_key)
         if "unconditional_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['unconditional_seq_rep'] = unconditional_seq_rep
+            self.hooked_supplemental_outputs['unconditional_seq_rep'] = self.crop_targets(unconditional_seq_rep)
         if "conditional_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['conditional_seq_rep'] = conditional_seq_rep
+            self.hooked_supplemental_outputs['conditional_seq_rep'] = self.crop_targets(conditional_seq_rep)
         if "true_conditioning_state_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['true_conditioning_state_rep'] = true_conditioning_state_rep
+            self.hooked_supplemental_outputs['true_conditioning_state_rep'] = self.crop_targets(true_conditioning_state_rep)
         if "imputed_conditioning_state_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['imputed_conditioning_state_rep'] = imputed_conditioning_state_rep
+            self.hooked_supplemental_outputs['imputed_conditioning_state_rep'] = self.crop_targets(imputed_conditioning_state_rep)
         match self.interpolate_conditioning_state_location:
             case 'output':
                 if math.isclose(self.true_conditioning_state_weight,1.0):

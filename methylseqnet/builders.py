@@ -311,14 +311,14 @@ class SingleFastaHandler(SequenceHandler):
             self.chrom_lengths_dict = {ref: fastafile.lengths[i] for i, ref in enumerate(fastafile.references)}
         else:
             raise OSError(f"{ref_genome} does not exist.")
-    def load_sequences(self,source,start,end,fastafile):
+    def load_sequences(self,source,start,end):
+        fastafile = pysam.FastaFile(self.ref_genome)
         start_pad = 0 - min(start,0)
         chrom_length = self.chrom_lengths_dict[source]
         end_pad = max(end,chrom_length) - chrom_length
         return start_pad*"N" + fastafile.fetch(source,max(start,0),min(end,chrom_length)) + end_pad*"N"
     def load_sequence_batch(self,sample_list):
-        fastafile = pysam.FastaFile(self.ref_genome)
-        return [self.load_sequences(**sample,fastafile=fastafile) for sample in sample_list]
+        return [self.load_sequences(**sample) for sample in sample_list]
 
 @gin.register
 @gin.configurable
@@ -581,7 +581,6 @@ class MultiFileCpGHandler(CpGHandler):
                 nan_to_zero=True,
                 file_type='bedmethyl' if Path(cpg_file).name.endswith(".bed.gz") else None,
             )
-            self._check_cpg_valid(valid_mask)
             raw_values *= self.cpg_values_rescale
             self._check_cpg_ratio(raw_values)
             if self.extend_cpg_sites:
@@ -589,6 +588,7 @@ class MultiFileCpGHandler(CpGHandler):
                 indices = indices[indices < len(raw_values) - 1]  # Remove last index if present
                 raw_values[indices + 1] = raw_values[indices]
                 valid_mask[indices + 1] = 1
+            self._check_cpg_valid(valid_mask)
             cpg_fractions_list.append(raw_values)
             valid_sites_list.append(valid_mask)
         if self.combine_operation=='mean':
