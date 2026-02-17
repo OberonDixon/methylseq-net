@@ -9,7 +9,6 @@ from torch.utils.data import DataLoader
 import gin
 from collections import defaultdict
 import re
-import methylseqnet
 import os
 from lightning import Trainer
 import pandas as pd
@@ -19,6 +18,7 @@ import re
 from multiprocessing import Pool
 import warnings
 
+from captum.attr import DeepLift
 from lightning import Trainer
 
 from methylseqnet.model import ConditionedSeqNN
@@ -28,6 +28,7 @@ from methylseqnet.writers import HDF5PredictionWriter
 from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import InsertSyntheticCpG
+from methylseqnet.peaks import selected_peaks_from_target
 
 class Predictor:
     def __init__(
@@ -42,6 +43,7 @@ class Predictor:
             if remove_crop_for_variable_input_length:
                 warnings.warn("Model provided directly as nn.Module; it may be unsafe to change crop settings so this will be skipped.")
         else:
+            from methylseqnet.callbacks import ValidationMetricsLogger, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger
             self.model = ConditionedSeqNN.load_from_checkpoint(model)
             if remove_crop_for_variable_input_length:
                 self.model.crop_off_output = 0

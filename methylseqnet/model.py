@@ -551,13 +551,13 @@ class ConditionedSeqNN(L.LightningModule):
         else:
             imputed_conditioning_state_rep = self._embeddings_to_conditioning_state_rep_forward(embeddings, dataset_key)
         if "unconditional_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['unconditional_seq_rep'] = self.crop_targets(unconditional_seq_rep)
+            self.hooked_supplemental_outputs['unconditional_seq_rep'] = self.crop_outputs(unconditional_seq_rep)
         if "conditional_seq_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['conditional_seq_rep'] = self.crop_targets(conditional_seq_rep)
+            self.hooked_supplemental_outputs['conditional_seq_rep'] = self.crop_outputs(conditional_seq_rep)
         if "true_conditioning_state_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['true_conditioning_state_rep'] = self.crop_targets(true_conditioning_state_rep)
+            self.hooked_supplemental_outputs['true_conditioning_state_rep'] = self.crop_outputs(true_conditioning_state_rep)
         if "imputed_conditioning_state_rep" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['imputed_conditioning_state_rep'] = self.crop_targets(imputed_conditioning_state_rep)
+            self.hooked_supplemental_outputs['imputed_conditioning_state_rep'] = self.crop_outputs(imputed_conditioning_state_rep)
         match self.interpolate_conditioning_state_location:
             case 'output':
                 if math.isclose(self.true_conditioning_state_weight,1.0):
@@ -767,3 +767,11 @@ class ConditionedSeqNN(L.LightningModule):
         else:
             targets_cropped = targets
         return targets_cropped
+
+    def crop_outputs(self, outputs):
+        crop_off_outputs = self.crop_off_output
+        if crop_off_outputs > 0:
+            outputs_cropped = outputs[..., crop_off_outputs:-crop_off_outputs]
+        else:
+            outputs_cropped = outputs
+        return outputs_cropped
