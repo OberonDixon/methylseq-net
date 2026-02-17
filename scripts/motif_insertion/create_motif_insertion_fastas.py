@@ -11,8 +11,7 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from tqdm.auto import tqdm
 import methylseqnet
-#from methylseqnet.dataset import CustomH5Dataset
-from methylseqnet.motif_helpers import insert_center_pos, shuffle_peak #, create_subsets
+from methylseqnet.motifs import insert_center_pos, shuffle_peak #, create_subsets
 
 def main():
     usage = 'usage: %prog [options] <PWMS_TOP_DIR> <PEAKS_TOP_DIR> <PEAKS_OUTPUT_DIR>'
