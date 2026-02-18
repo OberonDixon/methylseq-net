@@ -6,7 +6,7 @@ import warnings
 import pytest
 import torch
 import wandb
-from captum.attr import DeepLift
+from captum.attr import IntegratedGradients
 
 import methylseqnet.train as train
 from methylseqnet.model import ConditionedSeqNN
@@ -98,12 +98,10 @@ def test_train_predict_integration(config_file):
                 methylation_paths=["./tests/data/hg38_test_zeros.hg38.bigwig"],
                 capture_attributions=True,
                 attribution_peak_threshold=None,
-                attribution_class=DeepLift,
+                attribution_class=IntegratedGradients,
                 attribution_ref_shuffles_per_sample=1,
+                n_steps=1,
             )
-        except torch.cuda.OutOfMemoryError:
-            torch.cuda.empty_cache()
-            warnings.warn("CUDA OutOfMemoryError during predict_locus with attributions. This may be due to the attribution method not being compatible with the model architecture, and can be ignored for the purposes of this integration test.")
         except RuntimeError as e:
             if "used in the graph" in str(e) and "allow_unused" in str(e):
                 warnings.warn(f"RuntimeError during predict_locus with attributions: {e}. This may be due to the attribution method not being compatible with the model architecture, and can be ignored for the purposes of this integration test.")
