@@ -17,9 +17,9 @@ import ast
 import re
 from multiprocessing import Pool
 import warnings
-from typing import Set
+from typing import Type, Set
 
-from captum.attr import DeepLift, DeepLiftShap
+from captum.attr import Attribution, IntegratedGradients
 from lightning import Trainer
 
 from methylseqnet.model import ConditionedSeqNN
@@ -63,6 +63,19 @@ class Predictor:
         self.model.supplemental_predict_outputs = supplemental_outputs
         self.model.to(self.device)
 
+    def to(self, device):
+        self.device = torch.device(device)
+        self.model.to(self.device)
+        return self
+
+    def cuda(self, device=None):
+        self.device = torch.device('cuda' if device is None else device)
+        return self.to(self.device)
+
+    def cpu(self):
+        self.device = torch.device('cpu')
+        return self.to(self.device)
+    
     def predict_dataset(
         self,
         dataset_path: str | Path | dict[str,str | Path],
@@ -203,7 +216,8 @@ class Predictor:
         capture_attributions: bool = False,
         attribution_peak_threshold: float | None = 10,
         attribution_ref_shuffles_per_sample: int = 5,
-        attribution_class = DeepLiftShap,
+        attribution_class: Type[Attribution] = IntegratedGradients,
+        **kwargs,
     ) -> dict[str,torch.Tensor]:
         if methylation_tensor.ndim == 3:
             methylation_tensor = methylation_tensor.unsqueeze(1)
@@ -220,13 +234,13 @@ class Predictor:
             peak_positions, peak_weights = self._find_peaks(
                 predictions=output,
                 peak_threshold=attribution_peak_threshold,
-            )   
+            )
             sequence_baselines, conditioning_baselines = self._build_attribution_baselines(
                 sequence=sequence_tensor,
                 conditioning_state=methylation_tensor,
                 attribution_ref_shuffles_per_sample=attribution_ref_shuffles_per_sample,
             )
-            attribution_dict = self.compute_deeplift(
+            attribution_dict = self.compute_attributions(
                 sequence=sequence_tensor.to(self.device),
                 conditioning_state=methylation_tensor.to(self.device),
                 channel_subset=channel_subset,
@@ -235,6 +249,7 @@ class Predictor:
                 sequence_baseline=sequence_baselines,
                 conditioning_baseline=conditioning_baselines,
                 attribution_class=attribution_class,
+                **kwargs,
             )
             prediction_dict.update(attribution_dict)
         return prediction_dict
@@ -248,7 +263,7 @@ class Predictor:
     ):
         pass
 
-    def compute_deeplift(
+    def compute_attributions(
         self,
         sequence: torch.Tensor,           # (B, C, L)
         conditioning_state: torch.Tensor, # (B, celltypes, C, L)
@@ -257,12 +272,20 @@ class Predictor:
         weights: torch.Tensor | None = None,    # (n_positions,) — same length as positions
         sequence_baseline: torch.Tensor | list[torch.Tensor] | None = None,
         conditioning_baseline: torch.Tensor | list[torch.Tensor] | None = None,
-        attribution_class = DeepLiftShap,
+        attribution_class: Type[Attribution] = IntegratedGradients,
+        **kwargs,
     ) -> dict[str, np.ndarray]:
         """
         Returns dict with 'sequence_attributions'      (B, C, L)
                     and 'conditioning_state_attributions' (B, celltypes, C, L)
         """
+        if weights is not None and sum(weights) == 0:
+            warnings.warn("All attribution weights are zero, skipping attribution computation and returning zero attributions.")
+            return {
+                'sequence_attributions': torch.zeros_like(sequence).detach().cpu(),
+                'conditioning_state_attributions': torch.zeros_like(conditioning_state).detach().cpu(),
+            }           
+        
         if sequence_baseline is None:
             sequence_baseline = torch.zeros_like(sequence)
         if conditioning_baseline is None:
@@ -274,11 +297,12 @@ class Predictor:
         saved_supplemental = self.model.supplemental_predict_outputs
         self.model.supplemental_predict_outputs = set()
         try:
-            wrapper = self._make_deeplift_wrapper(channel_subset, positions, weights)
+            wrapper = self._make_attribution_wrapper(channel_subset, positions, weights)
             dl = attribution_class(wrapper)
             seq_attr, cond_attr = dl.attribute(
                 inputs=(sequence, conditioning_state),
                 baselines=(sequence_baseline, conditioning_baseline),
+                **kwargs,
             )
         finally:
             self.model.supplemental_predict_outputs = saved_supplemental
@@ -294,14 +318,15 @@ class Predictor:
         peak_threshold: float | None,
     ):
         if peak_threshold is None:
-            peak_positions = torch.arange(predictions.shape[-1])
+            peak_positions = torch.arange(predictions.shape[-1], dtype=torch.int)
         else:
             peak_positions = torch.tensor(
                 selected_peaks_from_target(
                     target = predictions.mean(dim=1).squeeze(0).cpu().numpy(),
                     peak_threshold = peak_threshold,
                     min_peak_distance_bins = 128,
-                )
+                ),
+                dtype=torch.long,
             )
         peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
         return peak_positions, peak_weights     
@@ -312,18 +337,16 @@ class Predictor:
         conditioning_state: torch.Tensor, # (B, celltypes, C, L)
         attribution_ref_shuffles_per_sample: int,
     ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        sequence_baselines = torch.tensor(
-            [
-                dinuc_shuffle(sequence.cpu().numpy()[
-                    torch.randint(0, sequence.shape[0], (1,)).item()
-                ].transpose()).transpose() 
-                for _ in range(attribution_ref_shuffles_per_sample)
-            ], device=self.device, dtype=torch.float32,
-        )
+        sequence_baselines = torch.from_numpy(np.array([
+            dinuc_shuffle(sequence.cpu().numpy()[
+                torch.randint(0, sequence.shape[0], (1,)).item()
+            ].transpose()).transpose()
+            for _ in range(attribution_ref_shuffles_per_sample)
+        ])).to(device=self.device, dtype=torch.float32)
         conditioning_baselines = torch.cat([torch.zeros_like(conditioning_state) for _ in range(attribution_ref_shuffles_per_sample)],dim=0)
         return sequence_baselines, conditioning_baselines
 
-    def _make_deeplift_wrapper(
+    def _make_attribution_wrapper(
         self,
         channel_subset: Set[int] | None = None,
         positions: torch.Tensor | None = None,  # (n_positions,) — integer indices
