@@ -100,7 +100,7 @@ def test_train_predict_integration(config_file):
                 attribution_peak_threshold=None,
                 attribution_class=IntegratedGradients,
                 attribution_ref_shuffles_per_sample=1,
-                n_steps=1,
+                attribution_kwargs = {"n_steps": 1},
             )
         except RuntimeError as e:
             if "used in the graph" in str(e) and "allow_unused" in str(e):

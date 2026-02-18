@@ -217,7 +217,7 @@ class Predictor:
         attribution_peak_threshold: float | None = 10,
         attribution_ref_shuffles_per_sample: int = 5,
         attribution_class: Type[Attribution] = IntegratedGradients,
-        **kwargs,
+        attribution_kwargs: dict = {},
     ) -> dict[str,torch.Tensor]:
         if methylation_tensor.ndim == 3:
             methylation_tensor = methylation_tensor.unsqueeze(1)
@@ -249,7 +249,7 @@ class Predictor:
                 sequence_baseline=sequence_baselines,
                 conditioning_baseline=conditioning_baselines,
                 attribution_class=attribution_class,
-                **kwargs,
+                attribution_kwargs=attribution_kwargs,
             )
             prediction_dict.update(attribution_dict)
         return prediction_dict
@@ -273,7 +273,7 @@ class Predictor:
         sequence_baseline: torch.Tensor | list[torch.Tensor] | None = None,
         conditioning_baseline: torch.Tensor | list[torch.Tensor] | None = None,
         attribution_class: Type[Attribution] = IntegratedGradients,
-        **kwargs,
+        attribution_kwargs: dict = {},
     ) -> dict[str, np.ndarray]:
         """
         Returns dict with 'sequence_attributions'      (B, C, L)
@@ -302,7 +302,7 @@ class Predictor:
             seq_attr, cond_attr = dl.attribute(
                 inputs=(sequence, conditioning_state),
                 baselines=(sequence_baseline, conditioning_baseline),
-                **kwargs,
+                **attribution_kwargs,
             )
         finally:
             self.model.supplemental_predict_outputs = saved_supplemental
