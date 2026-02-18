@@ -6,6 +6,9 @@ from abc import ABC, abstractmethod
 import random
 from methylseqnet import tensor_ops
 import warnings
+import numpy as np
+
+from methylseqnet.motifs import dinuc_shuffle
 
 # TODO: move over CpGSparsifier, EncodingSelector. Rename SmoothMethylation too. Keep old versions for now; obsolete at a later point
 
@@ -45,6 +48,18 @@ class LayerTransform(nn.Module):
 ################################################################################################################
 ####                                        LoaderTransform classes                                         ####
 ################################################################################################################
+
+@gin.register
+@gin.configurable
+class IdentityTransform(LoaderTransform):
+    def __call__(self, sequence, methylation, target, mask):
+        return sequence, methylation, target, mask
+
+@gin.register
+@gin.configurable
+class ZerosTransform(LoaderTransform):
+    def __call__(self, sequence, methylation, target, mask):
+        return torch.zeros_like(sequence), torch.zeros_like(methylation), torch.zeros_like(target), torch.zeros_like(mask)
 
 @gin.register
 @gin.configurable
@@ -115,12 +130,15 @@ class InsertSyntheticCpG(LoaderTransform):
         cpg_c_mask, cpg_g_mask = self._get_cpg_masks(sequence)  # Shape matches sequence batch dims + (seq_len,)
         
         # Create region masks
-        center = seq_len // 2 + self.offset
-        half_window = self.window_size // 2
-        
-        # Center window
-        center_start = max(center - half_window, 0)
-        center_end = min(center + half_window, seq_len)
+        if self.window_size == -1:  # Special case: if window_size is -1, treat the whole sequence as the center window
+            center_start = 0
+            center_end = seq_len
+        else:
+            center = seq_len // 2 + self.offset
+            half_window = self.window_size // 2
+            # Center window
+            center_start = max(center - half_window, 0)
+            center_end = min(center + half_window, seq_len)
         
         # Flanking regions
         left_flank_start = max(center_start - self.flank_width, 0)
@@ -225,6 +243,41 @@ class InsertSyntheticCpG(LoaderTransform):
             torch.tensor(frac, device=methylation.device, dtype=methylation.dtype),
             methylation[..., 1, :]
         )
+
+@gin.register
+@gin.configurable
+class DinucShuffleSyntheticCpG(LoaderTransform):
+    def __init__(self, cpg_frac):
+        """
+        Dinucleotide-shuffle the sequence and apply a uniform methylation fraction at all CpG sites
+        in the shuffled sequence. Returns the shuffled sequence and modified methylation tensor.
+
+        Used as an attribution baseline transform: the shuffled sequence preserves dinucleotide
+        frequencies while destroying higher-order patterns, and the methylation is set to a
+        neutral/modal state at the resulting CpG positions.
+
+        Args:
+            cpg_frac (float): Methylation fraction to apply at CpG sites (e.g., 0.95 for modal).
+        """
+        self.cpg_frac = cpg_frac
+        self.synthetic_cpg_transform = InsertSyntheticCpG(
+            center_window_size=-1,  # Special case: treat the whole sequence as the center window
+            flank_width=0,
+            offset=0,
+            center_cpg_frac=cpg_frac,
+            flanking_cpg_frac=None,
+            background_cpg_frac=None,
+        )
+    def __call__(self, sequence, methylation, target, mask):
+        shuffled_sequence = torch.from_numpy(
+            np.array(
+                [
+                    dinuc_shuffle(sequence.cpu().numpy()[b].transpose()).transpose()
+                    for b in range(sequence.shape[0])
+                ]
+            )
+        ).to(device=sequence.device, dtype=torch.float32)
+        return self.synthetic_cpg_transform(shuffled_sequence, methylation, target, mask)
         
 @gin.register
 @gin.configurable

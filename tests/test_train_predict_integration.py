@@ -99,7 +99,7 @@ def test_train_predict_integration(config_file):
                 capture_attributions=True,
                 attribution_peak_threshold=None,
                 attribution_class=IntegratedGradients,
-                attribution_ref_shuffles_per_sample=1,
+                attribution_baseline_kwargs={"attribution_baselines_per_sample": 1},
                 attribution_kwargs = {"n_steps": 1},
             )
         except RuntimeError as e:

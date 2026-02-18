@@ -28,9 +28,8 @@ from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
 from methylseqnet.writers import HDF5PredictionWriter
 from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
-from methylseqnet.transforms import InsertSyntheticCpG
+from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG
 from methylseqnet.peaks import selected_peaks_from_target
-from methylseqnet.motifs import dinuc_shuffle
 
 class Predictor:
     def __init__(
@@ -215,8 +214,9 @@ class Predictor:
         channel_subset = None,
         capture_attributions: bool = False,
         attribution_peak_threshold: float | None = 10,
-        attribution_ref_shuffles_per_sample: int = 5,
         attribution_class: Type[Attribution] = IntegratedGradients,
+        attribution_constructor_kwargs: dict = {},
+        attribution_baseline_kwargs: dict = {"attribution_baselines_per_sample": 5},
         attribution_kwargs: dict = {},
     ) -> dict[str,torch.Tensor]:
         if methylation_tensor.ndim == 3:
@@ -227,7 +227,7 @@ class Predictor:
                 output = output[:,channel_subset,:]
         prediction_dict = {
             "predictions": output.cpu(),
-            **self.model.hooked_supplemental_outputs,
+            **{key: value.cpu() for key, value in self.model.hooked_supplemental_outputs.items()},
         }
         self.model.hooked_supplemental_outputs.clear()
         if capture_attributions:
@@ -238,7 +238,7 @@ class Predictor:
             sequence_baselines, conditioning_baselines = self._build_attribution_baselines(
                 sequence=sequence_tensor,
                 conditioning_state=methylation_tensor,
-                attribution_ref_shuffles_per_sample=attribution_ref_shuffles_per_sample,
+                **attribution_baseline_kwargs,
             )
             attribution_dict = self.compute_attributions(
                 sequence=sequence_tensor.to(self.device),
@@ -246,9 +246,10 @@ class Predictor:
                 channel_subset=channel_subset,
                 positions=peak_positions.to(self.device),
                 weights=peak_weights.to(self.device),
-                sequence_baseline=sequence_baselines,
-                conditioning_baseline=conditioning_baselines,
+                sequence_baselines=sequence_baselines,
+                conditioning_baselines=conditioning_baselines,
                 attribution_class=attribution_class,
+                attribution_constructor_kwargs=attribution_constructor_kwargs,
                 attribution_kwargs=attribution_kwargs,
             )
             prediction_dict.update(attribution_dict)
@@ -270,9 +271,10 @@ class Predictor:
         channel_subset: Set[int] or None,
         positions: torch.Tensor | None = None,  # (n_positions,) — integer indices
         weights: torch.Tensor | None = None,    # (n_positions,) — same length as positions
-        sequence_baseline: torch.Tensor | list[torch.Tensor] | None = None,
-        conditioning_baseline: torch.Tensor | list[torch.Tensor] | None = None,
+        sequence_baselines: torch.Tensor | list[torch.Tensor] | None = None,
+        conditioning_baselines: torch.Tensor | list[torch.Tensor] | None = None,
         attribution_class: Type[Attribution] = IntegratedGradients,
+        attribution_constructor_kwargs: dict = {},
         attribution_kwargs: dict = {},
     ) -> dict[str, np.ndarray]:
         """
@@ -286,10 +288,10 @@ class Predictor:
                 'conditioning_state_attributions': torch.zeros_like(conditioning_state).detach().cpu(),
             }           
         
-        if sequence_baseline is None:
-            sequence_baseline = torch.zeros_like(sequence)
-        if conditioning_baseline is None:
-            conditioning_baseline = torch.zeros_like(conditioning_state)
+        if sequence_baselines is None:
+            sequence_baselines = [torch.zeros_like(sequence)]
+        if conditioning_baselines is None:
+            conditioning_baselines = [torch.zeros_like(conditioning_state)]
 
         sequence = sequence.requires_grad_(True)
         conditioning_state = conditioning_state.requires_grad_(True)
@@ -298,12 +300,19 @@ class Predictor:
         self.model.supplemental_predict_outputs = set()
         try:
             wrapper = self._make_attribution_wrapper(channel_subset, positions, weights)
-            dl = attribution_class(wrapper)
-            seq_attr, cond_attr = dl.attribute(
-                inputs=(sequence, conditioning_state),
-                baselines=(sequence_baseline, conditioning_baseline),
-                **attribution_kwargs,
-            )
+            dl = attribution_class(wrapper,**attribution_constructor_kwargs)
+            all_seq_attrs = []
+            all_cond_attrs = []
+            for sequence_baseline, conditioning_baseline in zip(sequence_baselines, conditioning_baselines):
+                seq_attr, cond_attr = dl.attribute(
+                    inputs=(sequence, conditioning_state),
+                    baselines=(sequence_baseline, conditioning_baseline),
+                    **attribution_kwargs,
+                )
+                all_seq_attrs.append(seq_attr)
+                all_cond_attrs.append(cond_attr)
+            seq_attr = torch.stack(all_seq_attrs).mean(0)
+            cond_attr = torch.stack(all_cond_attrs).mean(0)
         finally:
             self.model.supplemental_predict_outputs = saved_supplemental
 
@@ -335,15 +344,19 @@ class Predictor:
         self,
         sequence: torch.Tensor,           # (B, C, L)
         conditioning_state: torch.Tensor, # (B, celltypes, C, L)
-        attribution_ref_shuffles_per_sample: int,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        sequence_baselines = torch.from_numpy(np.array([
-            dinuc_shuffle(sequence.cpu().numpy()[
-                torch.randint(0, sequence.shape[0], (1,)).item()
-            ].transpose()).transpose()
-            for _ in range(attribution_ref_shuffles_per_sample)
-        ])).to(device=self.device, dtype=torch.float32)
-        conditioning_baselines = torch.cat([torch.zeros_like(conditioning_state) for _ in range(attribution_ref_shuffles_per_sample)],dim=0)
+        attribution_baselines_per_sample: int = 1,
+        attribution_baseline_transform: LoaderTransform | None = None
+    ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
+        if attribution_baseline_transform is not None:
+            baseline_transform = attribution_baseline_transform
+        else:
+            baseline_transform = DinucShuffleSyntheticCpG(
+                cpg_frac = 0.95,
+            )
+        sequence_baselines, conditioning_baselines = zip(*[
+            baseline_transform(sequence, conditioning_state, torch.zeros(0), torch.zeros(0))[:2]
+            for _ in range(attribution_baselines_per_sample)
+        ])
         return sequence_baselines, conditioning_baselines
 
     def _make_attribution_wrapper(
