@@ -71,3 +71,16 @@ def test_train_predict_integration(config_file):
                 dataset_path=dataset_path,
                 output_path=Path(temp_dir) / "test" / "preds.h5",
             )
+        # predictor = Predictor(
+        #     model=checkpoints_dir / "temp-checkpoint.ckpt",
+        # )
+        # # Run predict_locus with attributions
+        # predictor.predict_locus(
+        #     chromosome="chr1",
+        #     start=0,
+        #     end=1000,
+        #     sequence_path="./tests/data/chr1_fake_1k.fa",
+        #     methylation_paths=["./tests/data/hg38_test_zeros.hg38.bigwig"],
+        #     capture_attributions=True,
+        #     attribution_peak_threshold=None,
+        # )

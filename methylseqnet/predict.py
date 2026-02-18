@@ -17,8 +17,9 @@ import ast
 import re
 from multiprocessing import Pool
 import warnings
+from typing import Set
 
-from captum.attr import DeepLift
+from captum.attr import DeepLift, DeepLiftShap
 from lightning import Trainer
 
 from methylseqnet.model import ConditionedSeqNN
@@ -29,6 +30,7 @@ from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import InsertSyntheticCpG
 from methylseqnet.peaks import selected_peaks_from_target
+from methylseqnet.motifs import dinuc_shuffle
 
 class Predictor:
     def __init__(
@@ -38,13 +40,17 @@ class Predictor:
         supplemental_outputs: set = set(),
         remove_crop_for_variable_input_length: bool = False,
     ):
+        if device == 'auto':
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = torch.device(device)
         if isinstance(model, nn.Module):
             self.model = model
             if remove_crop_for_variable_input_length:
                 warnings.warn("Model provided directly as nn.Module; it may be unsafe to change crop settings so this will be skipped.")
         else:
             from methylseqnet.callbacks import ValidationMetricsLogger, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger
-            self.model = ConditionedSeqNN.load_from_checkpoint(model)
+            self.model = ConditionedSeqNN.load_from_checkpoint(model, map_location = self.device)
             if remove_crop_for_variable_input_length:
                 self.model.crop_off_output = 0
                 self.model.crop_off_conditioning_input = 0
@@ -55,10 +61,6 @@ class Predictor:
         self.model.eval()
         self.supplemental_predict_outputs_at_load_time = self.model.supplemental_predict_outputs
         self.model.supplemental_predict_outputs = supplemental_outputs
-        if device == 'auto':
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        else:
-            self.device = torch.device(device)
         self.model.to(self.device)
 
     def predict_dataset(
@@ -100,11 +102,12 @@ class Predictor:
         end,
         sequence_path,
         methylation_paths,
-        channel_subset = None,
+        channel_subset: Set[int] or None = None,
         methylation_load_kwargs = {
             'extend_cpg_sites':False,
             'cpg_values_rescale':1.0,
         },
+        **kwargs
     ) -> dict[str,torch.Tensor]:
         cpg_handler = MultiFileCpGHandler(
             cpg_files=methylation_paths if isinstance(methylation_paths,list) else [methylation_paths],
@@ -115,7 +118,13 @@ class Predictor:
         )
         cpg_ratio, cpg_valid = cpg_handler.load_cpg(source=chromosome,start=start,end=end)
         sequence = fasta_handler.load_sequences(source=chromosome,start=start,end=end)
-        prediction_dict = self.predict_from_sequence(sequence, cpg_ratio, cpg_valid, channel_subset)
+        prediction_dict = self.predict_from_sequence(
+            sequence = sequence,
+            methylation = cpg_ratio,
+            valid_cpgs = cpg_valid,
+            channel_subset = channel_subset,
+            **kwargs,
+        )
         prediction_dict["specifier"] = f"{chromosome}:{start}-{end}|{channel_subset}"
 
         return prediction_dict
@@ -163,6 +172,7 @@ class Predictor:
         methylation: np.ndarray,
         valid_cpgs: np.ndarray,
         channel_subset = None,
+        **kwargs,
     ) -> dict[str,torch.Tensor]:
         x_methylseq = torch.permute(
             torch.tensor(
@@ -178,13 +188,22 @@ class Predictor:
         )
         sequence = x_methylseq[:, :4, :]
         methylation = x_methylseq[:, 4:, :]
-        return self.predict_from_tensors(sequence, methylation, channel_subset)
+        return self.predict_from_tensors(
+            sequence_tensor=sequence,
+            methylation_tensor=methylation,
+            channel_subset=channel_subset,
+            **kwargs,
+        )
 
     def predict_from_tensors(
         self,
         sequence_tensor,
         methylation_tensor,
         channel_subset = None,
+        capture_attributions: bool = False,
+        attribution_peak_threshold: float | None = 10,
+        attribution_ref_shuffles_per_sample: int = 5,
+        attribution_class = DeepLiftShap,
     ) -> dict[str,torch.Tensor]:
         if methylation_tensor.ndim == 3:
             methylation_tensor = methylation_tensor.unsqueeze(1)
@@ -197,6 +216,27 @@ class Predictor:
             **self.model.hooked_supplemental_outputs,
         }
         self.model.hooked_supplemental_outputs.clear()
+        if capture_attributions:
+            peak_positions, peak_weights = self._find_peaks(
+                predictions=output,
+                peak_threshold=attribution_peak_threshold,
+            )   
+            sequence_baselines, conditioning_baselines = self._build_attribution_baselines(
+                sequence=sequence_tensor,
+                conditioning_state=methylation_tensor,
+                attribution_ref_shuffles_per_sample=attribution_ref_shuffles_per_sample,
+            )
+            attribution_dict = self.compute_deeplift(
+                sequence=sequence_tensor.to(self.device),
+                conditioning_state=methylation_tensor.to(self.device),
+                channel_subset=channel_subset,
+                positions=peak_positions.to(self.device),
+                weights=peak_weights.to(self.device),
+                sequence_baseline=sequence_baselines,
+                conditioning_baseline=conditioning_baselines,
+                attribution_class=attribution_class,
+            )
+            prediction_dict.update(attribution_dict)
         return prediction_dict
 
     def load_targets(
@@ -207,6 +247,108 @@ class Predictor:
         label_paths,
     ):
         pass
+
+    def compute_deeplift(
+        self,
+        sequence: torch.Tensor,           # (B, C, L)
+        conditioning_state: torch.Tensor, # (B, celltypes, C, L)
+        channel_subset: Set[int] or None,
+        positions: torch.Tensor | None = None,  # (n_positions,) — integer indices
+        weights: torch.Tensor | None = None,    # (n_positions,) — same length as positions
+        sequence_baseline: torch.Tensor | list[torch.Tensor] | None = None,
+        conditioning_baseline: torch.Tensor | list[torch.Tensor] | None = None,
+        attribution_class = DeepLiftShap,
+    ) -> dict[str, np.ndarray]:
+        """
+        Returns dict with 'sequence_attributions'      (B, C, L)
+                    and 'conditioning_state_attributions' (B, celltypes, C, L)
+        """
+        if sequence_baseline is None:
+            sequence_baseline = torch.zeros_like(sequence)
+        if conditioning_baseline is None:
+            conditioning_baseline = torch.zeros_like(conditioning_state)
+
+        sequence = sequence.requires_grad_(True)
+        conditioning_state = conditioning_state.requires_grad_(True)
+
+        saved_supplemental = self.model.supplemental_predict_outputs
+        self.model.supplemental_predict_outputs = set()
+        try:
+            wrapper = self._make_deeplift_wrapper(channel_subset, positions, weights)
+            dl = attribution_class(wrapper)
+            seq_attr, cond_attr = dl.attribute(
+                inputs=(sequence, conditioning_state),
+                baselines=(sequence_baseline, conditioning_baseline),
+            )
+        finally:
+            self.model.supplemental_predict_outputs = saved_supplemental
+
+        return {
+            'sequence_attributions': seq_attr.detach().cpu(),
+            'conditioning_state_attributions': cond_attr.detach().cpu(),
+        }
+
+    def _find_peaks(
+        self,
+        predictions,
+        peak_threshold: float | None,
+    ):
+        if peak_threshold is None:
+            peak_positions = torch.arange(predictions.shape[-1])
+        else:
+            peak_positions = torch.tensor(
+                selected_peaks_from_target(
+                    target = predictions.mean(dim=1).squeeze(0).cpu().numpy(),
+                    peak_threshold = peak_threshold,
+                    min_peak_distance_bins = 128,
+                )
+            )
+        peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
+        return peak_positions, peak_weights     
+    
+    def _build_attribution_baselines(
+        self,
+        sequence: torch.Tensor,           # (B, C, L)
+        conditioning_state: torch.Tensor, # (B, celltypes, C, L)
+        attribution_ref_shuffles_per_sample: int,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        sequence_baselines = torch.tensor(
+            [
+                dinuc_shuffle(sequence.cpu().numpy()[
+                    torch.randint(0, sequence.shape[0], (1,)).item()
+                ].transpose()).transpose() 
+                for _ in range(attribution_ref_shuffles_per_sample)
+            ], device=self.device, dtype=torch.float32,
+        )
+        conditioning_baselines = torch.cat([torch.zeros_like(conditioning_state) for _ in range(attribution_ref_shuffles_per_sample)],dim=0)
+        return sequence_baselines, conditioning_baselines
+
+    def _make_deeplift_wrapper(
+        self,
+        channel_subset: Set[int] | None = None,
+        positions: torch.Tensor | None = None,  # (n_positions,) — integer indices
+        weights: torch.Tensor | None = None,    # (n_positions,) — same length as positions
+    ) -> nn.Module:
+        model = self.model
+
+        class _Wrapper(nn.Module):
+            def __init__(self, model):
+                super().__init__()
+                self.model = model
+            def forward(self, sequence, conditioning_state):
+                preds = model(sequence, conditioning_state)
+                if channel_subset is not None:
+                    track = preds[:, channel_subset, :].mean(dim=1)  # (B, L)
+                else:
+                    track = preds.mean(dim=1)  # (B, L)
+                if positions is not None:
+                    track = track[:, positions]  # (B, n_positions)
+                if weights is not None:
+                    # weights should be (n_positions,), broadcasts to (B, n_positions)
+                    return (track * weights).sum(dim=-1)  # (B,)
+                return track.sum(dim=-1)  # (B,)
+        
+        return _Wrapper(self.model).eval()
 
     def _restore_supplemental_outputs(self):
         self.model.supplemental_predict_outputs = self.supplemental_predict_outputs_at_load_time
