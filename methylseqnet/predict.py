@@ -35,6 +35,7 @@ class Predictor:
     def __init__(
         self,
         model: str | Path | nn.Module,
+        true_conditioning_state_weight: float | None = None,
         device: str = 'auto',
         supplemental_outputs: set = set(),
         remove_crop_for_variable_input_length: bool = False,
@@ -59,7 +60,10 @@ class Predictor:
                     pass
         self.model.eval()
         self.supplemental_predict_outputs_at_load_time = self.model.supplemental_predict_outputs
+        self.true_conditioning_state_weight_at_load_time = self.model.true_conditioning_state_weight
         self.model.supplemental_predict_outputs = supplemental_outputs
+        if true_conditioning_state_weight is not None:
+            self.model.true_conditioning_state_weight = true_conditioning_state_weight
         self.model.to(self.device)
 
     def to(self, device):
@@ -389,18 +393,19 @@ class Predictor:
         
         return _Wrapper(self.model).eval()
 
-    def _restore_supplemental_outputs(self):
+    def _restore_model_state(self):
         self.model.supplemental_predict_outputs = self.supplemental_predict_outputs_at_load_time
+        self.model.true_conditioning_state_weight = self.true_conditioning_state_weight_at_load_time
 
     def __enter__(self):
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self._restore_supplemental_outputs()
+        self._restore_model_state()
         return False
 
     def __del__(self):
-        self._restore_supplemental_outputs()
+        self._restore_model_state()
 
 def main():
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
