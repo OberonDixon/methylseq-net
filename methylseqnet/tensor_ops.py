@@ -189,6 +189,29 @@ def interpolate_collapsed_methylation(x: torch.Tensor) -> torch.Tensor:
 
     return output_one_strand
 
+def interpolate_methyl_with_mask(methyl_sum: torch.Tensor, methyl_mask: torch.Tensor) -> torch.Tensor:
+    if methyl_sum.shape != methyl_mask.shape:
+        raise ValueError("methyl_sum and methyl_mask must have the same shape")
+    elif methyl_sum.ndim > 2 or methyl_sum.ndim == 0:
+        raise ValueError("methyl_sum and methyl_mask must be 1D or 2D tensors")
+    elif methyl_sum.ndim == 1:
+        methyl_sum = methyl_sum.unsqueeze(0)  # Ensure shape is [B, L]
+        methyl_mask = methyl_mask.unsqueeze(0)  # Ensure shape is [B, L]
+    B, L = methyl_sum.shape
+    all_idx = torch.arange(L, device=methyl_sum.device).expand(B, L)
+
+    max_points = int(methyl_mask.sum(dim=1).max().item())
+    xp = torch.full((B, max_points), -1.0, device=methyl_sum.device)
+    fp = torch.zeros((B, max_points), device=methyl_sum.device)
+
+    for b in range(B):
+        idx = methyl_mask[b].nonzero(as_tuple=True)[0]
+        xp[b, :len(idx)] = idx.float()
+        fp[b, :len(idx)] = methyl_sum[b, idx]
+
+    interpolated = interp(all_idx.float(), xp, fp, dim=-1, extrapolate='constant')
+    return interpolated
+
 def tensor_rolling_average(input: torch.Tensor, window_size: int) -> torch.Tensor:
     kernel = torch.ones(1, 1, window_size, device=input.device)
     padded = F.pad(input.unsqueeze(1), (window_size//2, window_size//2), mode='constant', value=0)

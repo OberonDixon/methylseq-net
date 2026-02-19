@@ -57,9 +57,29 @@ class IdentityTransform(LoaderTransform):
 
 @gin.register
 @gin.configurable
-class ZerosTransform(LoaderTransform):
+class UniformTransform(LoaderTransform):
+    def __init__(
+        self,
+        sequence_to=0.0,
+        methylation_to=(0.0,0.0,0.0),
+        target_to=0.0,
+        mask_to=False,
+    ):
+        self.sequence_to = sequence_to
+        self.methylation_to = methylation_to
+        self.target_to = target_to
+        self.mask_to = mask_to
     def __call__(self, sequence, methylation, target, mask):
-        return torch.zeros_like(sequence), torch.zeros_like(methylation), torch.zeros_like(target), torch.zeros_like(mask)
+        sequence = torch.full_like(sequence, self.sequence_to)
+        methylation = torch.zeros_like(methylation)
+        if isinstance(self.methylation_to, (tuple, list)):
+            for i, v in enumerate(self.methylation_to):
+                methylation[..., i, :] = v
+        else:
+            methylation.fill_(self.methylation_to)
+        target = torch.full_like(target, self.target_to)
+        mask = torch.full_like(mask, self.mask_to)
+        return sequence, methylation, target, mask
 
 class LoaderCpGTransform(LoaderTransform):
     """Base class for transforms that modify methylation at CpG sites."""
