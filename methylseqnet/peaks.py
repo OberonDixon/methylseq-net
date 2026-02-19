@@ -12,6 +12,8 @@ from methylseqnet.dataset import MultiMethylDataset
 from methylseqnet.transforms import EncodingSelector
 
 def selected_peaks_from_target(target, peak_threshold, min_peak_distance_bins):
+    if not isinstance(target, np.ndarray):
+        target = np.asarray(target)
     if peak_threshold==0:
         # return random sites separated by at least min_peak_distance_bins
         target_length = len(target)

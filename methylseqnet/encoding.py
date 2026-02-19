@@ -1,5 +1,8 @@
 import numpy as np
 
+ONE_HOT_DNA_CHANNELS = ('A', 'C', 'G', 'T')
+METHYLSEQ_ENCODING_CHANNELS = ('A', 'C', 'G', 'T', 'C_methylation', 'G_methylation', 'Valid_CpG')
+
 def one_hot_encode_dna(dna_strand=None, cpg_methylation=None, valid_cpgs=None):
     """
     One-hot encodes a DNA strand, encoding invalid characters as zero vectors. DNA sequence, CpG methylation, and Valid CpG sides are all optional - their
@@ -18,9 +21,9 @@ def one_hot_encode_dna(dna_strand=None, cpg_methylation=None, valid_cpgs=None):
         raise ValueError("At least one of dna_strand, cpg_methylation, or valid_cpgs must be provided.")
 
     if dna_strand is not None:
-        encoded_strand = np.zeros((len(dna_strand), 7), dtype=float)
+        encoded_strand = np.zeros((len(dna_strand), len(METHYLSEQ_ENCODING_CHANNELS)), dtype=float)
         dna_strand = np.char.upper(np.array(list(dna_strand),dtype="U1"))
-        nucleotide_to_index = {'A': 0, 'C': 1, 'G': 2, 'T': 3}
+        nucleotide_to_index = {nucleotide: index for index, nucleotide in enumerate(ONE_HOT_DNA_CHANNELS)}
         for nucleotide, index in nucleotide_to_index.items():
             encoded_strand[dna_strand == nucleotide, index] = 1       
         if cpg_methylation is not None:

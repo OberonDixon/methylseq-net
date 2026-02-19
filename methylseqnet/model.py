@@ -534,8 +534,6 @@ class ConditionedSeqNN(L.LightningModule):
             cpg_density = cpgs_binned.sum(dim=2) / bin_size
             self.hooked_supplemental_outputs['cpg_density'] = self.crop_targets(cpg_density)
         embeddings = self.sequence_encoder(sequence)
-        if "sequence_embedding" in self.supplemental_predict_outputs:
-            self.hooked_supplemental_outputs['sequence_embedding'] = embeddings
         return embeddings
 
     def _conditioning_forward(self, sequence, conditioning_state, embeddings, dataset_key):
@@ -550,6 +548,12 @@ class ConditionedSeqNN(L.LightningModule):
             imputed_conditioning_state_rep = torch.zeros_like(true_conditioning_state_rep)
         else:
             imputed_conditioning_state_rep = self._embeddings_to_conditioning_state_rep_forward(embeddings, dataset_key)
+        if "sequence" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['sequence'] = sequence
+        if "conditioning_state" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['conditioning_state'] = conditioning_state
+        if "sequence_embedding" in self.supplemental_predict_outputs:
+            self.hooked_supplemental_outputs['sequence_embedding'] = embeddings
         if "unconditional_seq_rep" in self.supplemental_predict_outputs:
             self.hooked_supplemental_outputs['unconditional_seq_rep'] = self.crop_outputs(unconditional_seq_rep)
         if "conditional_seq_rep" in self.supplemental_predict_outputs:
@@ -775,3 +779,11 @@ class ConditionedSeqNN(L.LightningModule):
         else:
             outputs_cropped = outputs
         return outputs_cropped
+
+    def crop_sequence_match_output(self, sequence):
+        crop_off_sequence = self.crop_off_conditioning_input + self.total_stride*self.crop_off_output
+        if crop_off_sequence > 0:
+            sequence_cropped = sequence[..., crop_off_sequence:-crop_off_sequence]
+        else:
+            sequence_cropped = sequence
+        return sequence_cropped

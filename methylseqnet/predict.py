@@ -213,8 +213,8 @@ class Predictor:
         methylation_tensor,
         channel_subset = None,
         capture_attributions: bool = False,
-        attribution_peak_threshold: float | None = 10,
         attribution_class: Type[Attribution] = IntegratedGradients,
+        attribution_peak_kwargs={"peak_threshold": 10},
         attribution_constructor_kwargs: dict = {},
         attribution_baseline_kwargs: dict = {"attribution_baselines_per_sample": 5},
         attribution_kwargs: dict = {},
@@ -233,7 +233,7 @@ class Predictor:
         if capture_attributions:
             peak_positions, peak_weights = self._find_peaks(
                 predictions=output,
-                peak_threshold=attribution_peak_threshold,
+                **attribution_peak_kwargs,
             )
             sequence_baselines, conditioning_baselines = self._build_attribution_baselines(
                 sequence=sequence_tensor,
@@ -325,6 +325,7 @@ class Predictor:
         self,
         predictions,
         peak_threshold: float | None,
+        min_peak_distance_bins: int = 128,
     ):
         if peak_threshold is None:
             peak_positions = torch.arange(predictions.shape[-1], dtype=torch.int)
@@ -337,7 +338,8 @@ class Predictor:
                 ),
                 dtype=torch.long,
             )
-        peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
+        peak_weights = torch.ones_like(peak_positions, dtype=torch.float32)
+        # peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
         return peak_positions, peak_weights     
     
     def _build_attribution_baselines(

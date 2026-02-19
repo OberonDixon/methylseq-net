@@ -97,7 +97,7 @@ def test_train_predict_integration(config_file):
                 sequence_path="./tests/data/chr1_fake1M.fa.gz",
                 methylation_paths=["./tests/data/hg38_test_zeros.hg38.bigwig"],
                 capture_attributions=True,
-                attribution_peak_threshold=None,
+                attribution_peak_kwargs={"peak_threshold":None},
                 attribution_class=IntegratedGradients,
                 attribution_baseline_kwargs={"attribution_baselines_per_sample": 1},
                 attribution_kwargs = {"n_steps": 1},
