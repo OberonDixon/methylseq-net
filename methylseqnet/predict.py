@@ -243,11 +243,11 @@ class Predictor:
             attribution_dict = self.compute_attributions(
                 sequence=sequence_tensor.to(self.device),
                 conditioning_state=methylation_tensor.to(self.device),
+                sequence_baselines=[sequence_baseline.to(self.device) for sequence_baseline in sequence_baselines],
+                conditioning_baselines=[conditioning_baseline.to(self.device) for conditioning_baseline in conditioning_baselines],
                 channel_subset=channel_subset,
                 positions=peak_positions.to(self.device),
                 weights=peak_weights.to(self.device),
-                sequence_baselines=sequence_baselines,
-                conditioning_baselines=conditioning_baselines,
                 attribution_class=attribution_class,
                 attribution_constructor_kwargs=attribution_constructor_kwargs,
                 attribution_kwargs=attribution_kwargs,
@@ -267,19 +267,19 @@ class Predictor:
     def compute_attributions(
         self,
         sequence: torch.Tensor,           # (B, C, L)
-        conditioning_state: torch.Tensor, # (B, celltypes, C, L)
-        channel_subset: Set[int] or None,
-        positions: torch.Tensor | None = None,  # (n_positions,) — integer indices
+        conditioning_state: torch.Tensor, # (B, states, C, L)
+        sequence_baselines: list[torch.Tensor], # list of (B, C, L) tensors
+        conditioning_baselines: list[torch.Tensor], # list of (B, states, C, L) tensors
+        channel_subset: Set[int] | list[int] | None, # if not None, subset of output channels to attribute over (e.g., {0,2} to attribute over channels 0 and 2 and ignore channel 1)
+        positions: torch.Tensor | None = None,  # (n_positions,) — integer indices, indexes L
         weights: torch.Tensor | None = None,    # (n_positions,) — same length as positions
-        sequence_baselines: torch.Tensor | list[torch.Tensor] | None = None,
-        conditioning_baselines: torch.Tensor | list[torch.Tensor] | None = None,
         attribution_class: Type[Attribution] = IntegratedGradients,
         attribution_constructor_kwargs: dict = {},
         attribution_kwargs: dict = {},
     ) -> dict[str, np.ndarray]:
         """
         Returns dict with 'sequence_attributions'      (B, C, L)
-                    and 'conditioning_state_attributions' (B, celltypes, C, L)
+                    and 'conditioning_state_attributions' (B, states, C, L)
         """
         if weights is not None and sum(weights) == 0:
             warnings.warn("All attribution weights are zero, skipping attribution computation and returning zero attributions.")
@@ -288,10 +288,8 @@ class Predictor:
                 'conditioning_state_attributions': torch.zeros_like(conditioning_state).detach().cpu(),
             }           
         
-        if sequence_baselines is None:
-            sequence_baselines = [torch.zeros_like(sequence)]
-        if conditioning_baselines is None:
-            conditioning_baselines = [torch.zeros_like(conditioning_state)]
+        if len(sequence_baselines) == 0 or len(conditioning_baselines) == 0:
+            raise ValueError("Attribution baselines must be provided for both sequence and conditioning state.")
 
         sequence = sequence.requires_grad_(True)
         conditioning_state = conditioning_state.requires_grad_(True)
@@ -326,6 +324,7 @@ class Predictor:
         predictions,
         peak_threshold: float | None,
         min_peak_distance_bins: int = 128,
+        weight_peaks_by_magnitude: bool = False,
     ):
         if peak_threshold is None:
             peak_positions = torch.arange(predictions.shape[-1], dtype=torch.int)
@@ -338,14 +337,16 @@ class Predictor:
                 ),
                 dtype=torch.long,
             )
-        peak_weights = torch.ones_like(peak_positions, dtype=torch.float32)
-        # peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
+        if weight_peaks_by_magnitude:
+            peak_weights = predictions.mean(dim=1).squeeze(0)[peak_positions]
+        else:
+            peak_weights = torch.ones_like(peak_positions, dtype=torch.float32)
         return peak_positions, peak_weights     
     
     def _build_attribution_baselines(
         self,
         sequence: torch.Tensor,           # (B, C, L)
-        conditioning_state: torch.Tensor, # (B, celltypes, C, L)
+        conditioning_state: torch.Tensor, # (B, states, C, L)
         attribution_baselines_per_sample: int = 1,
         attribution_baseline_transform: LoaderTransform | None = None
     ) -> tuple[list[torch.Tensor], list[torch.Tensor]]:
