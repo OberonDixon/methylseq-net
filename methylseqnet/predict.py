@@ -26,6 +26,7 @@ from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.encoding import one_hot_encode_dna
 from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
 from methylseqnet.writers import HDF5PredictionWriter
+from methylseqnet.readers import load_track
 from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG
@@ -118,13 +119,17 @@ class Predictor:
         end,
         sequence_path,
         methylation_paths,
-        channel_subset: Set[int] or None = None,
+        target_paths: tuple[tuple[str | Path] | str | Path,...] | None = None, # match with channel subset
+        channel_subset: tuple[int] or None = None, # match with target_paths
         methylation_load_kwargs = {
             'extend_cpg_sites':False,
             'cpg_values_rescale':1.0,
         },
         **kwargs
     ) -> dict[str,torch.Tensor]:
+        if target_paths is not None and channel_subset is not None:
+            if len(target_paths) != len(channel_subset):
+                warnings.warn(f"If target_paths and channel_subset are both provided, you may want them both to have the same length. Got {len(target_paths)} target paths and channel subset {channel_subset} of length {len(channel_subset)}.")
         cpg_handler = MultiFileCpGHandler(
             cpg_files=methylation_paths if isinstance(methylation_paths,list) else [methylation_paths],
             **methylation_load_kwargs,
@@ -141,6 +146,14 @@ class Predictor:
             channel_subset = channel_subset,
             **kwargs,
         )
+        if target_paths is not None:
+            targets = self.load_targets(
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                target_paths=target_paths,
+            )
+            prediction_dict["targets"] = targets
         prediction_dict["specifier"] = f"{chromosome}:{start}-{end}|{channel_subset}"
 
         return prediction_dict
@@ -154,6 +167,7 @@ class Predictor:
         chunk_length,
         sequence_path,
         methylation_paths,
+        target_paths = None,
         channel_subset = None,
         methylation_load_kwargs = {
             'extend_cpg_sites':False,
@@ -165,7 +179,7 @@ class Predictor:
                 f"Step size {step} with chunk length {chunk_length} does not evenly divide the locus length {end - start}."
                 +f"Remainder (end - start - chunk_length) % step = {(end - start - chunk_length) % step} != 0.")
         predictions_dict_list = []    
-        for chunk_start in tqdm(range(start, end, step)):
+        for chunk_start in tqdm(range(start, end - chunk_length + 1, step), leave=False, desc=f"Predicting {chromosome}:{start}-{end} in tiles"):
             chunk_end = chunk_start + chunk_length
             prediction_chunk_dict = self.predict_locus(
                 chromosome=chromosome,
@@ -173,6 +187,7 @@ class Predictor:
                 end=chunk_end,
                 sequence_path=sequence_path,
                 methylation_paths=methylation_paths,
+                target_paths=target_paths,
                 channel_subset=channel_subset,
                 methylation_load_kwargs=methylation_load_kwargs,
             )
@@ -266,9 +281,34 @@ class Predictor:
         chromosome,
         start,
         end,
-        label_paths,
+        target_paths,
+        **kwargs,
     ):
-        pass
+        # TODO: builders::MultiFileLabelHandler should exist and be used here
+        targets_list_by_channel = []
+        for target_path_for_channel in target_paths:
+            targets_list = [
+                load_track(
+                    file_path=target_path,
+                    contig=chromosome,
+                    start=start,
+                    end=end,
+                    nan_to_zero=True,
+                    bin_size=self.model.total_stride,
+                    **kwargs
+                ) for target_path in (target_path_for_channel if isinstance(target_path_for_channel,list) else [target_path_for_channel])]
+            targets_list_by_channel.append(
+                self.model.crop_targets(
+                    torch.tensor(
+                        np.stack(targets_list, axis=0), dtype=torch.float32
+                    ).mean(dim=0, keepdim=True)
+                ).unsqueeze(1)  # (1, 1, L)
+            )
+        targets = torch.cat(
+            targets_list_by_channel,
+            dim=1,
+        ) # (1, n_targets, L)
+        return targets
 
     def compute_attributions(
         self,
