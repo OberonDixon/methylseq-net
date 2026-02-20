@@ -160,10 +160,12 @@ class Predictor:
             'cpg_values_rescale':1.0,
         },        
     ) -> dict[str,torch.Tensor]:
-        if (end - start) % step != (chunk_length - step):
-            raise ValueError(f"Step size {step} with chunk length {chunk_length} does not evenly divide the locus length {end - start}.")
+        if (end - start - chunk_length) % step != 0:
+            raise ValueError(
+                f"Step size {step} with chunk length {chunk_length} does not evenly divide the locus length {end - start}."
+                +f"Remainder (end - start - chunk_length) % step = {(end - start - chunk_length) % step} != 0.")
         predictions_dict_list = []    
-        for chunk_start in range(start, end, step):
+        for chunk_start in tqdm(range(start, end, step)):
             chunk_end = chunk_start + chunk_length
             prediction_chunk_dict = self.predict_locus(
                 chromosome=chromosome,
