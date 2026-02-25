@@ -271,8 +271,8 @@ class MultiMethylDataset(BaseHDF5Dataset):
                         target_np = target_np[:, np.newaxis, :, :]
                         batch_size = methylation_np.shape[0]
                         seq_length = methylation_np.shape[2]
-                        num_cell_types = methylation_np.shape[1] // 3
-                        methylation_np = methylation_np.reshape(batch_size, num_cell_types, 3, seq_length)
+                        num_states = methylation_np.shape[1] // 3
+                        methylation_np = methylation_np.reshape(batch_size, num_states, 3, seq_length)
                         methylation_np = methylation_np[:, np.newaxis, :, :, :]
                         mask_np = mask_np[:, np.newaxis, :, :]
 

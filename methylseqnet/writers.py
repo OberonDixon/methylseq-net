@@ -214,10 +214,10 @@ class MultiMethylWriter:
         if io_mappings_list:
             if self.num_tracks != max([io_mapping["channel"] for io_mapping in io_mappings_list]) + 1:
                 raise ValueError(f"num_tracks unexpected value: calculated {max([io_mapping['channel'] for io_mapping in io_mappings_list]) + 1} from io_mappings_list but {self.num_tracks} was provided instead.")
-            self.num_cell_types = max([io_mapping["cell_type"] for io_mapping in io_mappings_list]) + 1
+            self.num_states = max([io_mapping["cell_type"] for io_mapping in io_mappings_list]) + 1
         else:
-            warnings.warn("io_mappings_list is empty; setting num_cell_types to 1 by default.")
-            self.num_cell_types = 1
+            warnings.warn("io_mappings_list is empty; setting num_states to 1 by default.")
+            self.num_states = 1
         
         
         self.num_variants = num_variants
@@ -263,11 +263,11 @@ class MultiMethylWriter:
                     del f['methylation']
                 f.create_dataset(
                     'methylation',
-                    (0,self.num_variants,self.num_cell_types,3,self.seq_length),
-                    maxshape=(None,self.num_variants,self.num_cell_types,3,self.seq_length),
+                    (0,self.num_variants,self.num_states,3,self.seq_length),
+                    maxshape=(None,self.num_variants,self.num_states,3,self.seq_length),
                     dtype=np.float16,
                     compression='lzf',
-                    chunks=(1,self.num_variants,self.num_cell_types,3,self.seq_length),
+                    chunks=(1,self.num_variants,self.num_states,3,self.seq_length),
                 )
                 if 'tracks' in f:
                     del f['tracks']
@@ -316,8 +316,8 @@ class MultiMethylWriter:
             sample_specifier_list: List of sample identifiers
             onehot_seq_list: List of sequences, each with shape (num_variants, seq_length, 4) 
                             OR (seq_length, 4) if num_variants=1 (will auto-expand)
-            methylation_info_list: List of methylation data, each with shape (num_variants, seq_length, 3*num_cell_types) or (num_variants, seq_length, num_cell_types, 3)
-                                  OR (seq_length, 3*num_cell_types or (seq_length, num_cell_types, 3) if num_variants=1 (will auto-expand)
+            methylation_info_list: List of methylation data, each with shape (num_variants, seq_length, 3*num_states) or (num_variants, seq_length, num_states, 3)
+                                  OR (seq_length, 3*num_states or (seq_length, num_states, 3) if num_variants=1 (will auto-expand)
             labels_list: List of labels, each with shape (num_variants, track_length, num_tracks)
                         OR (track_length, num_tracks) if num_variants=1 (will auto-expand)
             mask_list: List of masks, each with shape (num_variants, track_length, num_tracks)
@@ -347,19 +347,19 @@ class MultiMethylWriter:
         if methylation_info_list is not None:
             reshaped_methyl = []
             for methyl in methylation_info_list:
-                # Check if it's the old flattened format: (..., seq_length, 3*num_cell_types)
-                if methyl.shape[-1] == 3 * self.num_cell_types and len(methyl.shape) == 3:
-                    # Reshape from (num_variants, seq_length, 3*num_cell_types) 
-                    # to (num_variants, seq_length, num_cell_types, 3)
-                    reshaped = methyl.reshape(methyl.shape[0], methyl.shape[1], self.num_cell_types, 3)
+                # Check if it's the old flattened format: (..., seq_length, 3*num_states)
+                if methyl.shape[-1] == 3 * self.num_states and len(methyl.shape) == 3:
+                    # Reshape from (num_variants, seq_length, 3*num_states) 
+                    # to (num_variants, seq_length, num_states, 3)
+                    reshaped = methyl.reshape(methyl.shape[0], methyl.shape[1], self.num_states, 3)
                     reshaped_methyl.append(reshaped)
-                elif methyl.shape[-1] == 3 and methyl.shape[-2] == self.num_cell_types:
-                    # Already in new format: (num_variants, seq_length, num_cell_types, 3)
+                elif methyl.shape[-1] == 3 and methyl.shape[-2] == self.num_states:
+                    # Already in new format: (num_variants, seq_length, num_states, 3)
                     reshaped_methyl.append(methyl)
                 else:
                     raise ValueError(f"Unexpected methylation shape: {methyl.shape}. Expected either "
-                                f"(num_variants, seq_length, {3*self.num_cell_types}) or "
-                                f"(num_variants, seq_length, {self.num_cell_types}, 3)")
+                                f"(num_variants, seq_length, {3*self.num_states}) or "
+                                f"(num_variants, seq_length, {self.num_states}, 3)")
             methylation_info_list = reshaped_methyl
         
         # Check shapes - now expecting (num_variants, seq_length, 4) for sequences

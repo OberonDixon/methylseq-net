@@ -1303,7 +1303,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
 
     Phasing is handled along the variants axis of the dataset, which is of shape
     (num_samples, num_variants, num_channels, length) for sequence and label tracks
-    and (num_samples, num_variants, num_cell_types, 3, length) for methylation
+    and (num_samples, num_variants, num_states, 3, length) for methylation
     """
     def __init__(
             self,

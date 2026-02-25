@@ -34,14 +34,14 @@ def test_train_integration(config_file):
                 expected_seq_length = pipeline.dataset_writer.seq_length
                 expected_track_length = pipeline.dataset_writer.track_length
                 expected_num_tracks = pipeline.dataset_writer.num_tracks
-                expected_num_cell_types = pipeline.dataset_writer.num_cell_types
+                expected_num_states = pipeline.dataset_writer.num_states
                 expected_num_variants = pipeline.dataset_writer.num_variants
                 assert h5f['sequence'].shape[3] == expected_seq_length, f"Sequence length mismatch in {output_file}"
                 assert h5f['sequence'].shape[2] == 4, f"Sequence one-hot encoding dimension mismatch in {output_file}"
                 assert h5f['sequence'].shape[1] == expected_num_variants, f"Number of sequence variants mismatch in {output_file}"
                 assert h5f['methylation'].shape[4] == expected_seq_length, f"Methylation length mismatch in {output_file}"
                 assert h5f['methylation'].shape[3] == 3, f"Methylation channels dimension mismatch in {output_file}"
-                assert h5f['methylation'].shape[2] == expected_num_cell_types, f"Methylation cell types dimension mismatch in {output_file}"
+                assert h5f['methylation'].shape[2] == expected_num_states, f"Methylation cell types dimension mismatch in {output_file}"
                 assert h5f['methylation'].shape[1] == expected_num_variants, f"Number of methylation variants mismatch in {output_file}"
                 assert h5f['tracks'].shape[3] == expected_track_length, f"Tracks length mismatch in {output_file}"
                 assert h5f['tracks'].shape[2] == expected_num_tracks, f"Tracks channels dimension mismatch in {output_file}"

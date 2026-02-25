@@ -122,7 +122,7 @@ class LoaderCpGTransform(LoaderTransform):
         Apply methylation fraction and valid_cpg mask in-place to C and G positions indicated by masks.
         
         Args:
-            methylation: Tensor of shape (..., num_cell_types, 3, seq_length)
+            methylation: Tensor of shape (..., num_states, 3, seq_length)
                          where dim -2 has channels [mC, mG, CpG_indicator]
             c_mask: Boolean tensor of shape (..., seq_length) indicating C positions to modify
             g_mask: Boolean tensor of shape (..., seq_length) indicating G positions to modify
@@ -206,8 +206,8 @@ class InsertSyntheticCpG(LoaderCpGTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_variants, num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
@@ -353,8 +353,8 @@ class ReverseComplement(LoaderTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
@@ -415,8 +415,8 @@ class SequenceJitter(LoaderTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
