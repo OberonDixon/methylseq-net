@@ -155,6 +155,13 @@ class Predictor:
             )
             prediction_dict["targets"] = targets
         prediction_dict["specifier"] = f"{chromosome}:{start}-{end}|{channel_subset}"
+        prediction_dict["output_coordinates"] = self.model.crop_targets(
+            torch.arange(start, end, step=self.model.total_stride, device='cpu')
+        ) + self.model.total_stride // 2  # coordinates of the center of each output bin
+        INPUT_SHAPED = {"sequence", "conditioning_state", "sequence_attributions", "conditioning_state_attributions"}
+        if any(key in prediction_dict for key in INPUT_SHAPED):
+            prediction_dict["input_coordinates"] = torch.arange(start, end, device='cpu')
+
 
         return prediction_dict
 
@@ -452,6 +459,7 @@ class Predictor:
 def main():
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference /clusterfs/nilah/oberon/lightning/")
+    parser.add_argument("--true-conditioning-state-weight", type=float, default=None, help="If set, override the model's true_conditioning_state_weight with this value for prediction.")
     parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--dataset-keys", nargs='+', required=True, help="Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-files)")
     parser.add_argument("--dataset-files", nargs='+', required=True, help="Paths to dataset H5 files (must match length of --dataset-keys)")
@@ -492,6 +500,8 @@ def main():
         print(f"Running through {dataset_name}.")
         if args.synthetic_cpg:
             output_path = dataset_dir / args.model_identifier / f"{dataset_name}_synthetic_{center_methyl_frac}"
+        elif args.true_conditioning_state_weight is not None:
+            output_path = dataset_dir / args.model_identifier / f"{dataset_name}_truecondweight_{args.true_conditioning_state_weight}"
         else:
             output_path = dataset_dir / args.model_identifier / dataset_name
         best_ckpt = max(
@@ -502,6 +512,7 @@ def main():
 
         predictor = Predictor(
             model=best_ckpt,
+            true_conditioning_state_weight=args.true_conditioning_state_weight,
             supplemental_outputs = {"conditional_seq_rep","unconditional_seq_rep","true_conditioning_state_rep","imputed_conditioning_state_rep","cpg_density"},
             remove_crop_for_variable_input_length = args.variable_input_length,
         )

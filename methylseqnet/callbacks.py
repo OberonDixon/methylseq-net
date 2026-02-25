@@ -245,6 +245,8 @@ class HaplotypedPredLogger(Callback):
         plot_methylation: bool = False,
         plot_rna: bool = False,
         methylation_exaggeration: float = 1.0,
+        crop_for_accessibility: int = 0, # dummy, to support older gin configs for now
+        label_bin_size: int = 128, # dummy, to support older gin configs for now
         ):
         super().__init__()
         self.hp1_cpg_file = hp1_cpg_file
