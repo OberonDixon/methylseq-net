@@ -1,5 +1,5 @@
-directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_random_celltype_cpg.05-.15_10cts_peaks_2048/_ATAC-seq_peaks'
-output_directory = '/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/motif_inserted_preprocessed/random_celltype_cpg.05-.15_10cts_2048/'
+directory = '/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/motif_insertion/fastas/motif_inserted_random_celltype_cpg.05-.15_10cts_peaks_2048/_ATAC-seq_peaks'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/motif_insertion/preprocessed/random_celltype_cpg.05-.15_10cts_2048/'
 label_bin_size = 128
 label_num_bins = 128
 seq_length = 16384

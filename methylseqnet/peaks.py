@@ -111,7 +111,7 @@ def generate_peaks_bed_from_dataset(
                     start = int(region_str.split(':')[1].split('-')[0])
                     end = int(region_str.split(':')[1].split('-')[1])
                     target = sample['target'][0,random.choice(channels),:].numpy()
-                    cpg_density = cpg_density_layer(torch.cat([sample['sequence'][:,:,:],sample['methylation'][:,0,:,:]], dim=1))
+                    cpg_density = cpg_density_layer(torch.cat([sample['sequence'][:,:,:],sample['conditioning_state'][:,0,:,:]], dim=1))
                     binned_cpg_density = torch.nn.functional.avg_pool1d(cpg_density,kernel_size=128,stride=128)
                     if (end - start) // target_bin_size != target.shape[0]:
                         raise ValueError(f"Target length {target.shape[0]} does not match expected length {(end - start) // target_bin_size} for region {region_str}")

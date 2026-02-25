@@ -10,8 +10,25 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from tqdm.auto import tqdm
+from multiprocessing import Pool
+
 import methylseqnet
 from methylseqnet.motifs import insert_center_pos, shuffle_peak #, create_subsets
+
+def write_motif_insertion(args):
+    tis, tf, seqs, pwm, PEAKS_OUTPUT_DIR, INPUT_LEN, SHUFFLE_LEN, N, OVERWRITE = args
+    tf_motif_insertion_path = f'{PEAKS_OUTPUT_DIR}/{tis}/motif_inserted_sequences_{INPUT_LEN}_{tf}.fasta'
+    # IMPORTANT: don't re-write motif insertion file if it's already created for that tf, unless OVERWRITE is set
+    if os.path.exists(tf_motif_insertion_path) and not OVERWRITE:
+        print(f"Skipped {tf_motif_insertion_path}")
+        return
+    tf_motif_seqs = []
+    for i, seq in enumerate(seqs):
+        trials = insert_center_pos(seq, pwm, SHUFFLE_LEN, N, shuffle=True)
+        for j, trial in enumerate(trials):
+            tf_motif_seqs.append(SeqRecord(Seq(trial), id=f"{i}_{j}_{tf}"))
+    SeqIO.write(tf_motif_seqs, tf_motif_insertion_path, "fasta")
+    print(f"Wrote {tf_motif_insertion_path}")
 
 def main():
     usage = 'usage: %prog [options] <PWMS_TOP_DIR> <PEAKS_TOP_DIR> <PEAKS_OUTPUT_DIR>'
@@ -44,7 +61,7 @@ def main():
         parser.error('Must provide parameters PWMS_TOP_DIR, PEAKS_TOP_DIR, and PEAKS_OUTPUT_DIR')
 
     if not os.path.isdir(PEAKS_OUTPUT_DIR):
-        os.mkdir(PEAKS_OUTPUT_DIR)
+        os.makedirs(PEAKS_OUTPUT_DIR,exist_ok=True)
 
     # calculate pad length needed to fill input
     INPUT_LEN = options.INPUT_LEN
@@ -74,14 +91,16 @@ def main():
 
     # process pwms to be ready for sampling
     pwms = {}
+    valid_tfs = []
     for tf in TFS:
         try:
             pwms[tf] = pd.read_csv(f'{PWMS_TOP_DIR}/pwms/{tf}.csv', index_col=0, skiprows=1, header=None)
             pwms[tf] = pwms[tf]/pwms[tf].sum(axis=0)  # columns sum to 1
+            valid_tfs.append(tf)
         except FileNotFoundError:
             print(f"PWM file not found for {tf}, removing...")
-            TFS.remove(tf)
-            continue
+
+    TFS = valid_tfs
     
     # tissue list (from peak files)
     TISSUES = os.listdir(f'{PEAKS_TOP_DIR}/')
@@ -119,7 +138,7 @@ def main():
         
         # save sequence fasta file
         if not os.path.exists(f'{PEAKS_OUTPUT_DIR}/{tis}'):
-            os.mkdir(f'{PEAKS_OUTPUT_DIR}/{tis}')
+            os.makedirs(f'{PEAKS_OUTPUT_DIR}/{tis}',exist_ok=True)
         SeqIO.write(endogenous_peaks, f'{PEAKS_OUTPUT_DIR}/{tis}/endogenous_sequences_{INPUT_LEN}.fasta', "fasta")
     
     print("Done writing endogenous sequences.")
@@ -157,7 +176,7 @@ def main():
     
         # save sequence fasta file
         if not os.path.exists(f'{PEAKS_OUTPUT_DIR}/{tis}'):
-            os.mkdir(f'{PEAKS_OUTPUT_DIR}/{tis}')
+            os.makedirs(f'{PEAKS_OUTPUT_DIR}/{tis}',exist_ok=True)
         SeqIO.write(endogenous_shuffled_peaks, f'{PEAKS_OUTPUT_DIR}/{tis}/endogenous_shuffled_peak_sequences_{INPUT_LEN}.fasta', "fasta")
     
     print("Done writing endogenous sequences with shuffled center peaks.")
@@ -169,28 +188,10 @@ def main():
         # load endogenous peak sequences
         records = list(SeqIO.parse(f"{PEAKS_OUTPUT_DIR}/{tis}/endogenous_sequences_{INPUT_LEN}.fasta", "fasta"))
         seqs = [str(i.seq) for i in records]
-        
-        for tf in TFS:
-            # IMPORTANT: don't re-write motif insertion file if it's already created for that tf, unless OVERWRITE is set
-            tf_motif_insertion_path = f'{PEAKS_OUTPUT_DIR}/{tis}/motif_inserted_sequences_{INPUT_LEN}_{tf}.fasta'
-            if os.path.exists(tf_motif_insertion_path) and not options.OVERWRITE:
-                print(f"Skipped {tf_motif_insertion_path}")
-                continue
-            
-            tf_motif_seqs = []
-            pwm = pwms[tf]
-        
-            # make motif-inserted sequences
-            for i, seq in enumerate(seqs):
-                
-                trials = insert_center_pos(seq, pwm, SHUFFLE_LEN, N, shuffle=True)
-        
-                for j, trial in enumerate(trials):
-                    tf_motif_seqs.append(SeqRecord(Seq(trial), id=f"{i}_{j}_{tf}"))
-            
-            # save sequence fasta file with tf-specific insertions
-            SeqIO.write(tf_motif_seqs, tf_motif_insertion_path, "fasta")
-            print(f"Wrote {tf_motif_insertion_path}")
+
+        task_args = [(tis, tf, seqs, pwms[tf], PEAKS_OUTPUT_DIR, INPUT_LEN, SHUFFLE_LEN, N, options.OVERWRITE) for tf in TFS]
+        with Pool() as pool:
+            pool.map(write_motif_insertion, task_args)
     
         print(f"Done writing motif-inserted peaks for {tis}.")
 

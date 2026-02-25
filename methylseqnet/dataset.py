@@ -246,7 +246,7 @@ class MultiMethylDataset(BaseHDF5Dataset):
             batch_size=batch_size,
             transforms=(),   # base class raises on non-empty; transforms handled above
             return_specifiers=return_specifiers,
-            datasets={'sequence', 'methylation', 'tracks', 'mask'},
+            datasets={'sequence', 'methylation', 'tracks'},
             max_retries=max_retries,
             retry_delay=retry_delay,
         )
@@ -260,7 +260,10 @@ class MultiMethylDataset(BaseHDF5Dataset):
                     sequence_np = f['sequence'][start_idx:end_idx]
                     methylation_np = f['methylation'][start_idx:end_idx]
                     target_np = f['tracks'][start_idx:end_idx]
-                    mask_np = f['mask'][start_idx:end_idx]
+                    if 'mask' in f:
+                        mask_np = f['mask'][start_idx:end_idx]
+                    else:
+                        mask_np = np.ones_like(target_np, dtype=bool)
                     specifiers = f['specifier'].asstr()[start_idx:end_idx]
                     if self.batch_size is None:
                         specifiers = specifiers[0]

@@ -1,24 +1,23 @@
 import argparse
-import torch
-from torch import nn
 import json
 from pathlib import Path
-import numpy as np
-from tqdm.auto import tqdm
-from torch.utils.data import DataLoader
 import gin
 from collections import defaultdict
 import re
 import os
-from lightning import Trainer
-import pandas as pd
 from io import StringIO
 import ast
 import re
 from multiprocessing import Pool
 import warnings
 from typing import Type, Set
+from functools import partial
 
+import torch
+from torch import nn
+from tqdm.auto import tqdm
+import numpy as np
+import pandas as pd
 from captum.attr import Attribution, IntegratedGradients
 from lightning import Trainer
 
@@ -29,7 +28,7 @@ from methylseqnet.writers import HDF5PredictionWriter
 from methylseqnet.readers import load_track
 from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
-from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG
+from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG, InsertSyntheticCpG
 from methylseqnet.peaks import selected_peaks_from_target
 
 class Predictor:
@@ -55,10 +54,11 @@ class Predictor:
             if remove_crop_for_variable_input_length:
                 self.model.crop_off_output = 0
                 self.model.crop_off_conditioning_input = 0
-                try:
-                    self.model.pretrained_seq_model.crop = nn.Identity()
-                except:
-                    pass
+                for module in self.model.sequence_encoder.modules():
+                    if hasattr(module, 'crop'):
+                        module.crop = nn.Identity()
+                    if hasattr(module, 'cropping'):
+                        module.cropping = nn.Identity()
         self.model.eval()
         self.supplemental_predict_outputs_at_load_time = self.model.supplemental_predict_outputs
         self.true_conditioning_state_weight_at_load_time = self.model.true_conditioning_state_weight
@@ -499,7 +499,7 @@ def main():
         dataset_dir = Path(list(dataset_path.values())[0]).parent
         print(f"Running through {dataset_name}.")
         if args.synthetic_cpg:
-            output_path = dataset_dir / args.model_identifier / f"{dataset_name}_synthetic_{center_methyl_frac}"
+            output_path = dataset_dir / args.model_identifier / f"{dataset_name}_synthetic_{args.center_methyl_frac}"
         elif args.true_conditioning_state_weight is not None:
             output_path = dataset_dir / args.model_identifier / f"{dataset_name}_truecondweight_{args.true_conditioning_state_weight}"
         else:
