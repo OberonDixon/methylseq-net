@@ -5,13 +5,13 @@
 #SBATCH --qos=savio_lowprio
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=4
+#SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --requeue
 #SBATCH --time=72:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.err
-#SBATCH --array=0-3
+#SBATCH --array=2-2
 #SBATCH --exclude=n0215.savio3,n0130.savio4,n0132.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 

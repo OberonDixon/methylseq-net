@@ -1316,9 +1316,9 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
             rna_handler_cls = BamCovLabelHandler,
             unphased_rna_file: list[str] = [],
             kwargs_by_data_type: dict = {
-                'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':False},
-                'fiberseq': {'normalize_counts_per':None,'scale':2, 'clip':32},
-                'rna': {'normalize_counts_per':1e9,'scale':1, 'clip':384},
+                'methylation': {'binarize':False,'threshold':None, 'extend_cpg_sites':True,'cpg_values_rescale':0.01},
+                'fiberseq': {'normalize_counts_per':1e9,'scale':2, 'clip':32},
+                'rna': {'normalize_counts_per':1e9,'scale':128, 'clip':384},
             },
             max_chunks_in_mem: int=1000,
             normalize_phased_to_unphased_counts: bool=False,
@@ -1376,16 +1376,16 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 'cell_type':0,
                 'data_type':'Fiber-seq',
                 'genome':ref_genome,
-                'methylation_files':methylation_files_by_phase,
-                'label_files':fiberseq_files_by_phase,
+                'methylation_files':tuple(Path(methylation_file).name for methylation_file in methylation_files_by_phase),
+                'label_files':tuple(Path(fiberseq_file).name for fiberseq_file in fiberseq_files_by_phase),
             },
             {
                 'channel':1,
                 'cell_type':0,
                 'data_type':'RNA-seq',
                 'genome':ref_genome,
-                'methylation_files':methylation_files_by_phase,
-                'label_files':rna_files_by_phase,
+                'methylation_files':tuple(Path(methylation_file).name for methylation_file in methylation_files_by_phase),
+                'label_files':tuple(Path(rna_file).name for rna_file in rna_files_by_phase),
             },
         ]
 

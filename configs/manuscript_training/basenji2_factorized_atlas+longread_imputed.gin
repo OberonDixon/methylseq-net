@@ -61,7 +61,7 @@ torch.optim.Adam.lr=0.002
 torch.optim.Adam.betas=(0.9,0.999)
 
 methylseqnet.pretrained.basenji2_pytorch.remove_crop=True
-methylseqnet.pretrained.basenji2_pytorch.reinitialize=True
+methylseqnet.pretrained.basenji2_pytorch.reinitialize=False
 methylseqnet.pretrained.basenji2_pytorch.pretrained_seq_model_weights=None
 
 methylseqnet.model.ConditionedSeqNN.sequence_encoder = [@basenji2_pytorch]
@@ -91,7 +91,7 @@ methylseqnet.model.ConditionedSeqNN.true_conditioning_state_weight=0.0
 methylseqnet.model.ConditionedSeqNN.train_stages={
             'train-factorized-pretrained-embeddings':{
                 'grad_dict':{
-                    'sequence_encoder':True,
+                    'sequence_encoder':False,
                 },
                 'epochs':100,
             },

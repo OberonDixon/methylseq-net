@@ -281,8 +281,8 @@ def create_callbacks(
         callbacks.extend([temp_checkpoint,best_val_checkpoint,reset_best_score])
     if not no_haplotype_metrics:
         haplotyped_pred_logger_fiber = HaplotypedPredLogger(
-            hp1_cpg_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap2.bw',
-            hp2_cpg_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/fiberseq_bams/GM12878_WGS.pg_cpg_tools.model.hg38.hap1.bw',
+            hp1_cpg_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/5mC/GM12878_WGS-pb-5mC.hap2.bw',
+            hp2_cpg_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/5mC/GM12878_WGS-pb-5mC.hap1.bw',
             hp1_accessibility_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap2.acc.bw",
             hp2_accessibility_file = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE/GM12878_trackHub/bw/hap1.acc.bw",
             hp1_rna_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.tss.counts.bed.gz',
