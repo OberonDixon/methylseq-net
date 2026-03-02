@@ -1,5 +1,7 @@
 Steps to run this pipeline
 
+NOTE: the motifs pipeline has been refactored; the command line tool lives in motifs.py now. The details here are kept for now to support the readme that needs to get written before open-sourcing.
+
 ### `create_motif_insertion_fastas.{py/sh}`
 
 Creates motif-inserted sequence files for each TF (N trials of each) for each each accessibility peak in each cell type. Also creates endogenous sequence files.

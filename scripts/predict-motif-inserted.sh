@@ -11,7 +11,7 @@
 #SBATCH --time=72:00:00
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/predict_methylseqnet_%A_%a.err
-#SBATCH --array=2-2
+#SBATCH --array=1-1
 #SBATCH --exclude=n0215.savio3,n0130.savio4,n0132.savio4,n0134.savio3,n0135.savio3,n0136.savio3,n0137.savio3,n0138.savio3,n0143.savio3,n0144.savio3,n0145.savio3,n0158.savio3,n0159.savio3,n0160.savio3,n0161.savio3,n0174.savio3,n0175.savio3,n0176.savio3
 # Command(s) to run:
 
@@ -23,27 +23,30 @@ MODEL_IDENTIFIERS=(
     "slurm31970007task0"
     "slurm31970007task0"
     "slurm31970007task0"
+    "slurm31970007task0"
     "slurm31986468task1"
 )
 
 KWARGS_0=(--no-targets --dataset-keys all --synthetic-cpg --variable-input-length --center-methyl-frac 0.03)
-KWARGS_1=(--no-targets --dataset-keys all --synthetic-cpg --variable-input-length --center-methyl-frac 0.95)
-KWARGS_2=(--no-targets --dataset-keys all --variable-input-length --true-conditioning-state-weight 0.0)
-KWARGS_3=(--no-targets --dataset-keys all --variable-input-length)
+KWARGS_1=(--no-targets --dataset-keys all --synthetic-cpg --variable-input-length --center-methyl-frac 0.50)
+KWARGS_2=(--no-targets --dataset-keys all --synthetic-cpg --variable-input-length --center-methyl-frac 0.95)
+KWARGS_3=(--no-targets --dataset-keys all --variable-input-length --true-conditioning-state-weight 0.0)
+KWARGS_4=(--no-targets --dataset-keys all --variable-input-length)
 
-CONFIG_IDX=$((SLURM_ARRAY_TASK_ID % 4))
-CELL_IDX=$((SLURM_ARRAY_TASK_ID / 4))
+CONFIG_IDX=$((SLURM_ARRAY_TASK_ID % 5))
+CELL_IDX=$((SLURM_ARRAY_TASK_ID / 5))
 
 case $CONFIG_IDX in
     0) KWARGS=("${KWARGS_0[@]}") ;;
     1) KWARGS=("${KWARGS_1[@]}") ;;
     2) KWARGS=("${KWARGS_2[@]}") ;;
     3) KWARGS=("${KWARGS_3[@]}") ;;
+    4) KWARGS=("${KWARGS_4[@]}") ;;
 esac
 
 DATASET_PATH="/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/motif_insertion/preprocessed/${CELL_TYPES[$CELL_IDX]}_2048/motif_insertions.h5"
 
-source activate methylseqnet
+source activate methylseqnet-prod
 
 echo "Running model ${MODEL_IDENTIFIERS[$CONFIG_IDX]} on dataset $DATASET_PATH with arguments: ${KWARGS[@]}"
 
