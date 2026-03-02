@@ -8,7 +8,10 @@ def basenji2_pytorch(
     pretrained_seq_model_weights,
     remove_crop=False,
     reinitialize=False,
+    rewrite_conv_dna_channels_to=None,
     ):
+    if rewrite_conv_dna_channels_to is not None and not reinitialize:
+        raise ValueError("rewrite_conv_dna_channels_to can only be used when reinitialize is True, as it requires modifying the architecture and reinitializing the weights.")
     import json
     import torch
     from basenji2_pytorch import Basenji2, basenji2_params, basenji2_weights
@@ -27,6 +30,15 @@ def basenji2_pytorch(
                 )  # matches Keras, gain of sqrt(2) regardless of activation function
                 if getattr(m, "bias", None) is not None:
                     m.bias.fill_(0)
+        if rewrite_conv_dna_channels_to is not None:
+            old = basenji2.model.trunk[0].block[1]
+            basenji2.model.trunk[0].block[1] = nn.Conv1d(
+                in_channels=rewrite_conv_dna_channels_to,
+                out_channels=old.out_channels,
+                kernel_size=old.kernel_size,
+                padding="same",
+                bias=False,  # bias=False because it's always followed by BatchNorm
+            )
         basenji2.apply(init_weights)
     else:
         if pretrained_seq_model_weights is None:
@@ -52,12 +64,24 @@ def borzoi_pytorch(
     pretrained_seq_model_weights,
     remove_crop=False,
     reinitialize=False,
+    rewrite_conv_dna_channels_to=None,
     ):
+    if rewrite_conv_dna_channels_to is not None and not reinitialize:
+        raise ValueError("rewrite_conv_dna_channels_to can only be used when reinitialize is True, as it requires modifying the architecture and reinitializing the weights.")
     from borzoi_pytorch import Borzoi
     class BorzoiEmbedder(Borzoi):
         def __init__(self, pretrained_model, remove_crop=False, reinitialize=False):
             super().__init__(pretrained_model.config)
             if reinitialize:
+                if rewrite_conv_dna_channels_to is not None:
+                    self.conv_dna.conv_layer = nn.Conv1d(
+                        in_channels=rewrite_conv_dna_channels_to,
+                        out_channels=self.conv_dna.conv_layer.out_channels,
+                        kernel_size=self.conv_dna.conv_layer.kernel_size,
+                        stride=self.conv_dna.conv_layer.stride,
+                        padding="same",
+                        bias=self.conv_dna.conv_layer.bias is not None
+                    )
                 self.apply(self._init_weights)
             else:
                 self.load_state_dict(pretrained_model.state_dict(), strict=False)

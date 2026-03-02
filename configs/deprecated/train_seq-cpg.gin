@@ -22,8 +22,8 @@ ConvDropout.dropout=0.2
 ConvFinal.in_channels=768
 ConvFinal.shared_head=False
 
-MethylSeqNN.in_channels=5
-MethylSeqNN.out_tracks=35 
+ConditionedSeqNN.in_channels=5
+ConditionedSeqNN.out_tracks=35 
 
 Trainer.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/train.h5"
 Trainer.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/thresh5/valid.h5"

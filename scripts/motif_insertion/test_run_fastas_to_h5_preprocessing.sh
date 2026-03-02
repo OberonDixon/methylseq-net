@@ -14,4 +14,4 @@
 source activate /clusterfs/nilah/ayesha/envs/methylseq
 pip install ../../.
 
-python ../../methylseqnet/preprocessor.py --config ../../configs/motif_insertion/preprocessor_config_atac_peak_motif_insertion_test_524288.gin
+python ../../methylseqnet/preprocess.py --config ../../configs/motif_insertion/preprocess_config_atac_peak_motif_insertion_test_524288.gin

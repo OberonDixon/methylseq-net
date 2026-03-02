@@ -1,6 +1,5 @@
 import h5py
 import os
-from abc import ABC, abstractmethod
 import tempfile
 from collections import defaultdict
 from io import StringIO
@@ -9,7 +8,7 @@ import psutil
 import numpy as np
 import matplotlib.pyplot as plt
 import pysam
-from lightning.pytorch.callbacks import BasePredictionWriter, Callback
+from lightning.pytorch.callbacks import Callback
 from scipy.stats import pearsonr, spearmanr
 import torch
 from torch import nn
@@ -18,18 +17,20 @@ import pandas as pd
 import pyBigWig
 import gin
 
-from methylseqnet import dna_io
-from methylseqnet.metrics import PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
+from methylseqnet import encoding
+from methylseqnet.metrics import GenomicTensorMetric, PearsonAcrossPositions, PearsonAcrossTasks, CCCAcrossVariants
 from methylseqnet.transforms import EncodingSelector
 from methylseqnet.readers import load_sequence, load_track, load_masked_track
 from methylseqnet.tensor_ops import gather_to_rank0
+from methylseqnet.writers import HDF5PredictionWriter
+from methylseqnet.predict import Predictor
 
 class ConditionalBestScoreReset(Callback):
     def __init__(self, checkpoint_callback, reset_on_train_start):
         self.checkpoint_callback = checkpoint_callback
         self.reset_on_train_start = reset_on_train_start
     
-    def on_train_start(self, trainer, pl_module):
+    def on_train_start(self, train, pl_module):
         if self.reset_on_train_start:
             # resets the callback as if it were freshly initialized
             self.checkpoint_callback.best_model_score = None
@@ -38,171 +39,26 @@ class ConditionalBestScoreReset(Callback):
             self.checkpoint_callback.best_k_models = {}
             self.checkpoint_callback.kth_best_model_path = ""
 
-class BaseHDF5Writer(ABC):
-    def __init__(
-        self,
-        output_dir=None,
-        no_targets=False,
-    ):
-        self.file_handles = {}
-        self.pred_counter = 0
-        if output_dir is None:
-            self._temp_dir_obj = tempfile.TemporaryDirectory()
-            self.output_dir = self._temp_dir_obj.name
-        else:
-            self.output_dir = output_dir
-            os.makedirs(output_dir, exist_ok=True)
-        self.no_targets = no_targets
-
-    def append_batch_to_h5(self, trainer, pl_module, prediction_dict, batch_indices, batch):
-        if "predictions" not in prediction_dict or "specifier" not in prediction_dict:
-            raise ValueError("dictionary output from predict_step method must contain 'predictions' and 'specifier' keys.")
-        inputs, targets = self._input_target_from_batch(batch, pl_module)
-        # It appears that all ranks send to rank 0 and write out - but if not, then this logic currently breaks
-        rank = trainer.global_rank
-        if rank!=0:
-            raise ValueError(f"Unexpected rank {rank}. Code in callbacks.py::HDF5PredictionWriter needs to be rewritten if ranks are not getting merged for writing, otherwise values will be missed.")
-        path = os.path.join(self.output_dir, f"predictions.h5")
-
-        if not self.no_targets:
-            targets_shape = targets.shape[1:]
-            pred_shape = prediction_dict["predictions"].shape[1:]
-            assert pred_shape == targets_shape, f"Predictions shape {pred_shape} does not match targets shape {targets_shape}"
-        
-        if path not in self.file_handles:
-            self.file_handles[path] = h5py.File(path, "w")
-            for key, value in prediction_dict.items():
-                if key == "specifier":
-                    self.file_handles[path].create_dataset("specifier", shape=(0,), maxshape=(None,), dtype=h5py.string_dtype(encoding="utf-8"), chunks=True)
-                else:
-                    per_batch_shape = value.shape[1:]
-                    self.file_handles[path].create_dataset(key, shape=(0, *per_batch_shape), maxshape=(None, *per_batch_shape), chunks=True)
-            if not self.no_targets:
-                self.file_handles[path].create_dataset("tracks", shape=(0, *targets_shape), maxshape=(None, *targets_shape), chunks=True)
-            self.file_handles[path].create_dataset("indices", shape=(0,), maxshape=(None,), dtype="i8", chunks=True)
-            self.file_handles[path].attrs['io_mappings'] = getattr(pl_module, 'io_mappings_str', '')
-
-        f = self.file_handles[path]
-        batch_indices = np.array(batch_indices)
-        targets_np = targets.detach().cpu().numpy()
-        curr_size = f["predictions"].shape[0]
-
-        if batch_indices is None:
-            batch_indices = np.arange(self.pred_counter, self.pred_counter + predictions_np.shape[0])
-            self.pred_counter += predictions_np.shape[0]
-
-        # Resize datasets
-        for key, value in prediction_dict.items():
-            f[key].resize(max(curr_size,max(batch_indices)+1), axis=0)
-            f[key][batch_indices] = value.detach().cpu().numpy() if isinstance(value, torch.Tensor) else value
-        
-        if not self.no_targets:
-            f["tracks"].resize(max(curr_size,max(batch_indices)+1), axis=0)
-            f["tracks"][batch_indices] = targets_np
-
-        f["indices"].resize(max(curr_size,max(batch_indices)+1), axis=0)
-        f["indices"][batch_indices] = batch_indices
-
-
-
-    def _input_target_from_batch(self, batch, pl_module):
-        sequence = batch['sequence']
-        targets = batch['target']
-        # TODO: make this work in the case where inputs contains embeddings for pretrained
-        # TODO: adjust for variants
-        targets = pl_module.trim_targets(sequence,targets)
-        return sequence, targets
-
-    def __del__(self):
-        self._close_all()
-        if hasattr(self, '_temp_dir_obj') and self._temp_dir_obj:
-            try:
-                self._temp_dir_obj.cleanup()
-            except Exception:
-                pass
-
-    def _close_all(self):
-        for f in self.file_handles.values():
-            try:
-                f.close()
-            except Exception:
-                pass
-        self.file_handles.clear()
-
-
-class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
-    def __init__(
-        self, 
-        output_dir, 
-        write_interval="batch",
-        no_targets=False,
-    ):
-        BasePredictionWriter.__init__(self,write_interval)
-        BaseHDF5Writer.__init__(self,output_dir=output_dir,no_targets=no_targets,)
-
-    def write_on_batch_end(self, trainer, pl_module, prediction, batch_indices, batch, batch_idx, dataloader_idx):
-        if trainer.world_size > 1:
-            rank = trainer.global_rank
-            world_size = trainer.world_size
-            
-            batch_to_gather = batch.copy()
-            # these huge input tensors may slow down gathering
-            batch.pop('sequence',None)
-            batch.pop('methylation',None)
-
-            # print(f"batch keys {batch_to_gather.keys()} prediction keys {[prediction.keys()]}")
-            # print(f"world_size {world_size} rank {rank} batch indices {batch_indices}")
-            
-            if rank == 0:
-                # Gather everything
-                gathered_prediction = {k: gather_to_rank0(v, world_size, rank) for k, v in prediction.items()}
-                gathered_indices = gather_to_rank0(
-                    torch.tensor(batch_indices, device=prediction['predictions'].device), 
-                    world_size, rank
-                ).cpu().numpy() if batch_indices is not None else None
-                gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v 
-                                for k, v in batch_to_gather.items()}
-                
-                self.append_batch_to_h5(trainer, pl_module, gathered_prediction, gathered_indices, gathered_batch)
-            else:
-                # Non-root ranks just send
-                for v in prediction.values():
-                    gather_to_rank0(v, world_size, rank)
-                if batch_indices is not None:
-                    gather_to_rank0(torch.tensor(batch_indices, device=prediction['predictions'].device), world_size, rank)
-                for v in batch.values():
-                    if isinstance(v, torch.Tensor):
-                        gather_to_rank0(v, world_size, rank)
-        else:
-            self.append_batch_to_h5(trainer, pl_module, prediction, batch_indices, batch)
-
-    def on_predict_end(self, trainer, pl_module):
-        self._close_all()
-
-class ValidationMetricsLogger(Callback, BaseHDF5Writer):
+class ValidationMetricsLogger(Callback):
     def __init__(
         self,
         split_by_target_type=True,
-        metrics=[PearsonAcrossPositions(), PearsonAcrossTasks(),CCCAcrossVariants()],
-        in_memory=True,
-        metrics_per_sample=True,
+        metric_classes=[PearsonAcrossPositions, PearsonAcrossTasks],
+        metrics_per_sample=False,
         metrics_across_dataset=True,
     ):
         Callback.__init__(self)
-        self.in_memory = in_memory
-        BaseHDF5Writer.__init__(self, output_dir=None)
         self.split_by_target_type = split_by_target_type
-        self.metrics = metrics
+        self.metric_classes = metric_classes
         self.metrics_per_sample = metrics_per_sample
         self.metrics_across_dataset = metrics_across_dataset
-        if not self.metrics_across_dataset and not self.in_memory:
-            raise ValueError("if metrics_across_dataset is False, nothing gets saved between batches, so in_memory must be True.")
 
         self.metric_values_dict = defaultdict(dict)
-        self.targets_list = []
-        self.predictions_list = []
 
-        
+        # metric_instances[(metric_name, dataset_key, data_type)] -> GenomicTensorMetric
+        # one independent instance per (metric, dataset_key, data_type) combination
+        # so that accumulation is never mixed across keys
+        self.metric_instances: dict[tuple, GenomicTensorMetric] = {}
 
     def _get_channels_dict(self, pl_module):
         channels_dict = {}
@@ -214,15 +70,31 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
             raise ValueError("split_by_target_type is True but no data types found in io_mappings.")
         return channels_dict
 
-    def on_validation_epoch_start(self, trainer, pl_module):
-        for data_type in pl_module.get_io_mappings_df()['data_type'].unique():
-            for metric in self.metrics:
-                metric_name = metric.__class__.__name__
-                self.metric_values_dict[metric_name][data_type] = [float('nan')]  # initialize with nan to sync_dist issues
+    def _get_or_create_instance(self, cls, dataset_key, data_type=None) -> GenomicTensorMetric:
+        key = (cls.__name__, dataset_key, data_type)
+        if key not in self.metric_instances:
+            self.metric_instances[key] = cls()  # gin injects parameters at construction time
+        return self.metric_instances[key]
+
+    def on_validation_epoch_start(self, train, pl_module):
+        for instance in self.metric_instances.values():
+            instance.reset()
+        io_mappings_df = pl_module.get_io_mappings_df()
+        for dataset_key in io_mappings_df['dataset_key'].unique():
+            if self.split_by_target_type:
+                for data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].unique():
+                    for cls in self.metric_classes:
+                        metric_name = cls.__name__
+                        self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"] = [float('nan')]  # initialize with nan to sync_dist issues
+            else:
+                for cls in self.metric_classes:
+                    metric_name = cls.__name__
+                    self.metric_values_dict[metric_name][dataset_key] = [float('nan')]
     
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
-        _, targets = self._input_target_from_batch(batch, pl_module)
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+        targets = pl_module.targets_from_batch(batch)
         targets = targets.detach().cpu()
+        dataset_key = batch['dataset_key'][0]
         predictions = outputs["predictions"].detach().cpu()
         batch_size = predictions.shape[0]
         io_mappings_df = pl_module.get_io_mappings_df()
@@ -231,96 +103,90 @@ class ValidationMetricsLogger(Callback, BaseHDF5Writer):
                 if self.split_by_target_type:
                     for data_type, dataset_channels in self._get_channels_dict(pl_module).items():
                         # check whether this channel is associated with the current sample's dataset_key
-                        if data_type in io_mappings_df[io_mappings_df['dataset_key']==batch['dataset_key'][i]]['data_type'].values:
+                        if data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].values:
                             if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
                                 sample_predictions = predictions[i,:,dataset_channels,:]
                                 sample_targets = targets[i,:,dataset_channels,:]
-                                for metric in self.metrics:
-                                    metric_name = metric.__class__.__name__
-                                    metric_value = metric(sample_targets, sample_predictions)
-                                    self.metric_values_dict[metric_name][data_type].append(metric_value.item())
+                                for cls in self.metric_classes:
+                                    metric_name = cls.__name__
+                                    metric_value = cls()(sample_targets, sample_predictions)
+                                    self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"].append(metric_value.item())
                 else:
                     sample_predictions = predictions[i]
                     sample_targets = targets[i]
-                    for metric in self.metrics:
-                        metric_name = metric.__class__.__name__
-                        metric_value = metric(sample_targets, sample_predictions)
-                        self.metric_values_dict[metric_name]['all'].append(metric_value.item())
+                    for cls in self.metric_classes:
+                        metric_name = cls.__name__
+                        metric_value = cls()(sample_targets, sample_predictions)
+                        self.metric_values_dict[metric_name][dataset_key].append(metric_value.item())
         if self.metrics_across_dataset:
-            if self.in_memory:
-                self.predictions_list.extend([predictions[i] for i in range(batch_size)])
-                self.targets_list.extend([targets[i] for i in range(batch_size)])
+            if self.split_by_target_type:
+                for data_type, channels in self._get_channels_dict(pl_module).items():
+                    if data_type not in io_mappings_df[io_mappings_df['dataset_key'] == dataset_key]['data_type'].values:
+                        continue
+                    if pl_module.data_types_subset is not None and data_type not in pl_module.data_types_subset:
+                        continue
+                    t = targets[..., channels, :]
+                    p = predictions[..., channels, :]
+                    for cls in self.metric_classes:
+                        self._get_or_create_instance(cls, dataset_key, data_type).update(t, p)
             else:
-                self.append_batch_to_h5(trainer, pl_module, predictions, ["" for _ in predictions], None, batch)
+                for cls in self.metric_classes:
+                    self._get_or_create_instance(cls, dataset_key).update(targets, predictions)
 
-    def on_validation_epoch_end(self, trainer, pl_module):
+    def on_validation_epoch_end(self, train, pl_module):
         if self.metrics_per_sample:
-            for metric in self.metrics:
-                metric_name = metric.__class__.__name__
-                for data_type, metric_values in self.metric_values_dict[metric_name].items():
+            for cls in self.metric_classes:
+                metric_name = cls.__name__
+                for data_description, metric_values in self.metric_values_dict[metric_name].items():
                     # log the mean
                     if len(metric_values) > 0:
                         mean_metric_value = np.nanmean(metric_values)
                         # valid_values = [v for v in metric_values if not np.isnan(v)]
                         # if len(valid_values) == 0:
-                        #     print(f"[Rank {trainer.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
-                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_type}", mean_metric_value, prog_bar=True, sync_dist=True)
+                        #     print(f"[Rank {train.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
+                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=True)
         if self.metrics_across_dataset:
-            if self.in_memory:
-                # first concatenate everything into tensors to operate upon
-                predictions = torch.cat(self.predictions_list, dim=2)
-                targets = torch.cat(self.targets_list, dim=2)
-                # compute metrics from in-memory structure
-                for metric in self.metrics:
-                    metric_name = metric.__class__.__name__
-                    if self.split_by_target_type:
-                        for data_type, channels in self._get_channels_dict(pl_module).items():
-                            if pl_module.data_types_subset is None or data_type in pl_module.data_types_subset:
-                                metric_value = metric(targets[...,channels,:], predictions[...,channels,:])
-                                pl_module.log(f"val/{metric_name}_across_dataset_{data_type}", metric_value.item(), prog_bar=True, sync_dist=True)
-                    else:
-                        metric_value = metric(targets, predictions)
-                        pl_module.log(f"val/{metric_name}_across_dataset_all", metric_value.item(), prog_bar=True, sync_dist=True)
-            else:
-                # first close all of the file handles to flush everything to disk
-                self._close_all()
-                # then load from the h5 file(s) and compute metrics
-                raise NotImplementedError("Metrics computation from HDF5 files not implemented yet.")
-                    
-        # empty the lists for next epoch
-        self.predictions_list = []
-        self.targets_list = []
+            for (metric_name, dataset_key, data_type), instance in self.metric_instances.items():
+                result = instance.compute()
+                if data_type is not None:
+                    log_key = f"val/{metric_name}_across_dataset_{dataset_key}_{data_type}"
+                else:
+                    log_key = f"val/{metric_name}_across_dataset_{dataset_key}_all"
+                pl_module.log(log_key, result.item(), prog_bar=True, sync_dist=True)
+
+        # clear per-sample accumulation for next epoch; metric_instances are reset
+        # at epoch_start rather than here so state is inspectable after training ends
         self.metric_values_dict = defaultdict(dict)
 
 class GPUMemoryLogger(Callback):
     def __init__(self, log_interval=10):
         super().__init__()
         self.log_interval = log_interval
-    def on_train_batch_start(self, trainer, pl_module, batch, batch_idx):
+    def on_train_batch_start(self, train, pl_module, batch, batch_idx):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_train_batch_end(self, train, pl_module, outputs, batch, batch_idx):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6  # MB
             if batch_idx % self.log_interval == 0:
                 pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
-    def on_validation_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_start(self, train, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             if batch_idx % self.log_interval == 0:
                 pl_module.log("memory/train_gpu_peak_MB", peak_mem, prog_bar=False)
 
-    def on_test_batch_start(self, trainer, pl_module, batch, batch_idx, dataloader_idx=0):
+    def on_test_batch_start(self, train, pl_module, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             torch.cuda.reset_peak_memory_stats()
 
-    def on_test_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_test_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if torch.cuda.is_available():
             peak_mem = torch.cuda.max_memory_allocated() / 1e6
             if batch_idx % self.log_interval == 0:
@@ -331,12 +197,12 @@ class CPUMemoryLogger(Callback):
         super().__init__()
         self.log_interval = log_interval
         
-    def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+    def on_train_batch_end(self, train, pl_module, outputs, batch, batch_idx):
         if batch_idx % self.log_interval == 0:
             mem = psutil.virtual_memory()
             pl_module.log("memory/train_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
     
-    def on_validation_batch_end(self, trainer, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
+    def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         if batch_idx % self.log_interval == 0:
             mem = psutil.virtual_memory()
             pl_module.log("memory/val_cpu_memory_percent", mem.percent, prog_bar=False, sync_dist=False)
@@ -345,7 +211,7 @@ class SubmodulesGradientNormLogger(Callback):
     def __init__(self, submodule_names: list[str]):
         super().__init__()
         self.submodule_names = submodule_names
-    def on_after_backward(self, trainer, pl_module):
+    def on_after_backward(self, train, pl_module):
         grad_norms = {}
         for name, param in pl_module.named_parameters():
             for submodule_name in self.submodule_names:
@@ -374,13 +240,13 @@ class HaplotypedPredLogger(Callback):
         hp2_genome_fasta: str | None = None,
         accessibility_outputs_slice: slice | list = [0],
         rna_outputs_slice: slice | list = [-1],
-        crop_for_accessibility: int = 163840,
-        label_bin_size: int = 128,
         log_stats: bool = True,
         upload_plots: bool = False,
         plot_methylation: bool = False,
         plot_rna: bool = False,
         methylation_exaggeration: float = 1.0,
+        crop_for_accessibility: int = 0, # dummy, to support older gin configs for now
+        label_bin_size: int = 128, # dummy, to support older gin configs for now
         ):
         super().__init__()
         self.hp1_cpg_file = hp1_cpg_file
@@ -399,8 +265,6 @@ class HaplotypedPredLogger(Callback):
         self.regions = regions
         self.accessibility_outputs_slice = accessibility_outputs_slice
         self.rna_outputs_slice = rna_outputs_slice
-        self.crop_for_accessibility = crop_for_accessibility
-        self.label_bin_size = label_bin_size
         self.log_stats = log_stats
         self.upload_plots = upload_plots
         self.plot_methylation = plot_methylation
@@ -418,11 +282,12 @@ class HaplotypedPredLogger(Callback):
             nn.AvgPool1d(kernel_size=128),
         )
 
-    def on_validation_epoch_end(self, trainer, pl_module) -> None:
-        if trainer.is_global_zero:
+    def on_validation_epoch_end(self, train, pl_module) -> None:
+        self.total_stride = pl_module.total_stride
+        if train.is_global_zero:
             # Get the wandb Run (works when WandbLogger is enabled)
-            run = getattr(getattr(trainer, "logger", None), "experiment", None)
-            epoch = getattr(trainer, "current_epoch", -1)
+            run = getattr(getattr(train, "logger", None), "experiment", None)
+            epoch = getattr(train, "current_epoch", -1)
             if run is not None and hasattr(run, "log"):
                 images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
                 for chromosome, start, end in self.regions:
@@ -455,8 +320,8 @@ class HaplotypedPredLogger(Callback):
                         region_str = f"{chromosome}:{start}-{end}"
                         center_coord = (start + end) // 2
                         num_bins = len(hp1_accessibility_pred)
-                        start_pos = center_coord - (num_bins * self.label_bin_size) // 2
-                        positions = start_pos + np.arange(num_bins) * self.label_bin_size
+                        start_pos = center_coord - (num_bins * pl_module.total_stride) // 2
+                        positions = start_pos + np.arange(num_bins) * pl_module.total_stride
 
                         # signal_ys = [hp1_pred, -hp2_pred]
                         # signal_keys = ["Haplo 1 Prediction", "Haplo 2 Prediction"]
@@ -597,81 +462,83 @@ class HaplotypedPredLogger(Callback):
         end: int,
     ):
         device = pl_module.device
-        hp1_sequence, hp1_methylation_encoding = self._construct_input_tensor(
-            genome_track_file=self.hp1_cpg_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
-            genome=self.hp1_genome,
-        )
-        hp2_sequence, hp2_methylation_encoding = self._construct_input_tensor(
-            genome_track_file=self.hp2_cpg_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
-            genome=self.hp2_genome,
-        )
-        hp1_methylation = self.input_to_methylation(torch.cat([hp1_sequence, hp1_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp2_methylation = self.input_to_methylation(torch.cat([hp2_sequence, hp2_methylation_encoding],dim=1)).squeeze().cpu().numpy()
-        hp1_accessibility_target = self._construct_target_tensor(
-            genome_track_file=self.hp1_accessibility_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp1_accessibility_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp1_accessibility_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp1_accessibility_file is not None else None
-        hp2_accessibility_target = self._construct_target_tensor(
-            genome_track_file=self.hp2_accessibility_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp2_accessibility_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp2_accessibility_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp2_accessibility_file is not None else None
-        hp1_rna_target = self._construct_target_tensor(
-            genome_track_file=self.hp1_rna_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp1_rna_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp1_rna_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp1_rna_file is not None else None
-        hp2_rna_target = self._construct_target_tensor(
-            genome_track_file=self.hp2_rna_file,
-            chromosome=chromosome,
-            start=start,
-            end=end,
-            device=device,
+        hp2_rna_target = pl_module.crop_targets(
+                self._construct_target_tensor(
+                genome_track_file=self.hp2_rna_file,
+                chromosome=chromosome,
+                start=start,
+                end=end,
+                device=device,
+            )
         ).squeeze().cpu().numpy() if self.hp2_rna_file is not None else None
-        with torch.no_grad():
-            # training_mode = pl_module.mode
-            # training_true_methyl_rep_weight = pl_module.true_methyl_rep_weight
-            pl_module.eval()
-            # if pl_module.layers:
-            #     pl_module.mode = 'full-model'
-            # elif pl_module.input_to_methyl_rep:
-            #     pl_module.mode = 'factorized-from-pretrained'
-            # else:
-            #     pl_module.mode = 'pretrained-only'
-            # pl_module.true_methyl_rep_weight = 1.0
-            hp1_output = pl_module(hp1_sequence,hp1_methylation_encoding.unsqueeze(1))
-            hp1_accessibility_pred = hp1_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp1_rna_pred = hp1_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp1_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
-                else np.ones_like(hp1_methylation)
+        with Predictor(pl_module,supplemental_outputs = {"imputed_conditioning_state_rep","true_conditioning_state_rep"}) as predictor:
+            hp1_output = predictor.predict_locus(
+                chromosome,
+                start,
+                end,
+                sequence_path=self.hp1_genome,
+                methylation_paths=self.hp1_cpg_file,
+                channel_subset = None,
+                methylation_load_kwargs = {
+                    'extend_cpg_sites':True,
+                    'cpg_values_rescale':0.01,
+                },
             )
-            hp2_output = pl_module(hp2_sequence,hp2_methylation_encoding.unsqueeze(1))
-            hp2_accessibility_pred = hp2_output[:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp2_rna_pred = hp2_output[:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-            hp2_pred_methylation = (
-                pl_module.hooked_activations[id(pl_module.capture_imputed_methyl_rep)].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
-                if id(pl_module.capture_imputed_methyl_rep) in pl_module.hooked_activations
-                else np.zeros_like(hp2_methylation)
+            hp1_accessibility_pred = hp1_output["predictions"][:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_rna_pred = hp1_output["predictions"][:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp1_pred_methylation = hp1_output["imputed_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp1_pred_methylation.shape!=hp1_accessibility_pred.shape:
+                hp1_pred_methylation = np.ones_like(hp1_accessibility_pred)
+            hp1_methylation = hp1_output["true_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp1_methylation.shape!=hp1_accessibility_pred.shape:
+                hp1_methylation = np.ones_like(hp1_accessibility_pred)
+            hp2_output = predictor.predict_locus(
+                chromosome,
+                start,
+                end,
+                sequence_path=self.hp2_genome,
+                methylation_paths=self.hp2_cpg_file,
+                channel_subset = None,
+                methylation_load_kwargs = {
+                    'extend_cpg_sites':True,
+                    'cpg_values_rescale':0.01,
+                },
             )
-            # pl_module.mode = training_mode
-            # pl_module.true_methyl_rep_weight = training_true_methyl_rep_weight
+            hp2_accessibility_pred = hp2_output["predictions"][:, self.accessibility_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_rna_pred = hp2_output["predictions"][:, self.rna_outputs_slice, :].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            hp2_pred_methylation = hp2_output["imputed_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp2_pred_methylation.shape!=hp2_accessibility_pred.shape:
+                hp2_pred_methylation = np.ones_like(hp2_accessibility_pred)
+            hp2_methylation = hp2_output["true_conditioning_state_rep"].mean(dim=1, keepdim=True).squeeze().cpu().numpy()
+            if hp2_methylation.shape!=hp2_accessibility_pred.shape:
+                hp2_methylation = np.ones_like(hp2_accessibility_pred)
         if hp1_methylation is not None and hp2_methylation is not None and hp1_methylation.ndim>1 and hp2_methylation.ndim>1:
             hp1_methylation = hp1_methylation.mean(axis=0)
             hp2_methylation = hp2_methylation.mean(axis=0)
@@ -693,64 +560,6 @@ class HaplotypedPredLogger(Callback):
             hp2_rna_pred,
         )
 
-
-    def _construct_input_tensor(
-        self,
-        genome_track_file,
-        chromosome,
-        start,
-        end,
-        device,
-        genome=None,
-    ) -> torch.Tensor:
-        cpg_ratio, non_zero_mask = load_masked_track(
-            file_path=genome_track_file,
-            contig=chromosome,
-            start=start,
-            end=end,
-            motif="CG,0",
-            negative_to_value=0.0,
-        )
-        if np.any(cpg_ratio>1):
-            cpg_ratio = cpg_ratio/100
-        exp_cpg_ratio = self._exaggerate_methylation(cpg_ratio, non_zero_mask)
-        if genome is None:
-            genome = self.genome
-        sequence = load_sequence(
-            file_path=genome,
-            contig=chromosome,
-            start=start,
-            end=end,
-        )
-        x_methylseq = torch.permute(
-            torch.tensor(
-                dna_io.one_hot_encode_dna(
-                    dna_strand=sequence, 
-                    cpg_methylation=exp_cpg_ratio, 
-                    valid_cpgs=non_zero_mask,
-                ),
-                dtype=torch.float32,
-                device=device,
-            ).unsqueeze(0),
-            (0,2,1),
-        )
-        sequence = x_methylseq[:, :4, :]
-        methylation = x_methylseq[:, 4:, :]
-        return sequence, methylation
-    
-    def _exaggerate_methylation(self, cpg_ratio, non_zero_mask, eps=1e-7) -> np.ndarray:
-        if self.methylation_exaggeration==1.0:
-            return cpg_ratio
-        else:
-            result = cpg_ratio.copy()
-            
-            # Clip to avoid numerical issues, then convert to logits, scale, convert back
-            clipped = np.clip(result[non_zero_mask], eps, 1 - eps)
-            logits = np.log(clipped / (1 - clipped))
-            result[non_zero_mask] = 1 / (1 + np.exp(-self.methylation_exaggeration * logits))
-            
-            return result
-
     def _construct_target_tensor(
         self,
         genome_track_file,
@@ -765,8 +574,7 @@ class HaplotypedPredLogger(Callback):
             chromosome=chromosome,
             start=start,
             end=end,
-            bin_size=self.label_bin_size,
-            crop=self.crop_for_accessibility,
+            bin_size=self.total_stride,
         )
         return torch.tensor(
             accessibility_ratio,

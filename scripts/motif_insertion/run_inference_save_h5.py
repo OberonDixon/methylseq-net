@@ -1,5 +1,5 @@
 from optparse import OptionParser
-from methylseqnet.inference import run_dataset_save_h5
+from methylseqnet.predict import run_dataset_save_h5
 from methylseqnet.transforms import InsertSyntheticCpG
 from pathlib import Path
 from functools import partial
@@ -17,7 +17,7 @@ def main():
                       dest="DATASET_TYPE",
                       choices=['atlas', 'synthetic'],
                       default='atlas',
-                      help="Type of dataset to run inference on.")
+                      help="Type of dataset to run predict on.")
     parser.add_option("--SYNTHETIC_CPG",
                       dest="SYNTHETIC_CPG",
                       action='store_true',

@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=preprocess-longread-pbcpg
+#SBATCH --job-name=preprocess-longread
 #SBATCH --account=fc_streets
 #SBATCH --partition=savio3
 #SBATCH --qos=savio_normal
@@ -8,9 +8,7 @@
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A.err
 
-source activate methylseqnet
+source activate methylseqnet-prod
 
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_allchr_pbcpg.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_chrX_pbcpg.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_allchr.gin
-python ../methylseqnet/preprocessor.py --config ../configs/preprocessor/preprocessor_borzoi_longread_chrX.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX.gin

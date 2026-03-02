@@ -1,5 +1,5 @@
 import argparse
-from methylseqnet.inference import run_dataset_save_h5
+from methylseqnet.predict import run_dataset_save_h5
 
 def main(model_identifier):
     for hp in ["HP1","HP2"]:
@@ -9,13 +9,13 @@ def main(model_identifier):
             mode='full-model',
             dataset_path=f"/global/scratch/users/dixonluinenburg/atlas_datasets/dimelo-Xinactivation/{hp}.h5",
             dataset_type='methylseq',
-            output_path=f"/global/scratch/users/dixonluinenburg/atlas_datasets/dimelo-Xinactivation/inference/{model_identifier}/{hp}",
+            output_path=f"/global/scratch/users/dixonluinenburg/atlas_datasets/dimelo-Xinactivation/predict/{model_identifier}/{hp}",
             gpus = 1,
             num_workers = 4,
         )
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run inference with a specified model.")
+    parser = argparse.ArgumentParser(description="Run predict with a specified model.")
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference to /clusterfs/nilah/oberon/lightning/")
     args = parser.parse_args()
     main(args.model_identifier)

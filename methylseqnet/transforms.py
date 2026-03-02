@@ -6,6 +6,9 @@ from abc import ABC, abstractmethod
 import random
 from methylseqnet import tensor_ops
 import warnings
+import numpy as np
+
+from methylseqnet.motifs import dinuc_shuffle
 
 # TODO: move over CpGSparsifier, EncodingSelector. Rename SmoothMethylation too. Keep old versions for now; obsolete at a later point
 
@@ -48,7 +51,119 @@ class LayerTransform(nn.Module):
 
 @gin.register
 @gin.configurable
-class InsertSyntheticCpG(LoaderTransform):
+class IdentityTransform(LoaderTransform):
+    def __call__(self, sequence, methylation, target, mask):
+        return sequence, methylation, target, mask
+
+@gin.register
+@gin.configurable
+class UniformTransform(LoaderTransform):
+    def __init__(
+        self,
+        sequence_to=0.0,
+        methylation_to=(0.0,0.0,0.0),
+        target_to=0.0,
+        mask_to=False,
+    ):
+        self.sequence_to = sequence_to
+        self.methylation_to = methylation_to
+        self.target_to = target_to
+        self.mask_to = mask_to
+    def __call__(self, sequence, methylation, target, mask):
+        sequence = torch.full_like(sequence, self.sequence_to)
+        methylation = torch.zeros_like(methylation)
+        if isinstance(self.methylation_to, (tuple, list)):
+            for i, v in enumerate(self.methylation_to):
+                methylation[..., i, :] = v
+        else:
+            methylation.fill_(self.methylation_to)
+        target = torch.full_like(target, self.target_to)
+        mask = torch.full_like(mask, self.mask_to)
+        return sequence, methylation, target, mask
+
+class LoaderCpGTransform(LoaderTransform):
+    """Base class for transforms that modify methylation at CpG sites."""
+    def _get_cpg_masks(self, sequence):
+        """
+        Identify CpG dinucleotides from sequence tensor, returning separate masks for C and G positions.
+        
+        Args:
+            sequence: Tensor of shape (..., 4, seq_length) where dim -2 is one-hot ACGT
+        
+        Returns:
+            Tuple of (cpg_c_mask, cpg_g_mask):
+                cpg_c_mask: Boolean tensor marking C positions in CpG sites
+                cpg_g_mask: Boolean tensor marking G positions in CpG sites
+        """
+        C_channel = 1
+        G_channel = 2
+        
+        # Get C and G positions
+        is_C = sequence[..., C_channel, :] > 0.5  # (..., seq_length)
+        is_G = sequence[..., G_channel, :] > 0.5  # (..., seq_length)
+        
+        # Check for CpG dinucleotides (C followed by G)
+        is_cpg = is_C[..., :-1] & is_G[..., 1:]  # (..., seq_length-1)
+        
+        # Create separate masks for C and G positions
+        seq_len = sequence.shape[-1]
+        cpg_c_mask = torch.zeros_like(is_C, dtype=torch.bool)
+        cpg_g_mask = torch.zeros_like(is_C, dtype=torch.bool)
+        
+        # Mark C positions (index i where CpG starts)
+        cpg_c_mask[..., :-1] = is_cpg
+        # Mark G positions (index i+1 where CpG continues)
+        cpg_g_mask[..., 1:] = is_cpg
+        
+        return cpg_c_mask, cpg_g_mask
+
+    def _apply_methylation(self, methylation, c_mask, g_mask, frac):
+        """
+        Apply methylation fraction and valid_cpg mask in-place to C and G positions indicated by masks.
+        
+        Args:
+            methylation: Tensor of shape (..., num_states, 3, seq_length)
+                         where dim -2 has channels [mC, mG, CpG_indicator]
+            c_mask: Boolean tensor of shape (..., seq_length) indicating C positions to modify
+            g_mask: Boolean tensor of shape (..., seq_length) indicating G positions to modify
+            frac: Methylation fraction to apply (0 to 1)
+        """
+        if not isinstance(frac, torch.Tensor):
+            frac = torch.tensor(frac, device=methylation.device, dtype=methylation.dtype)
+        else:
+            frac = frac.to(device=methylation.device, dtype=methylation.dtype)
+        # Expand masks to match methylation dimensions
+        while c_mask.ndim < methylation.ndim - 1:
+            c_mask = c_mask.unsqueeze(-2)
+            g_mask = g_mask.unsqueeze(-2)
+        
+        # Set CpG indicator channel (index 2) to 1.0 for both C and G positions
+        combined_mask = (c_mask | g_mask).expand_as(methylation[..., 2, :])
+        methylation[..., 2, :] = torch.where(
+            combined_mask,
+            torch.tensor(1.0, device=methylation.device, dtype=methylation.dtype),
+            methylation[..., 2, :]
+        )
+        
+        # Set mC channel (index 0) to frac ONLY at C positions
+        c_mask_expanded = c_mask.expand_as(methylation[..., 0, :])
+        methylation[..., 0, :] = torch.where(
+            c_mask_expanded,
+            frac,
+            methylation[..., 0, :]
+        )
+        
+        # Set mG channel (index 1) to frac ONLY at G positions
+        g_mask_expanded = g_mask.expand_as(methylation[..., 1, :])
+        methylation[..., 1, :] = torch.where(
+            g_mask_expanded,
+            frac,
+            methylation[..., 1, :]
+        )
+
+@gin.register
+@gin.configurable
+class InsertSyntheticCpG(LoaderCpGTransform):
     def __init__(
         self,
         center_window_size=500,
@@ -91,8 +206,8 @@ class InsertSyntheticCpG(LoaderTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_variants, num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
@@ -115,12 +230,15 @@ class InsertSyntheticCpG(LoaderTransform):
         cpg_c_mask, cpg_g_mask = self._get_cpg_masks(sequence)  # Shape matches sequence batch dims + (seq_len,)
         
         # Create region masks
-        center = seq_len // 2 + self.offset
-        half_window = self.window_size // 2
-        
-        # Center window
-        center_start = max(center - half_window, 0)
-        center_end = min(center + half_window, seq_len)
+        if self.window_size == -1:  # Special case: if window_size is -1, treat the whole sequence as the center window
+            center_start = 0
+            center_end = seq_len
+        else:
+            center = seq_len // 2 + self.offset
+            half_window = self.window_size // 2
+            # Center window
+            center_start = max(center - half_window, 0)
+            center_end = min(center + half_window, seq_len)
         
         # Flanking regions
         left_flank_start = max(center_start - self.flank_width, 0)
@@ -152,79 +270,69 @@ class InsertSyntheticCpG(LoaderTransform):
         
         return sequence, methylation, target, mask
 
-    def _get_cpg_masks(self, sequence):
+@gin.register
+@gin.configurable
+class DinucShufflePreserveMethylation(LoaderCpGTransform):
+    def __init__(self):
         """
-        Identify CpG dinucleotides from sequence tensor, returning separate masks for C and G positions.
+        Dinucleotide-shuffle the sequence and remap the methylation landscape
+        to the new CpG positions via interpolation.
         
-        Args:
-            sequence: Tensor of shape (..., 4, seq_length) where dim -2 is one-hot ACGT
-        
-        Returns:
-            Tuple of (cpg_c_mask, cpg_g_mask):
-                cpg_c_mask: Boolean tensor marking C positions in CpG sites
-                cpg_g_mask: Boolean tensor marking G positions in CpG sites
+        Used as an attribution baseline: destroys sequence motifs while
+        preserving the regional methylation landscape, isolating sequence
+        contributions in integrated gradients.
         """
-        C_channel = 1
-        G_channel = 2
-        
-        # Get C and G positions
-        is_C = sequence[..., C_channel, :] > 0.5  # (..., seq_length)
-        is_G = sequence[..., G_channel, :] > 0.5  # (..., seq_length)
-        
-        # Check for CpG dinucleotides (C followed by G)
-        is_cpg = is_C[..., :-1] & is_G[..., 1:]  # (..., seq_length-1)
-        
-        # Create separate masks for C and G positions
-        seq_len = sequence.shape[-1]
-        cpg_c_mask = torch.zeros_like(is_C, dtype=torch.bool)
-        cpg_g_mask = torch.zeros_like(is_C, dtype=torch.bool)
-        
-        # Mark C positions (index i where CpG starts)
-        cpg_c_mask[..., :-1] = is_cpg
-        # Mark G positions (index i+1 where CpG continues)
-        cpg_g_mask[..., 1:] = is_cpg
-        
-        return cpg_c_mask, cpg_g_mask
+        self.interp_methyl_from_encoding = EncodingSelector(encoding_str='interp-methyl-only')
 
-    def _apply_methylation(self, methylation, c_mask, g_mask, frac):
+    def __call__(self, sequence, methylation, target, mask):
+        shuffled_sequence = torch.from_numpy(
+            np.array(
+                [
+                    dinuc_shuffle(sequence.cpu().numpy()[b].transpose()).transpose()
+                    for b in range(sequence.shape[0])
+                ]
+            )
+        ).to(device=sequence.device, dtype=torch.float32) # Shape: (batch_size, 4, seq_length)
+        cpg_c_mask, cpg_g_mask = self._get_cpg_masks(shuffled_sequence)
+        remapped_methylations_list = []
+        for state_idx in range(methylation.shape[-3]):
+            interpolated_methylation = self.interp_methyl_from_encoding(torch.cat([sequence, methylation[...,state_idx,:,:]], dim=1)) # Shape: (batch_size, 1, seq_length)
+            remapped_methylation = torch.zeros_like(methylation[...,state_idx,:,:]) # Shape: (batch_size, 3, seq_length)
+            frac = interpolated_methylation.squeeze(1)
+            self._apply_methylation(remapped_methylation, cpg_c_mask, cpg_g_mask, frac)
+            remapped_methylations_list.append(remapped_methylation.unsqueeze(-3))
+        remapped_methylation = torch.cat(remapped_methylations_list, dim=-3)
+        return shuffled_sequence, remapped_methylation, target, mask
+
+@gin.register
+@gin.configurable
+class DinucShuffleSyntheticCpG(LoaderCpGTransform):
+    def __init__(self, cpg_frac):
         """
-        Apply methylation fraction to C and G positions indicated by masks.
-        
+        Dinucleotide-shuffle the sequence and apply a uniform methylation fraction at all CpG sites
+        in the shuffled sequence. Returns the shuffled sequence and modified methylation tensor.
+
+        Used as an attribution baseline transform: the shuffled sequence preserves dinucleotide
+        frequencies while destroying higher-order patterns, and the methylation is set to a
+        neutral/modal state at the resulting CpG positions.
+
         Args:
-            methylation: Tensor of shape (..., num_cell_types, 3, seq_length)
-                         where dim -2 has channels [mC, mG, CpG_indicator]
-            c_mask: Boolean tensor of shape (..., seq_length) indicating C positions to modify
-            g_mask: Boolean tensor of shape (..., seq_length) indicating G positions to modify
-            frac: Methylation fraction to apply (0 to 1)
+            cpg_frac (float): Methylation fraction to apply at CpG sites (e.g., 0.95 for modal).
         """
-        # Expand masks to match methylation dimensions
-        while c_mask.ndim < methylation.ndim - 1:
-            c_mask = c_mask.unsqueeze(-2)
-            g_mask = g_mask.unsqueeze(-2)
-        
-        # Set CpG indicator channel (index 2) to 1.0 for both C and G positions
-        combined_mask = (c_mask | g_mask).expand_as(methylation[..., 2, :])
-        methylation[..., 2, :] = torch.where(
-            combined_mask,
-            torch.tensor(1.0, device=methylation.device, dtype=methylation.dtype),
-            methylation[..., 2, :]
-        )
-        
-        # Set mC channel (index 0) to frac ONLY at C positions
-        c_mask_expanded = c_mask.expand_as(methylation[..., 0, :])
-        methylation[..., 0, :] = torch.where(
-            c_mask_expanded,
-            torch.tensor(frac, device=methylation.device, dtype=methylation.dtype),
-            methylation[..., 0, :]
-        )
-        
-        # Set mG channel (index 1) to frac ONLY at G positions
-        g_mask_expanded = g_mask.expand_as(methylation[..., 1, :])
-        methylation[..., 1, :] = torch.where(
-            g_mask_expanded,
-            torch.tensor(frac, device=methylation.device, dtype=methylation.dtype),
-            methylation[..., 1, :]
-        )
+        self.cpg_frac = cpg_frac
+    def __call__(self, sequence, methylation, target, mask):
+        shuffled_sequence = torch.from_numpy(
+            np.array(
+                [
+                    dinuc_shuffle(sequence.cpu().numpy()[b].transpose()).transpose()
+                    for b in range(sequence.shape[0])
+                ]
+            )
+        ).to(device=sequence.device, dtype=torch.float32)
+        remapped_methylation = torch.zeros_like(methylation)
+        cpg_c_mask, cpg_g_mask = self._get_cpg_masks(shuffled_sequence)
+        self._apply_methylation(remapped_methylation, cpg_c_mask, cpg_g_mask, self.cpg_frac)
+        return shuffled_sequence, remapped_methylation, target, mask
         
 @gin.register
 @gin.configurable
@@ -245,8 +353,8 @@ class ReverseComplement(LoaderTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
@@ -307,8 +415,8 @@ class SequenceJitter(LoaderTransform):
         Args:
             sequence (torch.Tensor): Input tensor of shape (num_samples, num_variants, 4, seq_length) or
                 unbatched tensor (num_variants, 4, seq_length)
-            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_cell_types, 3, seq_length) or
-                unbatched tensor (num_variants, num_cell_types, 3, seq_length)
+            methylation (torch.Tensor): Input tensor of shape (num_samples, num_variants, num_states, 3, seq_length) or
+                unbatched tensor (num_variants, num_states, 3, seq_length)
             target (torch.Tensor): Target tensor of shape (num_samples, num_tasks, track_length) or
                 unbatched tensor (num_tasks, track_length)
             mask (torch.Tensor): Mask tensor of shape (num_samples, num_tasks, track_length) or
@@ -498,79 +606,48 @@ class CpGSparsifier(LayerTransform):
             x[:,4:,:]*=mask # Zero out the methylation channels using the mask
         return x
 
-################################################################################################################
-####                                          Obsolete Old Classes                                          ####
-################################################################################################################
-
-class SmoothMethylationTransform(nn.Module):
-    def __init__(self, window_size=3):
+@gin.configurable
+@gin.register
+class SmoothChannels(nn.Module):
+    def __init__(self, window_size=3, channel_indices=(4,5)):
         """
         Initializes the smoothing transform.
         Args:
             window_size (int): Size of the smoothing window. Should be odd to ensure a symmetric window.
+            channel_indices (tuple of ints): Indices of the channel to smooth (default is (4,5),
+            which corresponds to forward + rev strand methylation in standard input encoding).
         """
         super().__init__()
+        if window_size % 2 == 0:
+            raise ValueError("window_size should be odd to ensure a symmetric window.")
         self.window_size = window_size
-
-    def smooth(self, methylation, mask):
-        """
-        Apply smoothing to methylation data using a rolling window, but only on positions where mask == 1.
-        
-        Args:
-            methylation (torch.Tensor): Tensor of methylation data (batch_size, position).
-            mask (torch.Tensor): Binary tensor (batch_size, position), where 1 indicates valid positions for smoothing.
-        
-        Returns:
-            torch.Tensor: Smoothed methylation tensor.
-        """
-        # Apply padding to allow windowed operation
-        padding = (self.window_size - 1) // 2
-
+        self.channel_indices = channel_indices
         # Convolution for smoothing with a uniform kernel
-        kernel = torch.ones(1, 1, self.window_size, device=methylation.device)  # Create a kernel with ones
-        smoothed = F.conv1d(methylation.unsqueeze(1), kernel, padding=padding).squeeze(1)  # Apply convolution
-
-        # Normalize by the sum of valid positions in the window (mask)
-        mask_sum = F.conv1d(mask.unsqueeze(1).float(), kernel, padding=padding).squeeze(1)
-        mask_sum = mask_sum.clamp(min=1)  # Avoid division by zero
-
-        # Apply the mask (keep smoothed values only where mask == 1)
-        smoothed = (smoothed / mask_sum) * mask
-
-        return smoothed
+        self.register_buffer('kernel', torch.ones(len(self.channel_indices), 1, self.window_size) / self.window_size)
+        self.padding = (self.window_size - 1) // 2
 
     def forward(self, x):
         """
-        Args:
-            input_data (torch.Tensor): Tensor with shape (batch_size, channels, position).
-                                       Channels 5 and 6 are methylation values;
-                                       Channels 0-3 are sequence one-hot encoded (A, C, G, T);
-                                       Channel 7 is CG mask.
-
+        Apply smoothing to the set of channels.
+        
         Returns:
-            torch.Tensor: Transformed input_data with smoothed methylation values.
+            torch.Tensor: tensor with appropriate channels smoothed.
         """
-        # Get channels 5, 6 (methylation), 7 (mask), and 0-3 (sequence)
-        methylation_forward = x[:, 4, :]
-        methylation_reverse = x[:, 5, :]
-        sequence_A = x[:, 0, :]
-        sequence_C = x[:, 1, :]
-        sequence_G = x[:, 2, :]
-        sequence_T = x[:, 3, :]
-        cg_mask = x[:, 6, :]  # CG positions mask
-
-        # Create forward and reverse strand masks
-        forward_strand_mask = (sequence_C > 0) & (cg_mask > 0)  # C must be present in the sequence
-        reverse_strand_mask = (sequence_G > 0) & (cg_mask > 0)  # G must be present in the sequence
-
-        # Smooth forward strand methylation
-        smoothed_forward = self.smooth(methylation_forward, forward_strand_mask)
-
-        # Smooth reverse strand methylation
-        smoothed_reverse = self.smooth(methylation_reverse, reverse_strand_mask)
-
-        # Update the input data tensor with smoothed methylation
-        x[:, 4, :] = smoothed_forward
-        x[:, 5, :] = smoothed_reverse
+        x = x.clone()  # Avoid in-place modification
+        smoothed = F.conv1d(x[:, self.channel_indices, :], self.kernel, padding=self.padding, groups=len(self.channel_indices))
+        x[:,self.channel_indices,:] = smoothed
 
         return x
+
+@gin.configurable
+@gin.register
+class Cropping1d(nn.Module):
+    def __init__(self, crop_size):
+        super().__init__()
+        self.crop_size = crop_size
+
+    def forward(self, x):
+        """
+        Crop off the beginning and end of x along the sequence-length dimension and leave channels/sample untouched
+        """
+        return x[...,self.crop_size:-self.crop_size]

@@ -1,0 +1,107 @@
+methylseqnet.transforms.ReverseComplement.probability=0.5
+methylseqnet.transforms.ReverseComplement.batch_wise=False
+
+methylseqnet.transforms.SequenceJitter.stdev=1
+methylseqnet.transforms.SequenceJitter.max_jitter=3
+methylseqnet.transforms.SequenceJitter.batch_wise=False
+
+seq_model/methylseqnet.transforms.EncodingSelector.encoding_str='seq-only'
+input_to_methyl_rep/methylseqnet.transforms.EncodingSelector.encoding_str='interp-methyl-only'
+
+input_to_methyl_rep/AvgPool1d.kernel_size=128
+input_to_methyl_rep/Hardtanh.min_val=0.0
+input_to_methyl_rep/Hardtanh.max_val=1.0
+
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_unconditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
+
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.in_channels=1920
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.filters=1024
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.kernel_size=1
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_size=4
+embeddings_to_conditional_seq_rep/methylseqnet.layers.ConvBlock.pool_class=@MaxPool1d
+
+methyl_reps_probe/Conv1d.in_channels=1024
+methyl_reps_probe/Conv1d.out_channels=42
+methyl_reps_probe/Conv1d.kernel_size=1
+
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.in_channels=1920
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.filters=42
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.kernel_size=1
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_size=4
+embeddings_to_methyl_rep/methylseqnet.layers.ConvFinal.pool_class=@AvgPool1d
+
+factorized_reps_to_output/methylseqnet.layers.ConvFinal.in_channels=2048
+factorized_reps_to_output/methylseqnet.layers.ConvFinal.filters=1
+factorized_reps_to_output/methylseqnet.layers.ConvFinal.kernel_size=1
+
+torch.optim.Adam.lr=0.002
+torch.optim.Adam.betas=(0.9,0.999)
+
+methylseqnet.model.ConditionedSeqNN.layers = None
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_generator = @borzoi_pytorch
+methylseqnet.model.ConditionedSeqNN.pretrained_seq_model_weights = 'johahi/borzoi-replicate-0'
+methylseqnet.model.ConditionedSeqNN.seq_input_head = [@seq_model/EncodingSelector]
+methylseqnet.model.ConditionedSeqNN.seq_output_head = None
+methylseqnet.model.ConditionedSeqNN.merged_output_head = []
+methylseqnet.model.ConditionedSeqNN.model_merge_operation = 'multiply'
+methylseqnet.model.ConditionedSeqNN.embeddings_to_methyl_rep = [
+    @embeddings_to_methyl_rep/ConvFinal,
+    @Sigmoid,
+]
+methylseqnet.model.ConditionedSeqNN.embeddings_to_unconditional_seq_rep = [
+    @embeddings_to_unconditional_seq_rep/ConvBlock,
+]
+methylseqnet.model.ConditionedSeqNN.embeddings_to_conditional_seq_rep = [
+    @embeddings_to_conditional_seq_rep/ConvBlock,
+]
+methylseqnet.model.ConditionedSeqNN.input_to_methyl_rep = [
+    @input_to_methyl_rep/EncodingSelector,
+    @input_to_methyl_rep/AvgPool1d,
+    @input_to_methyl_rep/Hardtanh,
+]
+methylseqnet.model.ConditionedSeqNN.unconditional_seq_rep_probe=[@methyl_reps_probe/Conv1d]
+methylseqnet.model.ConditionedSeqNN.conditional_seq_rep_probe=[@methyl_reps_probe/Conv1d]
+methylseqnet.model.ConditionedSeqNN.unconditional_seq_rep_probe_upstream_grad_scale=-1
+methylseqnet.model.ConditionedSeqNN.conditional_seq_rep_probe_upstream_grad_scale=0
+methylseqnet.model.ConditionedSeqNN.factorized_reps_to_output = [
+    @factorized_reps_to_output/ConvFinal,
+    @Softplus,
+]
+methylseqnet.model.ConditionedSeqNN.true_conditioning_state_rep_weight=1.0
+methylseqnet.model.ConditionedSeqNN.train_stages={
+            'train-factorized-pretrained-embeddings':{
+                'mode':'factorized-from-pretrained',
+                'grad_dict':{
+                    'layers':False,
+                    'pretrained_seq_model':False,
+                    'seq_input_head':False,
+                    'seq_output_head':True,
+                    'input_to_methyl_rep':True,
+                    'embeddings_to_methyl_rep':True,
+                    'embeddings_to_unconditional_seq_rep':True,
+                    'embeddings_to_conditional_seq_rep':True,
+                    'factorized_reps_to_output':True,
+                },
+                'epochs':30,
+            },
+        }
+methylseqnet.model.ConditionedSeqNN.out_tracks=63
+methylseqnet.model.ConditionedSeqNN.regression=True
+methylseqnet.model.ConditionedSeqNN.pad_all_layers=False
+methylseqnet.model.ConditionedSeqNN.crop_off_final=0
+methylseqnet.model.ConditionedSeqNN.crop_off_sequence=163840
+# methylseqnet.model.ConditionedSeqNN.concat_pretrained_embeddings_at={}
+methylseqnet.model.ConditionedSeqNN.residual_activation_loss_weight=0
+methylseqnet.model.ConditionedSeqNN.activation_criterion=@LogL2Loss
+methylseqnet.model.ConditionedSeqNN.methyl_rep_loss_weight=1.0
+methylseqnet.model.ConditionedSeqNN.seq_reps_orthogonality_loss_weight=1000.0
+
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold0.h5"
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/borzoi-128lzf-multimethyl-bisulfite-atac-cage/fold1.h5"
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=1
+methylseqnet.datamodule.MethylSeqDataModule.transforms=(@ReverseComplement,@SequenceJitter)
+methylseqnet.datamodule.MethylSeqDataModule.dataset_class=@MultiMethylDataset

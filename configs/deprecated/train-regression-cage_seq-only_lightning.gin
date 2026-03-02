@@ -31,12 +31,12 @@ methylseqnet.layers.ConvFinal.in_channels=768
 methylseqnet.layers.ConvFinal.shared_head=False
 methylseqnet.layers.ConvFinal.filters=63
 
-methylseqnet.methylseqnn.MethylSeqNN.layers = [@EncodingAdjuster,@ConvDNA,@ConvTower,@ConvBlock,@ConvDropout,@ConvFinal]
-methylseqnet.methylseqnn.MethylSeqNN.out_tracks=63
-methylseqnet.methylseqnn.MethylSeqNN.regression=True
-methylseqnet.methylseqnn.MethylSeqNN.label_threshold_cts=0.5
-methylseqnet.methylseqnn.MethylSeqNN.learning_rate=0.002
+methylseqnet.model.ConditionedSeqNN.layers = [@EncodingAdjuster,@ConvDNA,@ConvTower,@ConvBlock,@ConvDropout,@ConvFinal]
+methylseqnet.model.ConditionedSeqNN.out_tracks=63
+methylseqnet.model.ConditionedSeqNN.regression=True
+methylseqnet.model.ConditionedSeqNN.label_threshold_cts=0.5
+methylseqnet.model.ConditionedSeqNN.learning_rate=0.002
 
-methylseqnet.trainer.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
-methylseqnet.trainer.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
-methylseqnet.trainer.MethylSeqDataModule.batch_size=16
+methylseqnet.datamodule.MethylSeqDataModule.train_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/train.h5"
+methylseqnet.datamodule.MethylSeqDataModule.validation_dataset_file="/global/scratch/users/dixonluinenburg/atlas_datasets/bisulfite-atac-cage/valid.h5"
+methylseqnet.datamodule.MethylSeqDataModule.batch_size=16

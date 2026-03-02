@@ -3,171 +3,326 @@ from abc import ABC, abstractmethod
 from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc, f1_score
 import torch
 
-def all_metrics(targets,probabilities):
-    predictions = (probabilities >= 0.5).astype('int')
-    
-    # Calculate accuracy, precision, and recall
-    accuracy = accuracy_score(targets, predictions)
-    precision_overall = precision_score(targets, predictions,zero_division=0)
-    recall_overall = recall_score(targets, predictions,zero_division=0)
-    # Calculate precision, recall, and thresholds
-    precision, recall, thresholds = precision_recall_curve(targets, probabilities)
-    # Calculate the area under the precision-recall curve
-    pr_auc = auc(recall, precision)
-    f1 = f1_score(targets, predictions, average='binary')
-    
-    return {
-            "accuracy":accuracy,
-            "precision":precision_overall,
-            "recall":recall_overall,
-            "f1":f1,
-            "prc_auc":pr_auc,
-        }
+class GenomicTensorMetric(ABC):
+    """
+    Base class for multitask metrics operating on 3D tensors of shape
+    (num_variants, channels, positions).
 
-class MultitaskMetric(ABC):
+    Subclasses must implement the stateful update/compute/reset interface.
+    The __call__ method is provided as a convenience for one-shot evaluation
+    (e.g. per-sample metrics), and should not be used during epoch-level
+    accumulation.
+    """
+
     @abstractmethod
-    def __call__(self, targets, predictions):
-        """
-        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
-        Both tensors must have the same shape.
-        """
+    def update(self, targets: torch.Tensor, predictions: torch.Tensor) -> None:
+        """Accumulate sufficient statistics from one batch."""
         pass
-    def _check_shapes(self, targets, predictions):
-        if targets.ndim != 3 or predictions.ndim != 3:
-            raise ValueError("Both targets and predictions must be 3D tensors of shape (num_variants, channels, positions).")
+
+    @abstractmethod
+    def compute(self) -> torch.Tensor:
+        """Return the final scalar metric from accumulated statistics."""
+        pass
+
+    @abstractmethod
+    def reset(self) -> None:
+        """Clear all accumulated state."""
+        pass
+
+    def __call__(self, targets: torch.Tensor, predictions: torch.Tensor) -> torch.Tensor:
+        """
+        One-shot evaluation on a single tensor pair. Resets any existing state,
+        accumulates the given tensors, computes the result, then resets again
+        to leave the instance clean.
+        """
+        self.reset()
+        self.update(targets, predictions)
+        result = self.compute()
+        self.reset()
+        return result
+
+    def _reshape_inputs(self, targets: torch.Tensor, predictions: torch.Tensor) -> tuple[torch.Tensor,torch.Tensor]:
+        if targets.ndim not in (3,4) or predictions.ndim not in (3,4):
+            raise ValueError(
+                "Both targets and predictions must be 3D (num_variants, channels, positions) "
+                "or 4D (batch, num_variants, channels, positions) tensors."
+            )
         if targets.shape != predictions.shape:
             raise ValueError("Targets and predictions must have the same shape.")
+        if targets.ndim == 4:
+            batch, num_variants, channels, positions = targets.shape
+            targets = targets.permute(1, 2, 0, 3).reshape(num_variants, channels, batch * positions)
+            predictions = predictions.permute(1, 2, 0, 3).reshape(num_variants, channels, batch * positions)
+        return targets, predictions
 
-class PearsonAcrossPositions(MultitaskMetric):
+class PearsonAcrossPositions(GenomicTensorMetric):
     """
     Computes Pearson correlation across positions for each variant×channel pair, then returns the mean.
     
-    Filtering: Positions with counts ≤ min_counts are NaN-masked within each variant×channel.
-    Returns: Mean correlation across all variant×channel pairs, or NaN if positions=1 or no active data.
+    Filtering: Positions with counts ≤ min_counts are excluded from sufficient statistics.
+    Returns: Mean correlation across all variant×channel pairs with at least one active position,
+             or NaN if no active data exists across all accumulated batches.
+
+    Sufficient statistics accumulated per variant×channel pair (shape: (num_variants*channels,)):
+        n:      number of active positions
+        sum_x:  sum of active target values
+        sum_y:  sum of active prediction values
+        sum_xx: sum of squared active target values
+        sum_yy: sum of squared active prediction values
+        sum_xy: sum of active target*prediction products
     """
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
-    def __call__(self, targets, predictions):
+        self.reset()
+
+    def reset(self):
+        self.n = None
+        self.sum_x = None
+        self.sum_y = None
+        self.sum_xx = None
+        self.sum_yy = None
+        self.sum_xy = None
+
+    def update(self, targets, predictions):
         """
-        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
-        Both tensors must have the same shape.
+        targets, predictions: (num_variants, channels, positions)
+        Accumulates sufficient statistics, masking positions where targets <= min_counts.
+        Shape of accumulated stats: (num_variants * channels,)
         """
-        self._check_shapes(targets, predictions)
+        targets, predictions = self._reshape_inputs(targets, predictions)
+        t = targets.float().reshape(-1, targets.shape[-1])   # (num_variants*channels, positions)
+        p = predictions.float().reshape(-1, targets.shape[-1])
+        mask = t > self.min_counts                           # (num_variants*channels, positions)
 
-        num_variants, channels, positions = targets.shape
+        zeros = torch.zeros_like(t)
+        n_new      = mask.float().sum(dim=-1)
+        sum_x_new  = torch.where(mask, t,     zeros).sum(dim=-1)
+        sum_y_new  = torch.where(mask, p,     zeros).sum(dim=-1)
+        sum_xx_new = torch.where(mask, t * t, zeros).sum(dim=-1)
+        sum_yy_new = torch.where(mask, p * p, zeros).sum(dim=-1)
+        sum_xy_new = torch.where(mask, t * p, zeros).sum(dim=-1)
 
-        targets = targets.reshape(num_variants * channels, positions)
-        predictions = predictions.reshape(num_variants * channels, positions)
+        if self.n is None:
+            self.n      = n_new
+            self.sum_x  = sum_x_new
+            self.sum_y  = sum_y_new
+            self.sum_xx = sum_xx_new
+            self.sum_yy = sum_yy_new
+            self.sum_xy = sum_xy_new
+        else:
+            # accumulated stats may have different leading dim if channels differ across
+            # dataset_keys — caller is responsible for not mixing keys into one instance
+            self.n      = self.n      + n_new
+            self.sum_x  = self.sum_x  + sum_x_new
+            self.sum_y  = self.sum_y  + sum_y_new
+            self.sum_xx = self.sum_xx + sum_xx_new
+            self.sum_yy = self.sum_yy + sum_yy_new
+            self.sum_xy = self.sum_xy + sum_xy_new
 
-        active_mask = (targets > self.min_counts)
+    def compute(self):
+        """
+        Returns mean Pearson r across all variant×channel pairs that have at least one
+        active position. Pairs with n <= 1 are excluded (correlation undefined).
+        Returns NaN if no valid pairs exist.
+        """
+        if self.n is None:
+            return torch.tensor(float('nan'))
 
-        if positions == 1 or active_mask.sum() == 0:
-            # Cannot compute Pearson correlation with no active positions
-            return torch.tensor(float('nan'),device=targets.device)
+        valid = self.n > 1   # need at least 2 points for correlation to be defined
+        if not valid.any():
+            return torch.tensor(float('nan'))
 
-        targets_nanmasked = torch.where(active_mask, targets, torch.nan)
-        predictions_nanmasked = torch.where(active_mask, predictions, torch.nan)
+        n      = self.n[valid]
+        mean_x = self.sum_x[valid]  / n
+        mean_y = self.sum_y[valid]  / n
+        var_x  = (self.sum_xx[valid] / n - mean_x ** 2).clamp(min=0)
+        var_y  = (self.sum_yy[valid] / n - mean_y ** 2).clamp(min=0)
+        cov    = self.sum_xy[valid]  / n - mean_x * mean_y
 
-        targets_centered = targets_nanmasked - torch.nanmean(targets_nanmasked, dim=1, keepdim=True)  # center over positions
-        predictions_centered = predictions_nanmasked - torch.nanmean(predictions_nanmasked, dim=1, keepdim=True)
+        r = cov / (torch.sqrt(var_x * var_y) + 1e-8)
+        return r.mean()
 
-        numerator = torch.nansum(targets_centered * predictions_centered, dim=1)
-        denominator = torch.sqrt(torch.nansum((targets_centered ** 2),dim=1) * torch.nansum((predictions_centered ** 2), dim=1))
-
-        r = numerator / (denominator + 1e-8)
-        return torch.nanmean(r)
-
-class PearsonAcrossTasks(MultitaskMetric):
+class PearsonAcrossTasks(GenomicTensorMetric):
     """
-    Computes Pearson correlation across channels for each variant×position pair, then returns 
-    variance-weighted mean.
-    
-    Filtering: Drops variant×position pairs where all channels have counts ≤ min_counts.
-    Scaling: Correlations weighted by target variance at each variant×position.
-    Returns: Variance-weighted mean, or NaN if channels=1 or no active data.
+    Computes Pearson correlation across channels (tasks) for each variant×position pair,
+    then returns a variance-weighted mean.
+
+    Filtering: variant×position pairs where all channels have counts ≤ min_counts are dropped.
+    Weighting: each pair's correlation is weighted by the target variance across channels.
+    Returns: variance-weighted mean correlation, or NaN if channels ≤ 1 or no active data.
+
+    Incremental strategy:
+        At each position we can compute r_p (Pearson across C channels) and var_p
+        (target variance across channels) entirely from the current batch — no need
+        to remember per-position state across batches.  We then accumulate just two
+        running scalars:
+            weighted_r_sum  += sum_over_positions(r_p * var_p)
+            var_sum         += sum_over_positions(var_p)
+        Final result = weighted_r_sum / var_sum.
+
+    Memory: O(channels × positions) per batch — never grows with dataset size.
     """
+
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
-    def __call__(self, targets, predictions):
-        """
-        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
-        Both tensors must have the same shape.
-        """
-        self._check_shapes(targets, predictions)
+        self.reset()
 
+    def reset(self):
+        self.weighted_r_sum = 0.0
+        self.var_sum = 0.0
+
+    def update(self, targets, predictions):
+        """
+        targets, predictions: (num_variants, channels, positions)
+        Computes per-position cross-channel Pearson r and target variance,
+        then accumulates the variance-weighted sum.
+        """
+        targets, predictions = self._reshape_inputs(targets, predictions)
         num_variants, channels, positions = targets.shape
 
-        targets = targets.permute(1,0,2).reshape(channels, num_variants * positions)
-        predictions = predictions.permute(1,0,2).reshape(channels, num_variants * positions)
+        if channels <= 1:
+            return
 
-        active_mask = (targets > self.min_counts).any(dim=0)
+        # Reshape to (channels, num_variants * positions) so each column is one
+        # variant×position pair and correlation runs across channels (rows)
+        t = targets.float().permute(1, 0, 2).reshape(channels, -1)  # (C, V*P)
+        p = predictions.float().permute(1, 0, 2).reshape(channels, -1)
 
-        if channels == 1 or active_mask.sum() == 0:
-            # Cannot compute Pearson correlation with only one channel or not active positions
-            return torch.tensor(float('nan'),device=targets.device)
+        # Filter: keep only positions where at least one channel > min_counts
+        active = (t > self.min_counts).any(dim=0)  # (V*P,)
+        if not active.any():
+            return
 
-        targets = targets[:, active_mask]
-        predictions = predictions[:, active_mask]
+        t = t[:, active]  # (C, n_active)
+        p = p[:, active]
 
-        targets_centered = targets - targets.mean(dim=0, keepdim=True)  # center over positions
-        predictions_centered = predictions - predictions.mean(dim=0, keepdim=True)
-        position_variance = targets.var(dim=0)
+        # Pearson r across channels (dim=0) at each active position
+        t_mean = t.mean(dim=0, keepdim=True)  # (1, n_active)
+        p_mean = p.mean(dim=0, keepdim=True)
+        t_c = t - t_mean
+        p_c = p - p_mean
 
-        numerator = (targets_centered * predictions_centered).sum(dim=0)
-        denominator = torch.sqrt((targets_centered ** 2).sum(dim=0) * (predictions_centered ** 2).sum(dim=0))
+        cov = (t_c * p_c).sum(dim=0)                          # (n_active,)
+        std_t = torch.sqrt((t_c ** 2).sum(dim=0))
+        std_p = torch.sqrt((p_c ** 2).sum(dim=0))
+        r = cov / (std_t * std_p + 1e-8)                      # (n_active,)
 
-        r = numerator / (denominator + 1e-8)
-        return (r * position_variance).sum() / (position_variance.sum() + 1e-8)     
+        # Target variance across channels at each position
+        var_t = t.var(dim=0)                                   # (n_active,)
 
-class CCCAcrossVariants(MultitaskMetric):
+        # Accumulate
+        self.weighted_r_sum += (r * var_t).sum().item()
+        self.var_sum += var_t.sum().item()
+
+    def compute(self):
+        if self.var_sum < 1e-12:
+            return torch.tensor(float('nan'))
+        return torch.tensor(self.weighted_r_sum / self.var_sum) 
+
+class CCCAcrossVariants(GenomicTensorMetric):
     """
-    Computes concordance correlation coefficient (CCC) across variants for each channel×position 
+    Computes concordance correlation coefficient (CCC) across variants for each channel×position
     feature, then returns the mean.
-    
-    Filtering: Drops channel×position features where all variants have counts < min_counts.
-    Returns: Mean CCC across all features, or NaN if num_variants=1 or no active data.
+
+    Filtering: channel×position features where all variants have counts < min_counts are excluded.
+    Returns: mean CCC across all active features, or NaN if num_variants=1 or no active data.
+
+    Sufficient statistics accumulated per channel×position feature (shape: (channels*positions,)),
+    treating the population of variants as the "positions" dimension:
+        n:      total number of variants seen (scalar, same for all features after filtering)
+        sum_x:  sum of target values across variants
+        sum_y:  sum of prediction values across variants
+        sum_xx: sum of squared target values across variants
+        sum_yy: sum of squared prediction values across variants
+        sum_xy: sum of target*prediction products across variants
+
+    Note: unlike PearsonAcrossTasks, the active mask here is per-feature (any variant active),
+    applied consistently across all features — inactive features accumulate zeros and are
+    excluded in compute() rather than being filtered batch-by-batch. This is necessary because
+    a feature inactive in one batch may be active in another.
     """
     def __init__(self, min_counts=5):
         self.min_counts = min_counts
-    
-    def __call__(self, targets, predictions):
-        """
-        Take in two 3D tensors of shape (num_variants, channels, positions) and return a scalar tensor.
-        Both tensors must have the same shape.
-        """
-        self._check_shapes(targets, predictions)
+        self.reset()
 
+    def reset(self):
+        self.n      = 0
+        self.sum_x  = None
+        self.sum_y  = None
+        self.sum_xx = None
+        self.sum_yy = None
+        self.sum_xy = None
+        self.any_active = None   # tracks which features were active in at least one batch
+
+    def update(self, targets, predictions):
+        """
+        targets, predictions: (num_variants, channels, positions)
+        Reshapes to (num_variants, channels*positions), accumulates sufficient statistics
+        over the variants dimension per channel×position feature.
+        """
+        targets, predictions = self._reshape_inputs(targets, predictions)
         num_variants, channels, positions = targets.shape
 
-        targets = targets.reshape(num_variants, channels * positions)
-        predictions = predictions.reshape(num_variants, channels * positions)
+        t = targets.float().reshape(num_variants, -1)    # (num_variants, channels*positions)
+        p = predictions.float().reshape(num_variants, -1)
 
-        active_mask = (targets >= self.min_counts).any(dim=0)
+        batch_active = (t >= self.min_counts).any(dim=0)  # (channels*positions,)
 
-        if num_variants == 1 or active_mask.sum() == 0:
-            # Cannot compute CCC with only one variant or no active positions
-            return torch.tensor(float('nan'),device=targets.device)
+        # accumulate which features have ever been active
+        if self.any_active is None:
+            self.any_active = batch_active
+        else:
+            self.any_active = self.any_active | batch_active
 
-        targets = targets[:, active_mask]
-        predictions = predictions[:, active_mask]
+        # accumulate stats over all features (including inactive ones) —
+        # inactive features will be masked out in compute() via any_active
+        self.n = self.n + num_variants
 
-        mean_targets = targets.mean(dim=0, keepdim=True)
-        mean_predictions = predictions.mean(dim=0, keepdim=True)
-        
-        targets_centered = targets - mean_targets
-        predictions_centered = predictions - mean_predictions
-        
-        # Compute Pearson correlation coefficient ρ for each channel×position
-        numerator_pearson = (targets_centered * predictions_centered).mean(dim=0)
-        std_targets = torch.sqrt((targets_centered ** 2).mean(dim=0))
-        std_predictions = torch.sqrt((predictions_centered ** 2).mean(dim=0))
-        rho = numerator_pearson / (std_targets * std_predictions + 1e-8)
-        
-        # Compute CCC: ρc = 2ρσxσy / (σx² + σy² + (μx - μy)²)
-        var_targets = std_targets ** 2
-        var_predictions = std_predictions ** 2
-        mean_diff_sq = (mean_targets.squeeze() - mean_predictions.squeeze()) ** 2
-        
-        ccc = (2 * rho * std_targets * std_predictions) / (var_targets + var_predictions + mean_diff_sq + 1e-8)
-        
+        sum_x_new  = t.sum(dim=0)          # (channels*positions,)
+        sum_y_new  = p.sum(dim=0)
+        sum_xx_new = (t * t).sum(dim=0)
+        sum_yy_new = (p * p).sum(dim=0)
+        sum_xy_new = (t * p).sum(dim=0)
+
+        if self.sum_x is None:
+            self.sum_x  = sum_x_new
+            self.sum_y  = sum_y_new
+            self.sum_xx = sum_xx_new
+            self.sum_yy = sum_yy_new
+            self.sum_xy = sum_xy_new
+        else:
+            self.sum_x  = self.sum_x  + sum_x_new
+            self.sum_y  = self.sum_y  + sum_y_new
+            self.sum_xx = self.sum_xx + sum_xx_new
+            self.sum_yy = self.sum_yy + sum_yy_new
+            self.sum_xy = self.sum_xy + sum_xy_new
+
+    def compute(self):
+        """
+        Returns mean CCC across all channel×position features that were active in at
+        least one batch. Returns NaN if num_variants=1 or no active features exist.
+        """
+        if self.sum_x is None or self.n <= 1:
+            return torch.tensor(float('nan'))
+        if self.any_active is None or not self.any_active.any():
+            return torch.tensor(float('nan'))
+
+        # restrict to features active in at least one batch
+        s_x  = self.sum_x[self.any_active]
+        s_y  = self.sum_y[self.any_active]
+        s_xx = self.sum_xx[self.any_active]
+        s_yy = self.sum_yy[self.any_active]
+        s_xy = self.sum_xy[self.any_active]
+
+        n      = float(self.n)
+        mean_x = s_x  / n
+        mean_y = s_y  / n
+        var_x  = (s_xx / n - mean_x ** 2).clamp(min=0)
+        var_y  = (s_yy / n - mean_y ** 2).clamp(min=0)
+        cov    = s_xy  / n - mean_x * mean_y
+
+        # CCC = 2*cov / (var_x + var_y + (mean_x - mean_y)^2)
+        mean_diff_sq = (mean_x - mean_y) ** 2
+        ccc = (2 * cov) / (var_x + var_y + mean_diff_sq + 1e-8)
+
         return ccc.mean()

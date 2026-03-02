@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=run_inference_motif_seqs_methylseqnet
+#SBATCH --job-name=run_predict_motif_seqs_methylseqnet
 #SBATCH --account=fc_nilah
 #SBATCH --partition=savio3_gpu
 #SBATCH --qos=savio_lowprio
@@ -17,7 +17,7 @@
 source activate /clusterfs/nilah/ayesha/envs/methylseq
 pip install ../../.
 
-python run_inference_save_h5.py \
+python run_predict_save_h5.py \
 --NO_TARGETS \
 --DATASET_TYPE 'synthetic' \
 --SYNTHETIC_CPG \

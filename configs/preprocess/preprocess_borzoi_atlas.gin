@@ -1,0 +1,39 @@
+ref_genome = '/mnt/faststorage/oberon/genomes/hg38.fa'
+regions_bed = '/mnt/faststorage/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
+methylation_directory = '/mnt/faststorage/oberon/methylation_atlas/GSE186458_RAW'
+atac_directory = '/mnt/faststorage/oberon/atac_atlas/bigwigs'
+cage_directory = '/mnt/faststorage/oberon/cage_atlas/hg38_v9'
+match_file = '/mnt/faststorage/oberon/repos/methylseq-net/configs/cell_type_matching_atac-cage.tsv'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/borzoi-softclipped-multimethyl-bisulfite-atac-cage/'
+label_bin_size = 128
+label_num_bins = 4096
+seq_length = 524288
+
+MultiMethylWriter.track_length = %label_num_bins
+MultiMethylWriter.seq_length = %seq_length
+MultiMethylWriter.mask = True
+
+RegionBedParser.regions_bed = %regions_bed
+RegionBedParser.seq_length = %seq_length
+
+MultiBigWigLabelHandler.normalize_counts_per=None #already normalized per billion
+MultiBedGzLabelHandler.normalize_counts_per=1e9
+
+MultiMethylAtacCageAtlases.ref_genome = %ref_genome
+MultiMethylAtacCageAtlases.methylation_directory = %methylation_directory
+MultiMethylAtacCageAtlases.atac_directory = %atac_directory
+MultiMethylAtacCageAtlases.cage_directory = %cage_directory
+MultiMethylAtacCageAtlases.match_file = %match_file
+MultiMethylAtacCageAtlases.label_bin_size = %label_bin_size
+MultiMethylAtacCageAtlases.label_num_bins = %label_num_bins
+MultiMethylAtacCageAtlases.normalize_label_gc = False
+MultiMethylAtacCageAtlases.binarize_labels = False
+
+PreprocessingPipeline.sample_generator = @RegionBedParser()
+PreprocessingPipeline.multitask_io_handler = @MultiMethylAtacCageAtlases()
+PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
+PreprocessingPipeline.output_directory = %output_directory
+PreprocessingPipeline.dataset_writer_class = @MultiMethylWriter
+PreprocessingPipeline.samples_per_batch = 1
+
+
