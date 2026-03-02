@@ -2,8 +2,8 @@ initial_filters = 512
 dilated_residual_filters = 512
 embedding_dim = 1920
 embedding_pool = 4
-model_tasks = 65
-cell_types = 43
+model_tasks = 2
+cell_types = 1
 
 methylseqnet.transforms.ReverseComplement.probability=0.5
 methylseqnet.transforms.ReverseComplement.batch_wise=False
