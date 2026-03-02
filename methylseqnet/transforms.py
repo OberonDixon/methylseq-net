@@ -638,3 +638,16 @@ class SmoothChannels(nn.Module):
         x[:,self.channel_indices,:] = smoothed
 
         return x
+
+@gin.configurable
+@gin.register
+class Cropping1d(nn.Module):
+    def __init__(self, crop_size):
+        super().__init__()
+        self.crop_size = crop_size
+
+    def forward(self, x):
+        """
+        Crop off the beginning and end of x along the sequence-length dimension and leave channels/sample untouched
+        """
+        return x[...,self.crop_size:-self.crop_size]
