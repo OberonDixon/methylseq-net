@@ -457,12 +457,20 @@ class Predictor:
         self._restore_model_state()
 
 def main():
+    DEFAULT_SUPPLEMENTAL_OUTPUTS = [
+        "conditional_seq_rep",
+        "unconditional_seq_rep",
+        "true_conditioning_state_rep",
+        "imputed_conditioning_state_rep",
+        "cpg_density",
+    ]
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
     parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference /clusterfs/nilah/oberon/lightning/")
     parser.add_argument("--true-conditioning-state-weight", type=float, default=None, help="If set, override the model's true_conditioning_state_weight with this value for prediction.")
     parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--dataset-keys", nargs='+', required=True, help="Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-files)")
     parser.add_argument("--dataset-files", nargs='+', required=True, help="Paths to dataset H5 files (must match length of --dataset-keys)")
+    parser.add_argument("--supplemental-outputs", nargs="*", required=False, default=DEFAULT_SUPPLEMENTAL_OUTPUTS, help=f"Supplemental outputs to include in predictions. Default: {DEFAULT_SUPPLEMENTAL_OUTPUTS}")
     parser.add_argument("--synthetic-cpg", action='store_true', help="If set, add synthetic CpG data.")
     parser.add_argument("--variable-input-length", action='store_true', help="If set, sequence length can be any integer multiple of 128 that is >=16384.")
     parser.add_argument("--center-methyl-frac", type=float, default=0.05, help="Fraction of CpGs methylated in the center window.")
@@ -513,7 +521,7 @@ def main():
         predictor = Predictor(
             model=best_ckpt,
             true_conditioning_state_weight=args.true_conditioning_state_weight,
-            supplemental_outputs = {"conditional_seq_rep","unconditional_seq_rep","true_conditioning_state_rep","imputed_conditioning_state_rep","cpg_density"},
+            supplemental_outputs = set(args.supplemental_outputs),
             remove_crop_for_variable_input_length = args.variable_input_length,
         )
         predictor.predict_dataset(
