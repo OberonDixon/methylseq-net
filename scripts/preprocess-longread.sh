@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=preprocess-longread-pbcpg
+#SBATCH --job-name=preprocess-longread
 #SBATCH --account=fc_streets
 #SBATCH --partition=savio3
 #SBATCH --qos=savio_normal
@@ -10,7 +10,5 @@
 
 source activate methylseqnet
 
-python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_allchr_pbcpg.gin
-python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX_pbcpg.gin
-python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_allchr.gin
+python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread.gin
 python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX.gin
