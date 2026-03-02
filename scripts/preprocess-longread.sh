@@ -8,7 +8,7 @@
 #SBATCH --output=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A.out
 #SBATCH --error=/clusterfs/nilah/oberon/lightning/sbatch_logs/preprocess_methylseqnet_%A.err
 
-source activate methylseqnet
+source activate methylseqnet-prod
 
 python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread.gin
 python ../methylseqnet/preprocess.py --config ../configs/preprocess/preprocess_borzoi_longread_chrX.gin
