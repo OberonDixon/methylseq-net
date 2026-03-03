@@ -1,6 +1,16 @@
 pacbio_5mC_tracks = "/path/to/pacbio/5mC"
 fiberseq_tracks = "/path/to/fiberseq"
 rna_tracks = "/path/to/rna/tracks"
-preprocessed_datasets = "/path/to/preprocessed/datasets"
+
+methylation_atlas "/path/to/methylation/atlas"
+atac_atlas = "/path/to/atac/atlas"
+cage_atlas = "/path/to/cage/atlas"
+
 genomes = "/path/to/genome/references"
+haplotypes = "/path/to/haplotypes"
+
+preprocessed_datasets = "/path/to/preprocessed/datasets"
 model_checkpoints = "/path/to/model/checkpoints"
+
+analysis_pickles = "/path/to/analysis_pickels"
+annotations = "/path/to/annotations"
