@@ -12,6 +12,7 @@ methylseqnet.transforms.SequenceJitter.batch_wise=False
 methylseq_model/methylseqnet.transforms.EncodingSelector.encoding_str='interp-methyl-only'
 methylseqnet.transforms.Cropping1d.crop_size=163840
 methylseqnet.transforms.SmoothChannels.window_size=129
+methylseqnet.transforms.SmoothChannels.channel_indices=(0,)
 
 methylseqnet.layers.ConvDNA.filters=%initial_filters
 methylseqnet.layers.ConvDNA.kernel_size=15
