@@ -1,3 +1,5 @@
+configs = "/path/to/configs"
+
 pacbio_5mC_tracks = "/path/to/pacbio/5mC"
 fiberseq_tracks = "/path/to/fiberseq"
 rna_tracks = "/path/to/rna/tracks"

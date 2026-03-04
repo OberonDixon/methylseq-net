@@ -15,7 +15,7 @@ if not _CONFIG_PATH.exists():
 with open(_CONFIG_PATH, "rb") as f:
     _config = tomllib.load(f)
 
-configs = Path(__file__).resolve().parent.parent / "configs"
+configs = Path(_config["configs"])
 
 pacbio_5mC_tracks = Path(_config["pacbio_5mC_tracks"])
 fiberseq_tracks = Path(_config["fiberseq_tracks"])
