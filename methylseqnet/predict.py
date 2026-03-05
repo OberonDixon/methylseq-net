@@ -454,7 +454,10 @@ class Predictor:
         return False
 
     def __del__(self):
-        self._restore_model_state()
+        try:
+            self._restore_model_state()
+        except TypeError:
+            pass
 
 def main():
     DEFAULT_SUPPLEMENTAL_OUTPUTS = [
