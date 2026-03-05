@@ -1,0 +1,18 @@
+configs = "/clusterfs/nilah/oberon/repos/methylseq-net/configs"
+
+pacbio_5mC_tracks = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/5mC"
+fiberseq_tracks = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/FIRE"
+rna_tracks = "/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams"
+
+methylation_atlas = "/global/scratch/users/dixonluinenburg/methylation_atlas"
+atac_atlas = "/global/scratch/users/dixonluinenburg/atac_atlas"
+cage_atlas = "/global/scratch/users/dixonluinenburg/cage_atlas"
+
+genomes = "/clusterfs/nilah/oberon/genomes"
+haplotypes = "/path/to/haplotypes"
+
+preprocessed_datasets = "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets"
+model_checkpoints = "/clusterfs/nilah/oberon/lightning"
+
+analysis_pickles = "/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/pickles"
+annotations = "/path/to/annotations"
