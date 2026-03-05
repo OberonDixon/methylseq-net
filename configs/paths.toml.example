@@ -4,7 +4,7 @@ pacbio_5mC_tracks = "/path/to/pacbio/5mC"
 fiberseq_tracks = "/path/to/fiberseq"
 rna_tracks = "/path/to/rna/tracks"
 
-methylation_atlas "/path/to/methylation/atlas"
+methylation_atlas = "/path/to/methylation/atlas"
 atac_atlas = "/path/to/atac/atlas"
 cage_atlas = "/path/to/cage/atlas"
 
