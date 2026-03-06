@@ -199,7 +199,7 @@ def _load_bigwig_track(
             + end_pad*[np.nan]
             )
     except Exception as e:
-        raise RuntimeError(f"Error in bigwig loading for {contig}:{start}-{end} from {file_path}.") from e
+        raise RuntimeError(f"Error in bigwig loading for {contig}:{start}-{end} from {file_path}. Tried to load {max(start,0)}-{min(end,contigs[contig])} due to length of contig.") from e
     finally:
         bw.close()
     if negative_to_value is not None:
