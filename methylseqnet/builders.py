@@ -1307,7 +1307,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
     """
     def __init__(
             self,
-            ref_genome,
+            sequence_files_by_phase,
             methylation_files_by_phase,
             fiberseq_files_by_phase,
             rna_files_by_phase,     
@@ -1339,7 +1339,10 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
             phased_rna_kwargs['normalize_counts_per'] = None
         else:
             phased_rna_kwargs = kwargs_by_data_type['rna']
-        self.sequence_handler = SingleFastaHandler(ref_genome=ref_genome)
+        self.sequence_handlers = [
+            SingleFastaHandler(ref_genome=sequence_file)
+            for sequence_file in sequence_files_by_phase
+        ]
         self.cpg_handlers = [
             MultiFileCpGHandler(cpg_files = [cpg_file], **kwargs_by_data_type['methylation'])
             for cpg_file in methylation_files_by_phase
@@ -1375,7 +1378,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 'channel':0,
                 'cell_type':0,
                 'data_type':'Fiber-seq',
-                'genome':ref_genome,
+                'genome':','.join([Path(fasta).name for fasta in sequence_files_by_phase]),
                 'methylation_files':tuple(Path(methylation_file).name for methylation_file in methylation_files_by_phase),
                 'label_files':tuple(Path(fiberseq_file).name for fiberseq_file in fiberseq_files_by_phase),
             },
@@ -1383,7 +1386,7 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
                 'channel':1,
                 'cell_type':0,
                 'data_type':'RNA-seq',
-                'genome':ref_genome,
+                'genome':','.join([Path(fasta).name for fasta in sequence_files_by_phase]),
                 'methylation_files':tuple(Path(methylation_file).name for methylation_file in methylation_files_by_phase),
                 'label_files':tuple(Path(rna_file).name for rna_file in rna_files_by_phase),
             },
@@ -1396,19 +1399,12 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
         dataset_writer,
         lock,
     ):
-        sequence_list = self.sequence_handler.load_sequence_batch(sample_list)
-
-        sample_specifier_list = [
-            f"{sample['source']}:{sample['start']}-{sample['end']}|all_tasks" 
-            for sample in sample_list 
-            for _ in range(len(sequence_list)//len(sample_list))
-        ]
-
         onehot_dna_phases_list = []
         fiber_phases_list = []   
         rna_phases_list = []   
 
         for phase in range(self.num_phases):
+            sequence_list = self.sequence_handlers[phase].load_sequence_batch(sample_list)
             methylation_fractions_list,valid_cpgs_list = self.cpg_handlers[phase].load_cpg_batch(sample_list)
             onehot_dna_phases_list.append(
                 [
@@ -1425,6 +1421,12 @@ class PhasedFiberRNA(MultimethylMultitaskIOHandler):
             )
             fiber_phases_list.append(self.fiber_label_handlers[phase].load_labels_batch(sample_list))
             rna_phases_list.append(self.rna_label_handlers[phase].load_labels_batch(sample_list))
+
+        sample_specifier_list = [
+            f"{sample['source']}:{sample['start']}-{sample['end']}|all_tasks" 
+            for sample in sample_list 
+            for _ in range(len(sequence_list)//len(sample_list))
+        ]
 
         onehot_dna_list = [
             np.stack([onehot_dna_phases_list[phase][sample_idx][:,0:4] for phase in range(self.num_phases)])

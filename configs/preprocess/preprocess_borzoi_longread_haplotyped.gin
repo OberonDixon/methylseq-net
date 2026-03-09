@@ -1,4 +1,5 @@
-ref_genome = '/clusterfs/nilah/oberon/genomes/hg38.fa'
+hp1_assembly = '/clusterfs/nilah/oberon/datasets/na12878/NA12878.hg38.hp1.fa'
+hp2_assembly = '/clusterfs/nilah/oberon/datasets/na12878/NA12878.hg38.hp2.fa'
 regions_bed = '/clusterfs/nilah/oberon/repos/methylseq-net/configs/training-splits/borzoi-human/sequences_human.bed'
 unphased_rna_file = '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.no5exon.tss.counts.bed.gz'
 methylation_files_by_phase = (
@@ -13,7 +14,7 @@ rna_files_by_phase = (
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP2.no5exon.tss.counts.bed.gz',
     '/global/scratch/projects/vector_streetslab/oberon/datasets/vollger_mendelian/rna_bams/GM12878.kinnex.HP1.no5exon.tss.counts.bed.gz',
 )
-output_directory = '/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878/'
+output_directory = '/global/scratch/projects/vector_streetslab/oberon/methylseqnet_manuscript_datasets/gm12878_haplotyped/'
 label_bin_size = 128
 label_num_bins = 4096
 seq_length = 524288
@@ -26,7 +27,7 @@ MultiMethylWriter.mask = True
 RegionBedParser.regions_bed = %regions_bed
 RegionBedParser.seq_length = %seq_length
 
-PhasedFiberRNA.sequence_files_by_phase = (%ref_genome,%ref_genome)
+PhasedFiberRNA.sequence_files_by_phase = (%hp1_assembly,%hp2_assembly,)
 PhasedFiberRNA.methylation_files_by_phase = %methylation_files_by_phase
 PhasedFiberRNA.fiberseq_files_by_phase = %fiberseq_files_by_phase
 PhasedFiberRNA.rna_files_by_phase = %rna_files_by_phase
