@@ -52,6 +52,7 @@ CONFIG_FILES=(
     "../configs/manuscript_training/bassetlike_methylseq-only_atlas+longread_smoothed8k.gin"
     "../configs/manuscript_training/bassetlike_seq-only_atlas+longread.gin"
     "../configs/manuscript_training/bassetlike_methyl-only_atlas+longread_smoothed.gin"
+    "../configs/manuscript_training/borzoi-rep0_factorized_atlas+longread_unimputed.gin"
 )
 
 UNIQUE_IDENTIFIERS=(
@@ -91,6 +92,7 @@ UNIQUE_IDENTIFIERS=(
     "slurm32292528task33"
     "slurm32292528task34"
     "slurm32293065task35"
+    "slurm32603230task36"
 )
 
 # Get the config file for this array task
