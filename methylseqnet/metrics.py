@@ -3,6 +3,38 @@ from abc import ABC, abstractmethod
 from sklearn.metrics import accuracy_score, precision_score, recall_score, precision_recall_curve, auc, f1_score
 import torch
 
+def pearson_per_task(predictions: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    """Compute Pearson correlation for each task (row).
+    
+    Args:
+        predictions: (tasks, positions)
+        targets: (tasks, positions)
+    
+    Returns:
+        Tensor of shape (tasks,) with per-task Pearson r values.
+    """
+    # Center
+    p = predictions - predictions.mean(dim=1, keepdim=True)
+    t = targets - targets.mean(dim=1, keepdim=True)
+    
+    num = (p * t).sum(dim=1)
+    den = torch.sqrt((p ** 2).sum(dim=1) * (t ** 2).sum(dim=1))
+    
+    return num / den.clamp(min=1e-8)
+
+
+def fisher_mean(correlations: torch.Tensor) -> float:
+    """Average correlations via Fisher z-transformation.
+    
+    Args:
+        correlations: 1-D tensor of Pearson r values.
+    
+    Returns:
+        Back-transformed mean correlation (scalar).
+    """
+    z = torch.arctanh(correlations.clamp(-1 + 1e-7, 1 - 1e-7))
+    return torch.tanh(z.mean()).item()
+
 class GenomicTensorMetric(ABC):
     """
     Base class for multitask metrics operating on 3D tensors of shape

@@ -16,5 +16,7 @@ dependencies:
   - isoseq
   - pb-cpg-tools
   - modkit=0.2.4
+  - ucsc-twobittofa
+  - ucsc-maskoutfa
   - pip:
     - -e .
