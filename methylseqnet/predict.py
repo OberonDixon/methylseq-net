@@ -25,7 +25,7 @@ from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.encoding import one_hot_encode_dna
 from methylseqnet.dataset import MultiMethylDataset,BaseHDF5Dataset
 from methylseqnet.writers import HDF5PredictionWriter
-from methylseqnet.readers import load_track
+from methylseqnet.readers import load_track, load_total_counts
 from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG, InsertSyntheticCpG
@@ -120,6 +120,7 @@ class Predictor:
         sequence_path,
         methylation_paths,
         target_paths: tuple[tuple[str | Path] | str | Path,...] | None = None, # match with channel subset
+        normalize_counts_per = None, # if not None, normalize target counts by the total counts loaded from target paths divided by this number
         channel_subset: tuple[int] or None = None, # match with target_paths
         methylation_load_kwargs = {
             'extend_cpg_sites':False,
@@ -152,6 +153,7 @@ class Predictor:
                 start=start,
                 end=end,
                 target_paths=target_paths,
+                normalize_counts_per=normalize_counts_per,
             )
             prediction_dict["targets"] = targets
         prediction_dict["specifier"] = f"{chromosome}:{start}-{end}|{channel_subset}"
@@ -289,6 +291,7 @@ class Predictor:
         start,
         end,
         target_paths,
+        normalize_counts_per=None,
         **kwargs,
     ):
         # TODO: builders::MultiFileLabelHandler should exist and be used here
@@ -304,12 +307,23 @@ class Predictor:
                     bin_size=self.model.total_stride,
                     **kwargs
                 ) for target_path in (target_path_for_channel if isinstance(target_path_for_channel,list) else [target_path_for_channel])]
+            if normalize_counts_per is not None:
+                counts_normalization = np.mean(
+                    [load_total_counts(target_path)
+                    for target_path in (
+                        target_path_for_channel if isinstance(target_path_for_channel,list)
+                        else [target_path_for_channel]
+                        )
+                    ]
+                ) / normalize_counts_per
+            else:
+                counts_normalization = 1.0
             targets_list_by_channel.append(
                 self.model.crop_targets(
                     torch.tensor(
                         np.stack(targets_list, axis=0), dtype=torch.float32
                     ).mean(dim=0, keepdim=True)
-                ).unsqueeze(1)  # (1, 1, L)
+                ).unsqueeze(1) / counts_normalization  # (1, 1, L)
             )
         targets = torch.cat(
             targets_list_by_channel,

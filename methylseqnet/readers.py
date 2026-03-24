@@ -4,73 +4,43 @@ import os
 
 import numpy as np
 
-def load_annotations(
-    tabix_path,
-    fetch_params=(),
-    subset=None,
-    exclude_subset=False,
-    ):
-    """
-    Load transcript start site (TSS) annotations from a tabix-indexed GTF file.
-    Parameters
-    ----------
-    tabix_path : str or Path
-        Path to the tabix-indexed GTF file.
-    fetch_params : tuple, optional, default () to load all
-        Parameters to pass to the fetch method of the tabix file (e.g., contig, start, end).
-    subset : set of str, optional, default None
-        Set of gene names to include. If None, include all genes.
-    exclude_subset : bool, optional, default False
-        If True, exclude genes in the subset instead of including them.
-    Returns
-    -------
-    list of dict
-        List of TSS annotations with keys: 'chrom', 'tss', 'strand', 'gene_id', 'gene_name', 'transcript_id', 'transcript_type', 'canonical'.
-    """
-    import pysam
-    gtf = pysam.TabixFile(tabix_path)
-    tss_list = []
-    for record in gtf.fetch(*fetch_params):
-        fields = record.split("\t")
-        if fields[2] == "transcript":
-            chrom = fields[0]
-            start = int(fields[3])
-            end = int(fields[4])
-            strand = fields[6]
-            attributes = fields[8]
-
-            # Parse attributes
-            attr_dict = {}
-            for attr in attributes.strip().split(';'):
-                attr = attr.strip()
-                if attr:
-                    parts = attr.split(' ', 1)
-                    if len(parts) == 2:
-                        key = parts[0]
-                        val = parts[1].strip('"')
-                        attr_dict[key] = val
-            
-            # TSS is start for + strand, end for - strand
-            tss = start if strand == '+' else end
-
-            tss_dict = {
-                'chrom': chrom,
-                'tss': tss,
-                'strand': strand,
-                'gene_id': attr_dict.get('gene_id', ''),
-                'gene_name': attr_dict.get('gene_name', '').upper(),
-                'transcript_id': attr_dict.get('transcript_id', ''),
-                'transcript_type': attr_dict.get('transcript_type', ''),
-                'canonical': 'Ensembl_canonical' in attributes
-            }
-            
-            if (
-                    (subset is None or (exclude_subset != (tss_dict['gene_name'] in subset)))
-                    and tss_dict['canonical']
-                    and tss_dict['transcript_type'] == 'protein_coding'
-                ):
-                tss_list.append(tss_dict)
-    return tss_list
+def load_total_counts(
+    file_path: str | Path | dict[str, str | Path],
+    file_type: str | None = None,
+):
+    total_counts = 0
+    if (isinstance(file_path, str) or isinstance(file_path, Path)):
+        if (Path(file_path).suffix in [".bw",".bigwig"] or file_type == "bigwig"):
+            import pyBigWig
+            bw = pyBigWig.open(str(file_path))
+            # Sum across all chromosomes
+            for chrom, length in bw.chroms().items():
+                stats = bw.stats(chrom, 0, length, type="sum", nBins=1,exact=True)
+                if stats[0] is not None:
+                    total_counts += stats[0]
+            bw.close()
+            return total_counts
+        elif (Path(file_path).suffix in [".bam"] or file_type == "bam_coverage"):
+            import pysam
+            bam = pysam.AlignmentFile(str(file_path), "rb")
+            self.chroms = dict(zip(bam.references, bam.lengths))
+            total_reads += bam.mapped
+            bam.close()
+        elif file_type == "bedmethyl":
+            raise ValueError("Total counts loading not supported for bedmethyl files, as the concept of total counts is not well-defined for methylation ratio tracks.")
+        elif file_type == "bedcounts" or Path(file_path).name.endswith(".bed.gz"):
+            import pysam
+            tbx = pysam.TabixFile(str(file_path))
+            for chrom in tbx.contigs:
+                for row in tbx.fetch(chrom):
+                    tabix_fields = row.split("\t")
+                    counts = int(tabix_fields[4])
+                    total_counts += counts
+        else:
+            raise NotImplementedError(f"File type for {file_path} not supported.")
+    else:
+        raise NotImplementedError(f"File type for {file_path} not supported.")    
+    return total_counts
 
 def load_sequence(
     file_path: str | Path | dict[str, str | Path],
