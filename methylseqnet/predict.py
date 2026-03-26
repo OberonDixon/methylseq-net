@@ -292,11 +292,16 @@ class Predictor:
         end,
         target_paths,
         normalize_counts_per=None,
+        softclip_threshold=None,
         **kwargs,
     ):
         # TODO: builders::MultiFileLabelHandler should exist and be used here
         targets_list_by_channel = []
-        for target_path_for_channel in target_paths:
+        for target_idx, target_path_for_channel in enumerate(target_paths):
+            if softclip_threshold is not None:
+                softclip_for_channel = softclip_threshold[target_idx] if isinstance(softclip_threshold,list) else softclip_threshold
+            else:
+                softclip_for_channel = np.inf
             targets_list = [
                 load_track(
                     file_path=target_path,
@@ -318,12 +323,18 @@ class Predictor:
                 ) / normalize_counts_per
             else:
                 counts_normalization = 1.0
+            target_for_channel = self.model.crop_targets(
+                torch.tensor(
+                    np.stack(targets_list, axis=0), dtype=torch.float32
+                ).mean(dim=0, keepdim=True)
+            ).unsqueeze(1) / counts_normalization  # (1, 1, L)
+            target_for_channel = torch.where(
+                target_for_channel > softclip_for_channel,
+                softclip_for_channel + torch.sqrt(target_for_channel - softclip_for_channel),
+                target_for_channel,
+            )
             targets_list_by_channel.append(
-                self.model.crop_targets(
-                    torch.tensor(
-                        np.stack(targets_list, axis=0), dtype=torch.float32
-                    ).mean(dim=0, keepdim=True)
-                ).unsqueeze(1) / counts_normalization  # (1, 1, L)
+                target_for_channel
             )
         targets = torch.cat(
             targets_list_by_channel,
