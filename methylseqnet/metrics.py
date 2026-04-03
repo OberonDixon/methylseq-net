@@ -23,6 +23,11 @@ def pearson_per_task(predictions: torch.Tensor, targets: torch.Tensor) -> torch.
     return num / den.clamp(min=1e-8)
 
 
+def delta_z(r1, r2, eps=1e-7):
+    z1 = torch.arctanh(torch.as_tensor(r1).clamp(-1 + eps, 1 - eps))
+    z2 = torch.arctanh(torch.as_tensor(r2).clamp(-1 + eps, 1 - eps))
+    return z1 - z2
+
 def fisher_mean(correlations: torch.Tensor) -> float:
     """Average correlations via Fisher z-transformation.
     
