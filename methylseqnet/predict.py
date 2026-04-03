@@ -385,16 +385,16 @@ class Predictor:
                     baselines=(sequence_baseline, conditioning_baseline),
                     **attribution_kwargs,
                 )
-                all_seq_attrs.append(seq_attr)
-                all_cond_attrs.append(cond_attr)
+                all_seq_attrs.append(seq_attr.detach().cpu())
+                all_cond_attrs.append(cond_attr.detach().cpu())
             seq_attr = torch.stack(all_seq_attrs).mean(0)
             cond_attr = torch.stack(all_cond_attrs).mean(0)
         finally:
             self.model.supplemental_predict_outputs = saved_supplemental
 
         return {
-            'sequence_attributions': seq_attr.detach().cpu(),
-            'conditioning_state_attributions': cond_attr.detach().cpu(),
+            'sequence_attributions': seq_attr,
+            'conditioning_state_attributions': cond_attr,
         }
 
     def _find_peaks(
