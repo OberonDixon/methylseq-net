@@ -1,30 +1,11 @@
 # methylseq-net
 
-MethylSeqNet is a method for conditioning genomic regulatory activity predictons on epigenetic state, currently in the form of CpG methylation landscape. This repo was created based on preliminary work in April 2023. 
+MethylSeqNet is a method for conditioning genomic regulatory activity predictons on epigenetic state, currently in the form of CpG methylation landscape. 
 
-## Installation
+## Running MethylSeqNet
 
-Clone the repository and navigate into the top-level directory containing `environment.yml` and `pyproject.toml`. 
+To run the model, you can run `pip install git+https://github.com/OberonDixon/methylseq-net` and use the `predict` entry point with a pretrained checkpoint. 
 
-```
-git clone https://github.com/OberonDixon/methylseq-net
-cd methylseq-net
-```
+## Reproduce published results
 
-Create a conda environment by running this following command. This will install the `methylseqnet` python package in editable mode so any code changes will be reflected whenever the python kernel is re-started. Conda dependencies necessary for preprocessing and downstream analysis are also installed.
-
-```
-conda env create -f environment.yml
-```
-
-You can also update your existing environment:
-
-```
-conda env update -f environment.yml
-```
-
-And you can update while removing any unnecessary dependencies:
-
-```
-conda env update -f environment.yml --prune
-```
+To reproduce results presented in Dixon-Luinenburg et al, 2026, reference reproducibility code in https://github.com/OberonDixon/methylseq-net-reproducibility. 
