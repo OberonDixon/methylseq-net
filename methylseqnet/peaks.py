@@ -137,7 +137,7 @@ def generate_peaks_bed_from_dataset(
 
         
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Generate peaks bed files from a preprocessed dataset object with io_mappings")
     parser.add_argument("--dataset-paths", type=str, nargs='+', required=True, help="Path to the preprocessed dataset object (HDF5 file)")
     parser.add_argument("--output-directory", type=str, required=True, help="Path to save the output BED file")
@@ -164,3 +164,6 @@ if __name__ == "__main__":
         cpg_density_window=args.cpg_density_window,
         random_seeds=args.random_seeds
     )
+
+if __name__ == "__main__":
+    main()

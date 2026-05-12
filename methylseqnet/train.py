@@ -301,7 +301,7 @@ def create_callbacks(
 
     return callbacks
 
-if __name__ == '__main__':
+def cli():
     parser = argparse.ArgumentParser(description='Train a ConditionedSeqNN model.')
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
     parser.add_argument('--output_dir', type=str, required=False, default=model_checkpoints, help='Directory to store outputs.')
@@ -348,3 +348,6 @@ if __name__ == '__main__':
         no_haplotype_metrics=args.no_haplotype_metrics,
         track_gradients_for_modules=args.track_gradients_for_modules
     )
+
+if __name__ == '__main__':
+    cli()

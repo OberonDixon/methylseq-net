@@ -15,20 +15,30 @@ dependencies = [
     "gin-config",
     "nvidia-ml-py",
     "pysam",
-    "pytest",
     "lightning",
     "h5py",
     "pyBigWig",
     "wandb>=0.21",
     "borzoi-pytorch",
     "basenji2-pytorch>=0.1.2",
-    "numpy<2.0.0",
+#    "numpy<2.0.0",
+    "numpy",
     "psutil",
     "tqdm",
 ]
+
+[project.optional-dependencies]
+dev = ["pytest"]
 
 [tool.setuptools]
 packages = {find = {}}
 
 [tool.setuptools.package-data]
 methylseqnet = ["configs/*.toml", "configs/*.toml.example"]
+
+[project.scripts]
+methylseqnet-train = "methylseqnet.train:cli"
+methylseqnet-predict = "methylseqnet.predict:main"
+methylseqnet-preprocess = "methylseqnet.preprocess:main"
+methylseqnet-peaks = "methylseqnet.peaks:main"
+methylseqnet-insert-motifs = "methylseqnet.motifs:main"

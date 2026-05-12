@@ -240,7 +240,7 @@ def pretrained_model_embeddings():
         write_queue.put(None)
         writer_thread.join()
 
-def main():
+def preprocess_datasets():
     parser = argparse.ArgumentParser(description="Run PreprocessingPipeline")
     parser.add_argument("--config", required=True, help="Path to the gin config file. No default.")
     parser.add_argument("--subset", required=False, default='all', help="Subset to process (e.g., train, test, validation, or all). Defaults to all.")
@@ -272,8 +272,11 @@ def main():
     print(f"running {'sequential' if args.sequential else 'parallel'}. {cores_avail} available cores, using {cores}")
     pipeline.process_samples(subset=args.subset,sequential=args.sequential,max_workers=cores)
 
-if __name__ == "__main__":
+def main():
     if len(sys.argv) > 1 and sys.argv[1] == "pretrained_model_embeddings":
         pretrained_model_embeddings()
     else:
-        main()
+        preprocess_datasets()
+
+if __name__ == "__main__":
+    main()
