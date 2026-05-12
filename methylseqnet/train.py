@@ -16,7 +16,6 @@ from methylseqnet.dataset import MultiMethylDataset, CompositeDataset
 from methylseqnet.callbacks import ConditionalBestScoreReset, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger, ValidationMetricsLogger, SubmodulesGradientNormLogger
 from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.datamodule import MethylSeqDataModule
-from methylseqnet.paths import model_checkpoints, genomes, pacbio_5mC_tracks, fiberseq_tracks, rna_tracks
 from collections import defaultdict
 import pynvml
 from lightning import Trainer
@@ -281,21 +280,25 @@ def create_callbacks(
             )
         callbacks.extend([temp_checkpoint,best_val_checkpoint,reset_best_score])
     if not no_haplotype_metrics:
-        haplotyped_pred_logger_fiber = HaplotypedPredLogger(
-            hp1_cpg_file = pacbio_5mC_tracks / "GM12878_WGS-pb-5mC.hap2.bw",
-            hp2_cpg_file = pacbio_5mC_tracks / "GM12878_WGS-pb-5mC.hap1.bw",
-            hp1_accessibility_file = fiberseq_tracks / "GM12878_trackHub/bw/hap2.acc.bw",
-            hp2_accessibility_file = fiberseq_tracks / "GM12878_trackHub/bw/hap1.acc.bw",
-            hp1_rna_file = rna_tracks / "GM12878.kinnex.HP1.tss.counts.bed.gz",
-            hp2_rna_file = rna_tracks / "GM12878.kinnex.HP2.tss.counts.bed.gz",
-            ref_genome_fasta = genomes / "hg38.fa",
-            regions = [('chrX',131789298-262_144,131789298+262_144),('chrX',149575782-262_144,149575782+262_144)],
-            log_stats = True,
-            upload_plots = True,    
-            plot_methylation = True,   
-            plot_rna = True,
-        )
-        callbacks.extend([haplotyped_pred_logger_fiber])
+        try:
+            from methylseqnet_repro.paths import genomes, pacbio_5mC_tracks, fiberseq_tracks, rna_tracks
+            haplotyped_pred_logger_fiber = HaplotypedPredLogger(
+                hp1_cpg_file = pacbio_5mC_tracks / "GM12878_WGS-pb-5mC.hap2.bw",
+                hp2_cpg_file = pacbio_5mC_tracks / "GM12878_WGS-pb-5mC.hap1.bw",
+                hp1_accessibility_file = fiberseq_tracks / "GM12878_trackHub/bw/hap2.acc.bw",
+                hp2_accessibility_file = fiberseq_tracks / "GM12878_trackHub/bw/hap1.acc.bw",
+                hp1_rna_file = rna_tracks / "GM12878.kinnex.HP1.tss.counts.bed.gz",
+                hp2_rna_file = rna_tracks / "GM12878.kinnex.HP2.tss.counts.bed.gz",
+                ref_genome_fasta = genomes / "hg38.fa",
+                regions = [('chrX',131789298-262_144,131789298+262_144),('chrX',149575782-262_144,149575782+262_144)],
+                log_stats = True,
+                upload_plots = True,    
+                plot_methylation = True,   
+                plot_rna = True,
+            )
+            callbacks.extend([haplotyped_pred_logger_fiber])
+        except Exception as e:
+            print(f"Failed to initialize HaplotypedPredLogger: {e}. Continuing without haplotype-specific logging.")
     if track_gradients_for_modules:
         callbacks.append(SubmodulesGradientNormLogger(track_gradients_for_modules))
 
@@ -303,6 +306,11 @@ def create_callbacks(
 
 def cli():
     parser = argparse.ArgumentParser(description='Train a ConditionedSeqNN model.')
+    try:
+        from methylseqnet_repro.paths import model_checkpoints
+    except Exception as e:
+        print(f"Failed to import model_checkpoints path from methylseqnet.paths: {e}. Using current directory instead.")
+        model_checkpoints = '.'
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
     parser.add_argument('--output_dir', type=str, required=False, default=model_checkpoints, help='Directory to store outputs.')
     parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
