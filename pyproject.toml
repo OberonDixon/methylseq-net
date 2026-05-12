@@ -7,7 +7,7 @@ name = "methylseqnet"
 version = "0.0.1"
 requires-python = ">=3.11"
 dependencies = [
-    "torch>=2.0.0",
+    "torch>=2.0.0,<2.7.0",
     "biopython>=1.83",
     "scikit-learn>=1.7.2",
     "captum>=0.7.0",
