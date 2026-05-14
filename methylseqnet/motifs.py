@@ -352,7 +352,7 @@ def char_array_to_string(arr):
     Converts a NumPy array of byte-long ASCII codes into an ASCII string.
     e.g. [65, 67, 71, 84] becomes "ACGT".
     """
-    return arr.tostring().decode("ascii")
+    return arr.tobytes().decode("ascii")
 
 
 def one_hot_to_tokens(one_hot):
@@ -518,6 +518,9 @@ def main():
     parser.add_option('--REFERENCE_GENOME', dest='REFERENCE_GENOME',
         default='/clusterfs/nilah/ayesha/genomes/hg38.ml.fa', # default hg38 path
         help='Reference genome fasta path [Default: %default]')
+    parser.add_option('--TFS_FILE', dest='TFS_FILE',
+        default='transcription_factors.txt', # default path to text file with TF names (one per line)
+        help='Path to text file with TF names (one per line) [Default: %default]')
     parser.add_option('--OVERWRITE', action='store_true', dest='OVERWRITE',
         default=False,
         help='Overwrite existing files if present [Default: %default]')
@@ -550,8 +553,8 @@ def main():
     # PWMs for selection, or otherwise for each human CIS-BP TF (~700)
     # PWMS_TOP_DIR is required so we always have a fallback
     TFS = []
-    if os.path.exists('transcription_factors.txt'):
-        with open('transcription_factors.txt', 'r') as file:
+    if os.path.exists(options.TFS_FILE):
+        with open(options.TFS_FILE, 'r') as file:
             TFS = file.read().splitlines()
     else:
         TFS = os.listdir(f"{PWMS_TOP_DIR}/pwms/")
