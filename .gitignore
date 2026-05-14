@@ -1,6 +1,8 @@
 .ipynb_checkpoints/
+.ipynb_checkpoints
 *.egg-info/
 __pycache__/
 *.pyc
 build/
 methylseqnet/configs/paths.toml
+.DS_Store
