@@ -504,27 +504,35 @@ def main():
     usage = 'usage: %prog [options] <PWMS_TOP_DIR> <PEAKS_TOP_DIR> <PEAKS_OUTPUT_DIR>'
     parser = OptionParser(usage)
 
-    parser.add_option('--INPUT_LEN', dest='INPUT_LEN',
+    parser.add_option('--input-len', dest='input_len',
         type='int',
         default=524288, # default to Borzoi context
         help='Sequence input length [Default: %default]')
-    parser.add_option('--SHUFFLE_LEN', dest='SHUFFLE_LEN',
+    parser.add_option('--shuffle-len', dest='shuffle_len',
         type='int',
         default=128, # default bin size
         help='Shuffling length around peak center [Default: %default]')
-    parser.add_option('--N', dest='N',
+    parser.add_option('--n', dest='n',
         default=5, # default to 5 trials per motif/peak pair
         help='Number of trials for each motif insertion [Default: %default]')
-    parser.add_option('--REFERENCE_GENOME', dest='REFERENCE_GENOME',
-        default='/clusterfs/nilah/ayesha/genomes/hg38.ml.fa', # default hg38 path
+    parser.add_option('--reference-genome', dest='reference_genome',
+        default='', # default hg38 path
         help='Reference genome fasta path [Default: %default]')
-    parser.add_option('--TFS_FILE', dest='TFS_FILE',
+    parser.add_option('--tfs-file', dest='tfs_file',
         default='transcription_factors.txt', # default path to text file with TF names (one per line)
         help='Path to text file with TF names (one per line) [Default: %default]')
-    parser.add_option('--OVERWRITE', action='store_true', dest='OVERWRITE',
+    parser.add_option('--overwrite', action='store_true', dest='overwrite',
         default=False,
         help='Overwrite existing files if present [Default: %default]')
     (options, args) = parser.parse_args()
+
+    if options.reference_genome == '':
+        try:
+            from methylseqnet_repro import genomes
+            options.reference_genome = genomes / 'hg38.fa'
+        except Exception as e:
+            print(f"Failed to import genomes path from methylseqnet_repro.paths: {e}. Using hardcoded UC Berkeley HPC hg38 path instead.")
+            options.reference_genome = "/clusterfs/nilah/oberon/genomes/hg38.fa"
 
     if len(args) == 3:
         PWMS_TOP_DIR = args[0]
@@ -537,23 +545,23 @@ def main():
         os.makedirs(PEAKS_OUTPUT_DIR,exist_ok=True)
 
     # calculate pad length needed to fill input
-    INPUT_LEN = options.INPUT_LEN
+    INPUT_LEN = options.input_len
     if INPUT_LEN % 2 != 0:
         raise ValueError("INPUT_LEN must be an even number.")
-    SHUFFLE_LEN = options.SHUFFLE_LEN
-    N = options.N
+    SHUFFLE_LEN = options.shuffle_len
+    N = options.n
     print(f"Model input sequence length is: {INPUT_LEN}")
     print(f"Shuffled central sequence length is: {SHUFFLE_LEN}")
 
     # reference genome
-    hg38_fasta = pysam.Fastafile(options.REFERENCE_GENOME)
+    hg38_fasta = pysam.Fastafile(options.reference_genome)
     chrom_lens_dict = dict(zip(hg38_fasta.references, hg38_fasta.lengths))
     print(chrom_lens_dict)
 
     # PWMs for selection, or otherwise for each human CIS-BP TF (~700)
     # PWMS_TOP_DIR is required so we always have a fallback
     TFS = []
-    if os.path.exists(options.TFS_FILE):
+    if os.path.exists(options.tfs_file):
         with open(options.TFS_FILE, 'r') as file:
             TFS = file.read().splitlines()
     else:
@@ -662,7 +670,7 @@ def main():
         records = list(SeqIO.parse(f"{PEAKS_OUTPUT_DIR}/{tis}/endogenous_sequences_{INPUT_LEN}.fasta", "fasta"))
         seqs = [str(i.seq) for i in records]
 
-        task_args = [(tis, tf, seqs, pwms[tf], PEAKS_OUTPUT_DIR, INPUT_LEN, SHUFFLE_LEN, N, options.OVERWRITE) for tf in TFS]
+        task_args = [(tis, tf, seqs, pwms[tf], PEAKS_OUTPUT_DIR, INPUT_LEN, SHUFFLE_LEN, N, options.overwrite) for tf in TFS]
         with Pool() as pool:
             pool.map(write_motif_insertion, task_args)
     

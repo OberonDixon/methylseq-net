@@ -493,7 +493,8 @@ def main():
         "cpg_density",
     ]
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
-    parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference /clusterfs/nilah/oberon/lightning/")
+    parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference checkpoints dir")
+    parser.add_argument('--checkpoints-dir', type=str, required=False, default='', help='Directory to load trained checkpoints.')
     parser.add_argument("--true-conditioning-state-weight", type=float, default=None, help="If set, override the model's true_conditioning_state_weight with this value for prediction.")
     parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--dataset-keys", nargs='+', required=True, help="Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-files)")
@@ -506,6 +507,15 @@ def main():
     parser.add_argument("--num-workers", type=int, default=8, help="Number of data loader workers")
     
     args = parser.parse_args()    
+
+    if args.checkpoints_dir == '':
+        try:
+            from methylseqnet_repro.paths import model_checkpoints
+        except Exception as e:
+            print(f"Failed to import model_checkpoints path from methylseqnet_repro.paths: {e}. Using hardcoded UC Berkeley HPC directory instead.")
+            model_checkpoints = '/clusterfs/nilah/oberon/lightning/'
+        args.checkpoints_dir = model_checkpoints
+
 
     if len(args.dataset_keys) != len(args.dataset_files):
         parser.error(f"--dataset-keys ({len(args.dataset_keys)}) and --dataset-files ({len(args.dataset_files)}) must have the same number of arguments")
@@ -541,10 +551,9 @@ def main():
         else:
             output_path = dataset_dir / args.model_identifier / dataset_name
         best_ckpt = max(
-            Path(f"/clusterfs/nilah/oberon/lightning/{args.model_identifier}/checkpoints/").glob('best*.ckpt'),
+            Path(Path(args.checkpoints_dir) / args.model_identifier / "checkpoints").glob('best*.ckpt'),
             key=lambda p: p.stat().st_mtime
         )   
-        temp_ckpt = f'/clusterfs/nilah/oberon/lightning/{args.model_identifier}/checkpoints/temp-checkpoint.ckpt'
 
         predictor = Predictor(
             model=best_ckpt,

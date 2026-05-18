@@ -306,16 +306,11 @@ def create_callbacks(
 
 def cli():
     parser = argparse.ArgumentParser(description='Train a ConditionedSeqNN model.')
-    try:
-        from methylseqnet_repro.paths import model_checkpoints
-    except Exception as e:
-        print(f"Failed to import model_checkpoints path from methylseqnet.paths: {e}. Using current directory instead.")
-        model_checkpoints = '.'
     parser.add_argument('--config', type=str, required=True, help='Path to the gin config file.')
-    parser.add_argument('--output_dir', type=str, required=False, default=model_checkpoints, help='Directory to store outputs.')
-    parser.add_argument('--unique_identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
+    parser.add_argument('--unique-identifier', type=str, required=False, default=dt.now().strftime('%Y-%m-%d_%H-%M-%S'), help='Unique identifier for run.')
+    parser.add_argument('--checkpoints-dir', type=str, required=False, default='', help='Directory to store output trained checkpoints.')
     parser.add_argument('--gpus', type=str, required=False, default='auto', help='GPU count for parallelization.')
-    parser.add_argument('--batch_size', type=int, required=False, default=-1, help='Batch size for dataloader.')
+    parser.add_argument('--batch-size', type=int, required=False, default=-1, help='Batch size for dataloader.')
     parser.add_argument('--max-epochs', type=int, required=False, default=100, help='Maximum number of epochs to train; this is overridden if training stages are defined in the gin config file.')
     parser.add_argument('--samples-per-step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
@@ -332,6 +327,13 @@ def cli():
         help="Set the logging level"
     )
     args = parser.parse_args()
+    if args.checkpoints_dir == '':
+        try:
+            from methylseqnet_repro.paths import model_checkpoints
+        except Exception as e:
+            print(f"Failed to import model_checkpoints path from methylseqnet_repro.paths: {e}. Using hardcoded UC Berkeley HPC directory instead.")
+            model_checkpoints = '/clusterfs/nilah/oberon/lightning/'
+        args.checkpoints_dir = model_checkpoints
 
     level = getattr(logging, args.logging_level.upper(), logging.INFO)
     logging.basicConfig(
@@ -342,7 +344,7 @@ def cli():
     
     main(
         config=args.config,
-        output_dir=args.output_dir,
+        output_dir=args.checkpoints_dir,
         unique_identifier=args.unique_identifier,
         gpus=args.gpus,
         batch_size=args.batch_size,
