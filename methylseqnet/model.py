@@ -21,7 +21,7 @@ from io import StringIO
 
 from methylseqnet.layers import ActivationCapture
 from methylseqnet.losses import MaskedLoss, PoissonLoss, LogL1Loss, BCELoss, OrthogonalityLoss, MSELoss
-from methylseqnet.pretrained import basenji2_pytorch, borzoi_pytorch
+from methylseqnet.pretrained import basenji2_pytorch, borzoi_pytorch, alphagenome_pytorch
 from methylseqnet.tensor_ops import FEATURE_MODULATION_OPS
 
 gin.register(nn.Softplus)

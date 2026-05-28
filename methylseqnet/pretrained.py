@@ -96,3 +96,50 @@ def borzoi_pytorch(
     borzoi_embedder = BorzoiEmbedder(borzoi, remove_crop=remove_crop, reinitialize=reinitialize)
 
     return borzoi_embedder
+
+@gin.configurable
+@gin.register
+def alphagenome_pytorch(
+    pretrained_seq_model_weights,
+    pretrained_seq_model_filename='model_all_folds.safetensors',
+    reinitialize=False,
+    remove_crop=False,  # no-op: AlphaGenome has no explicit crop layer; kept for API symmetry
+    ):
+    import os
+    from alphagenome_pytorch import AlphaGenome
+
+    class AlphaGenomeEmbedder(nn.Module):
+        def __init__(self, model, reinitialize=False):
+            super().__init__()
+            self.model = model
+            if reinitialize:
+                @torch.no_grad()
+                def init_weights(m):
+                    if isinstance(m, (nn.Conv1d, nn.Linear)):
+                        nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                        if getattr(m, "bias", None) is not None:
+                            m.bias.fill_(0)
+                self.model.apply(init_weights)
+
+        def forward(self, x):
+            # x: (N, 4, L) NCL from MethylSeqNet — AlphaGenome expects NLC
+            x = x.permute(0, 2, 1)
+            embeddings = self.model.encode(
+                x,
+                organism_index=0,   # human
+                resolutions=(128,),
+                channels_last=False, # return NCL: (N, 3072, L//128)
+            )
+            return embeddings['embeddings_128bp']
+
+    if os.path.exists(str(pretrained_seq_model_weights)):
+        local_path = pretrained_seq_model_weights
+    else:
+        from huggingface_hub import hf_hub_download
+        local_path = hf_hub_download(
+            repo_id=pretrained_seq_model_weights,
+            filename=pretrained_seq_model_filename,
+        )
+
+    model = AlphaGenome.from_pretrained(local_path)
+    return AlphaGenomeEmbedder(model, reinitialize=reinitialize)

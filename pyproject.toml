@@ -21,6 +21,8 @@ dependencies = [
     "wandb>=0.21",
     "borzoi-pytorch>=0.4.1",
     "basenji2-pytorch>=0.1.2",
+    "alphagenome-pytorch>=0.1.0",
+    "huggingface-hub>=0.20.0",
 #    "numpy<2.0.0",
     "numpy>=1.26.4",
     "psutil>=5.9.8",
