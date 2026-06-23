@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import tempfile
 from pathlib import Path
 import warnings
@@ -9,8 +11,10 @@ import wandb
 from captum.attr import IntegratedGradients
 
 import methylseqnet.train as train
+import methylseqnet.predict as predict
 from methylseqnet.model import ConditionedSeqNN
 from methylseqnet.predict import Predictor
+from methylseqnet.hub import DEFAULT_BASE, DEFAULT_VERSION
 from test_model import get_config_files_with_names, nuke_gin_config
 
 import gin
@@ -21,7 +25,7 @@ import gin.config
     reason="Test requires at least one GPU",
 )
 @pytest.mark.parametrize("config_file", get_config_files_with_names())
-def test_train_predict_integration(config_file):
+def test_train_predict_integration(config_file, monkeypatch):
     nuke_gin_config()
     wandb.finish()
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -105,3 +109,76 @@ def test_train_predict_integration(config_file):
         except RuntimeError as e:
             if "used in the graph" in str(e) and "allow_unused" in str(e):
                 warnings.warn(f"RuntimeError during predict_locus with attributions: {e}. This may be due to the attribution method not being compatible with the model architecture, and can be ignored for the purposes of this integration test.")
+
+        # CLI integration: exercise methylseqnet-predict for both model sources
+        # The CLI writes prediction outputs alongside each input file, so copy the
+        # datasets into the temp dir to avoid polluting tests/data. Datasets may be
+        # listed per-key as a single path or a list; normalize to one file per key.
+        cli_data_dir = Path(temp_dir) / "cli_data"
+        cli_data_dir.mkdir(exist_ok=True)
+        cli_keys, cli_files = [], []
+        for key, value in trainer.datamodule.train_dataset_dict.items():
+            src = value[0] if isinstance(value, (list, tuple)) else value
+            dst = cli_data_dir / f"{key}_{Path(src).name}"
+            shutil.copy(src, dst)
+            cli_keys.append(key)
+            cli_files.append(str(dst))
+
+        # Empty --supplemental-outputs keeps the test model-agnostic across the
+        # parametrized configs (factorized-only reps aren't available everywhere).
+        common_argv = [
+            "--dataset-keys", *cli_keys,
+            "--dataset-files", *cli_files,
+            "--supplemental-outputs",
+            "--gpus", "1",
+            "--num-workers", "1",
+        ]
+
+        # local source: load the checkpoint just trained above via the run identifier.
+        # In local mode the output label is the model identifier ("test").
+        monkeypatch.setattr(sys, "argv", [
+            "methylseqnet-predict",
+            "--model-source", "local",
+            "--model-identifier", "test",
+            "--checkpoints-dir", temp_dir,
+            *common_argv,
+        ])
+        predict.main()
+        assert list((cli_data_dir / "test").rglob("predictions.h5")), \
+            "local CLI run produced no predictions"
+
+        # local source requires --model-identifier; omitting it is a usage error
+        monkeypatch.setattr(sys, "argv", [
+            "methylseqnet-predict",
+            "--model-source", "local",
+            "--checkpoints-dir", temp_dir,
+            *common_argv,
+        ])
+        with pytest.raises(SystemExit):
+            predict.main()
+
+        # huggingface source: mock the hub download to return a local checkpoint so the
+        # CLI from_release plumbing is exercised without any network access.
+        fake_ckpt = str(checkpoints_dir / "temp-checkpoint.ckpt")
+        monkeypatch.setattr(predict, "release_checkpoint_path", lambda *args, **kwargs: fake_ckpt)
+
+        # --model-identifier is rejected when the source is huggingface
+        monkeypatch.setattr(sys, "argv", [
+            "methylseqnet-predict",
+            "--model-source", "huggingface",
+            "--model-identifier", "test",
+            *common_argv,
+        ])
+        with pytest.raises(SystemExit):
+            predict.main()
+
+        # valid huggingface invocation; output label is "<base>-<version>"
+        monkeypatch.setattr(sys, "argv", [
+            "methylseqnet-predict",
+            "--model-source", "huggingface",
+            *common_argv,
+        ])
+        predict.main()
+        hf_label = f"{DEFAULT_BASE}-{DEFAULT_VERSION}"
+        assert list((cli_data_dir / hf_label).rglob("predictions.h5")), \
+            "huggingface CLI run produced no predictions"
