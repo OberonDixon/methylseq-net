@@ -47,6 +47,7 @@ def main(
     samples_per_step = -1,
     samples_per_log = 64,
     start_from_checkpoint = None,
+    wandb_run_id = None,
     no_wandb = False,
     no_checkpoints = False,
     no_haplotype_metrics = False,
@@ -113,8 +114,23 @@ def main(
     
     model_dir = Path(output_dir)/unique_identifier
     temp_checkpoint_path = model_dir/'checkpoints'/'temp-checkpoint.ckpt'
-    start_checkpoint_path = Path(output_dir)/start_from_checkpoint/'checkpoints'/'best-checkpoint.ckpt' if start_from_checkpoint else None
-    
+
+    if start_from_checkpoint:
+        base_ckpt_dir = Path(output_dir)/start_from_checkpoint/'checkpoints'
+        generic_ckpt = base_ckpt_dir/'best-checkpoint.ckpt'
+        if generic_ckpt.exists():
+            start_checkpoint_path = generic_ckpt
+        else:
+            # Runs with named training stages save best-checkpoint-{stage_name}.ckpt instead
+            stage_ckpts = sorted(base_ckpt_dir.glob('best-checkpoint-*.ckpt'), key=lambda p: p.stat().st_mtime)
+            if stage_ckpts:
+                start_checkpoint_path = stage_ckpts[-1]
+                print(f"No best-checkpoint.ckpt found; using most recent stage checkpoint: {start_checkpoint_path}")
+            else:
+                start_checkpoint_path = generic_ckpt  # will raise a clear error below
+    else:
+        start_checkpoint_path = None
+
     start_checkpoint_epoch = 0
     starting_from_best = False
     # if the temp checkpoint exists, model training has been restarted
@@ -130,17 +146,19 @@ def main(
             start_checkpoint_epoch = checkpoint.get("epoch",0)
             print(f"Starting training from state_dict for {start_checkpoint_path}; epoch will be forced to {start_checkpoint_epoch} on fit start.")
         except Exception as e:
-            print(f"Failed to load checkpoint {start_checkpoint_path}: {e}. Starting from scratch instead.")
+            raise RuntimeError(f"Failed to load checkpoint {start_checkpoint_path}: {e}") from e
     # if there is no start point checkpoint nor temp checkpoint, we are starting from scratch
     else:
         print(f"Starting training from scratch.")
         checkpoint_to_use = None    
         
     if not no_wandb:
+        effective_wandb_id = wandb_run_id if wandb_run_id else unique_identifier
         logger = WandbLogger(
             save_dir=model_dir,
             name=f"{Path(config).stem}_{unique_identifier}",
-            version=unique_identifier,
+            version=effective_wandb_id,
+            resume="allow" if wandb_run_id else None,
         )
     else:
         logger = None
@@ -314,6 +332,7 @@ def cli():
     parser.add_argument('--max-epochs', type=int, required=False, default=100, help='Maximum number of epochs to train; this is overridden if training stages are defined in the gin config file.')
     parser.add_argument('--samples-per-step', type=int, required=False, default=32, help='How many samples to process per optimizer step; this is used to calculation gradient accumulation steps internally. If -1, no gradient accumulation is used.')
     parser.add_argument('--start-from-checkpoint', type=str, required=False, default=None, help='Unique identifier for a checkpoint from which to restart. Hyperparameter mistmatch may cause errors.')
+    parser.add_argument('--wandb-run-id', type=str, required=False, default=None, help='WandB run ID to resume. Use to continue curves from a previous run when starting from its checkpoint.')
     parser.add_argument('--no-wandb', action='store_true', help='Do not save WandB logs.')
     parser.add_argument('--no-checkpoints', action='store_true', help='Do not save model checkpoints.')
     parser.add_argument('--no-haplotype-metrics', action='store_true', help='If set, enable haplotype-specific metrics logging during training.')
@@ -353,6 +372,7 @@ def cli():
         samples_per_log=64,
         random_seed=args.seed,
         start_from_checkpoint=args.start_from_checkpoint,
+        wandb_run_id=args.wandb_run_id,
         no_wandb=args.no_wandb,
         no_checkpoints=args.no_checkpoints,
         no_haplotype_metrics=args.no_haplotype_metrics,
