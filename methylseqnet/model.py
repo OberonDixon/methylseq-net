@@ -450,6 +450,17 @@ class ConditionedSeqNN(L.LightningModule):
     ):
         ckpt_path = release_checkpoint_path(base, version, repo_id=repo_id, filename=filename)
         return cls.load_from_checkpoint(ckpt_path, **kwargs)
+
+    @classmethod
+    def from_local(
+        cls, run_id,
+        *,
+        checkpoints_dir,
+        **kwargs,
+    ):
+        ckpt_path = max(Path(checkpoints_dir, run_id, "checkpoints").glob("best*.ckpt"),
+                   key=lambda p: p.stat().st_mtime)
+        return cls.load_from_checkpoint(ckpt_path, **kwargs)
     
     @classmethod
     def from_pretrained(
