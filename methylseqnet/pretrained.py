@@ -104,14 +104,19 @@ def alphagenome_pytorch(
     pretrained_seq_model_filename='model_all_folds.safetensors',
     reinitialize=False,
     remove_crop=False,  # no-op: AlphaGenome has no explicit crop layer; kept for API symmetry
+    resolution=128,
     ):
     import os
     from alphagenome_pytorch import AlphaGenome
 
+    if resolution not in (1, 128):
+        raise ValueError("alphagenome-pytorch only supports embedding resolutions of 1 or 128.")
+
     class AlphaGenomeEmbedder(nn.Module):
-        def __init__(self, model, reinitialize=False):
+        def __init__(self, model, reinitialize=False, resolution=128):
             super().__init__()
             self.model = model
+            self.resolution = resolution
             if reinitialize:
                 @torch.no_grad()
                 def init_weights(m):
@@ -127,10 +132,10 @@ def alphagenome_pytorch(
             embeddings = self.model.encode(
                 x,
                 organism_index=0,   # human
-                resolutions=(128,),
+                resolutions=(self.resolution,),
                 channels_last=False, # return NCL: (N, 3072, L//128)
             )
-            return embeddings['embeddings_128bp']
+            return embeddings[f'embeddings_{self.resolution}bp']
 
     if os.path.exists(str(pretrained_seq_model_weights)):
         local_path = pretrained_seq_model_weights
@@ -142,4 +147,4 @@ def alphagenome_pytorch(
         )
 
     model = AlphaGenome.from_pretrained(local_path)
-    return AlphaGenomeEmbedder(model, reinitialize=reinitialize)
+    return AlphaGenomeEmbedder(model, reinitialize=reinitialize, resolution=resolution)
