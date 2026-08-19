@@ -653,24 +653,24 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
             rank = train.global_rank
             world_size = train.world_size
             
-            batch_to_gather = batch.copy()
-            # these huge input tensors may slow down gathering
-            batch.pop('sequence',None)
-            batch.pop('methylation',None)
+            # these huge input tensors may slow down gathering; excluded from the gather on
+            # every rank identically, since dist.gather is a collective that every rank must
+            # call the same number of times in the same order
+            batch_to_gather = {k: v for k, v in batch.items() if k not in ('sequence', 'methylation')}
 
             # print(f"batch keys {batch_to_gather.keys()} prediction keys {[prediction.keys()]}")
             # print(f"world_size {world_size} rank {rank} batch indices {batch_indices}")
-            
+
             if rank == 0:
                 # Gather everything
                 gathered_prediction = {k: gather_to_rank0(v, world_size, rank) for k, v in prediction.items()}
                 gathered_indices = gather_to_rank0(
-                    torch.tensor(batch_indices, device=prediction['predictions'].device), 
+                    torch.tensor(batch_indices, device=prediction['predictions'].device),
                     world_size, rank
                 ).cpu().numpy() if batch_indices is not None else None
-                gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v 
+                gathered_batch = {k: gather_to_rank0(v, world_size, rank) if isinstance(v, torch.Tensor) else v
                                 for k, v in batch_to_gather.items()}
-                
+
                 self.append_batch_to_h5(train, pl_module, gathered_prediction, gathered_indices, gathered_batch)
             else:
                 # Non-root ranks just send
@@ -678,7 +678,7 @@ class HDF5PredictionWriter(BasePredictionWriter, BaseHDF5Writer):
                     gather_to_rank0(v, world_size, rank)
                 if batch_indices is not None:
                     gather_to_rank0(torch.tensor(batch_indices, device=prediction['predictions'].device), world_size, rank)
-                for v in batch.values():
+                for v in batch_to_gather.values():
                     if isinstance(v, torch.Tensor):
                         gather_to_rank0(v, world_size, rank)
         else:

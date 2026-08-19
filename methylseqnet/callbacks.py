@@ -1,4 +1,5 @@
 import h5py
+import math
 import os
 import tempfile
 from collections import defaultdict
@@ -11,6 +12,7 @@ import pysam
 from lightning.pytorch.callbacks import Callback
 from scipy.stats import pearsonr, spearmanr
 import torch
+import torch.distributed as dist
 from torch import nn
 import wandb
 import pandas as pd
@@ -76,6 +78,27 @@ class ValidationMetricsLogger(Callback):
             self.metric_instances[key] = cls()  # gin injects parameters at construction time
         return self.metric_instances[key]
 
+    def _nan_aware_sync(self, value: float, pl_module) -> float:
+        """
+        Average `value` across DDP ranks, treating NaN as "this rank had no data for this
+        key" rather than letting it poison the whole reduction. Ranks whose dataset_key/
+        data_type isn't present in their shard of validation data this epoch log NaN for
+        that key (see on_validation_epoch_start); a plain sync_dist=True all_reduce would
+        turn the combined result NaN even when other ranks had real data, which for a
+        minority dataset can happen most epochs. This instead sums only the valid (non-NaN)
+        contributions and divides by how many ranks actually contributed, so the metric
+        reflects whatever real data was seen this epoch, on however many ranks saw it.
+        Returns a plain float already identical on every rank (or NaN only if no rank had data).
+        """
+        if not (dist.is_available() and dist.is_initialized()):
+            return value
+        is_valid = 0.0 if math.isnan(value) else 1.0
+        safe_value = 0.0 if math.isnan(value) else value
+        tensor = torch.tensor([safe_value, is_valid], dtype=torch.float32, device=pl_module.device)
+        dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+        total_value, total_valid = tensor.tolist()
+        return total_value / total_valid if total_valid > 0 else float('nan')
+
     def on_validation_epoch_start(self, train, pl_module):
         for instance in self.metric_instances.values():
             instance.reset()
@@ -86,10 +109,18 @@ class ValidationMetricsLogger(Callback):
                     for cls in self.metric_classes:
                         metric_name = cls.__name__
                         self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"] = [float('nan')]  # initialize with nan to sync_dist issues
+                        # Pre-create the metric_instances entry (rather than lazily in on_validation_batch_end)
+                        # so every rank logs an identical set of sync_dist=True keys in on_validation_epoch_end,
+                        # even if this rank's shard of validation data happens not to contain dataset_key this epoch.
+                        # A never-updated instance's compute() returns NaN, same as metric_values_dict above.
+                        if self.metrics_across_dataset and (pl_module.data_types_subset is None or data_type in pl_module.data_types_subset):
+                            self._get_or_create_instance(cls, dataset_key, data_type)
             else:
                 for cls in self.metric_classes:
                     metric_name = cls.__name__
                     self.metric_values_dict[metric_name][dataset_key] = [float('nan')]
+                    if self.metrics_across_dataset:
+                        self._get_or_create_instance(cls, dataset_key)
     
     def on_validation_batch_end(self, train, pl_module, outputs, batch, batch_idx, dataloader_idx=0):
         targets = pl_module.targets_from_batch(batch)
@@ -140,19 +171,25 @@ class ValidationMetricsLogger(Callback):
                 for data_description, metric_values in self.metric_values_dict[metric_name].items():
                     # log the mean
                     if len(metric_values) > 0:
-                        mean_metric_value = np.nanmean(metric_values)
+                        mean_metric_value = float(np.nanmean(metric_values))
                         # valid_values = [v for v in metric_values if not np.isnan(v)]
                         # if len(valid_values) == 0:
                         #     print(f"[Rank {train.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
-                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=True)
+                        # sync_dist=False: already reduced by _nan_aware_sync below, which averages
+                        # only over ranks that actually had data for this key instead of letting a
+                        # NaN from a rank without any (a common case for underrepresented datasets)
+                        # poison the whole cross-rank average the way sync_dist=True's plain
+                        # all_reduce would.
+                        mean_metric_value = self._nan_aware_sync(mean_metric_value, pl_module)
+                        pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=False)
         if self.metrics_across_dataset:
             for (metric_name, dataset_key, data_type), instance in self.metric_instances.items():
-                result = instance.compute()
+                result = self._nan_aware_sync(instance.compute().item(), pl_module)
                 if data_type is not None:
                     log_key = f"val/{metric_name}_across_dataset_{dataset_key}_{data_type}"
                 else:
                     log_key = f"val/{metric_name}_across_dataset_{dataset_key}_all"
-                pl_module.log(log_key, result.item(), prog_bar=True, sync_dist=True)
+                pl_module.log(log_key, result, prog_bar=True, sync_dist=False)
 
         # clear per-sample accumulation for next epoch; metric_instances are reset
         # at epoch_start rather than here so state is inspectable after training ends
@@ -285,174 +322,183 @@ class HaplotypedPredLogger(Callback):
     def on_validation_epoch_end(self, train, pl_module) -> None:
         self.total_stride = pl_module.total_stride
         if train.is_global_zero:
-            # Get the wandb Run (works when WandbLogger is enabled)
-            run = getattr(getattr(train, "logger", None), "experiment", None)
-            epoch = getattr(train, "current_epoch", -1)
-            if run is not None and hasattr(run, "log"):
-                images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
-                for chromosome, start, end in self.regions:
-                    (
-                        hp1_accessibility_target,
-                        hp2_accessibility_target,
-                        hp1_accessibility_pred,
-                        hp2_accessibility_pred,
-                        hp1_methylation,
-                        hp2_methylation,
-                        hp1_pred_methylation,
-                        hp2_pred_methylation,
-                        hp1_rna_target,
-                        hp2_rna_target,
-                        hp1_rna_pred,
-                        hp2_rna_pred,
-                    ) = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
-                    if hp1_pred_methylation is not None and hp2_pred_methylation is not None:
-                        assert len(hp1_methylation) == len(hp2_methylation), f"methylation lengths do not match for {chromosome}:{start}-{end}"
-                        pred_len = len(hp1_accessibility_pred)
-                        methyl_len = len(hp1_methylation)
-                        if methyl_len > pred_len:
-                            crop_off_each_end = (methyl_len - pred_len) // 2
-                            hp1_methylation = hp1_methylation[crop_off_each_end:crop_off_each_end+pred_len]
-                            hp2_methylation = hp2_methylation[crop_off_each_end:crop_off_each_end+pred_len]
-                        if len(hp1_pred_methylation) > pred_len:
-                            hp1_pred_methylation = hp1_pred_methylation[crop_off_each_end:crop_off_each_end+pred_len]
-                            hp2_pred_methylation = hp2_pred_methylation[crop_off_each_end:crop_off_each_end+pred_len]
-                    if self.upload_plots:
-                        region_str = f"{chromosome}:{start}-{end}"
-                        center_coord = (start + end) // 2
-                        num_bins = len(hp1_accessibility_pred)
-                        start_pos = center_coord - (num_bins * pl_module.total_stride) // 2
-                        positions = start_pos + np.arange(num_bins) * pl_module.total_stride
+            try:
+                self._log_haplotype_predictions(train, pl_module)
+            except Exception as e:
+                print(f"[HaplotypedPredLogger] Failed to compute/log haplotype predictions this epoch: {e}. Continuing training without haplotype-specific logging for this epoch.")
 
-                        # signal_ys = [hp1_pred, -hp2_pred]
-                        # signal_keys = ["Haplo 1 Prediction", "Haplo 2 Prediction"]
-                        # if hp1_target is not None:
-                        #     signal_ys.extend([hp1_target, -hp2_target])
-                        #     signal_keys.extend(["Haplo 1 Target", "Haplo 2 Target"])
+    def _log_haplotype_predictions(self, train, pl_module) -> None:
+        # Get the wandb Run (works when WandbLogger is enabled)
+        run = getattr(getattr(train, "logger", None), "experiment", None)
+        epoch = getattr(train, "current_epoch", -1)
+        if run is not None and hasattr(run, "log"):
+            images, hp1_pearsons, hp2_pearsons, differential_pearsons = [], [], [], []
+            for chromosome, start, end in self.regions:
+                (
+                    hp1_accessibility_target,
+                    hp2_accessibility_target,
+                    hp1_accessibility_pred,
+                    hp2_accessibility_pred,
+                    hp1_methylation,
+                    hp2_methylation,
+                    hp1_pred_methylation,
+                    hp2_pred_methylation,
+                    hp1_rna_target,
+                    hp2_rna_target,
+                    hp1_rna_pred,
+                    hp2_rna_pred,
+                ) = self._compute_haplo_pred_stats(pl_module,chromosome,start,end)
+                if hp1_pred_methylation is not None and hp2_pred_methylation is not None:
+                    assert len(hp1_methylation) == len(hp2_methylation), f"methylation lengths do not match for {chromosome}:{start}-{end}"
+                    pred_len = len(hp1_accessibility_pred)
+                    methyl_len = len(hp1_methylation)
+                    if methyl_len > pred_len:
+                        crop_off_each_end = (methyl_len - pred_len) // 2
+                        hp1_methylation = hp1_methylation[crop_off_each_end:crop_off_each_end+pred_len]
+                        hp2_methylation = hp2_methylation[crop_off_each_end:crop_off_each_end+pred_len]
+                    if len(hp1_pred_methylation) > pred_len:
+                        # cropped independently of the methyl_len/pred_len offset above, since
+                        # hp1_pred_methylation's length need not match hp1_methylation's length
+                        pred_methyl_crop_off_each_end = (len(hp1_pred_methylation) - pred_len) // 2
+                        hp1_pred_methylation = hp1_pred_methylation[pred_methyl_crop_off_each_end:pred_methyl_crop_off_each_end+pred_len]
+                        hp2_pred_methylation = hp2_pred_methylation[pred_methyl_crop_off_each_end:pred_methyl_crop_off_each_end+pred_len]
+                if self.upload_plots:
+                    region_str = f"{chromosome}:{start}-{end}"
+                    center_coord = (start + end) // 2
+                    num_bins = len(hp1_accessibility_pred)
+                    start_pos = center_coord - (num_bins * pl_module.total_stride) // 2
+                    positions = start_pos + np.arange(num_bins) * pl_module.total_stride
 
-                        # run.log({
-                        #     f"haplo_{region_str}/signals": wandb.plot.line_series(
-                        #         xs=positions,
-                        #         ys=signal_ys,
-                        #         keys=signal_keys,
-                        #         title=f"{region_str} - Signals",
-                        #         xname="Position (binned)"
-                        #     ),
-                        #     "epoch": epoch
-                        # })
+                    # signal_ys = [hp1_pred, -hp2_pred]
+                    # signal_keys = ["Haplo 1 Prediction", "Haplo 2 Prediction"]
+                    # if hp1_target is not None:
+                    #     signal_ys.extend([hp1_target, -hp2_target])
+                    #     signal_keys.extend(["Haplo 1 Target", "Haplo 2 Target"])
 
-                        # diff_ys = [hp1_pred - hp2_pred]
-                        # diff_keys = ["Haplo 1 - Haplo 2 Prediction"]
-                        # if hp1_target is not None:
-                        #     diff_ys.append(hp1_target - hp2_target)
-                        #     diff_keys.append("Haplo 1 - Haplo 2 Target")
+                    # run.log({
+                    #     f"haplo_{region_str}/signals": wandb.plot.line_series(
+                    #         xs=positions,
+                    #         ys=signal_ys,
+                    #         keys=signal_keys,
+                    #         title=f"{region_str} - Signals",
+                    #         xname="Position (binned)"
+                    #     ),
+                    #     "epoch": epoch
+                    # })
+
+                    # diff_ys = [hp1_pred - hp2_pred]
+                    # diff_keys = ["Haplo 1 - Haplo 2 Prediction"]
+                    # if hp1_target is not None:
+                    #     diff_ys.append(hp1_target - hp2_target)
+                    #     diff_keys.append("Haplo 1 - Haplo 2 Target")
                         
-                        # run.log({
-                        #     f"haplo_{region_str}/differentials": wandb.plot.line_series(
-                        #         xs=positions,
-                        #         ys=diff_ys,
-                        #         keys=diff_keys,
-                        #         title=f"{region_str} - Differentials",
-                        #         xname="Position (binned)"
-                        #     ),
-                        #     "epoch": epoch
-                        # })
+                    # run.log({
+                    #     f"haplo_{region_str}/differentials": wandb.plot.line_series(
+                    #         xs=positions,
+                    #         ys=diff_ys,
+                    #         keys=diff_keys,
+                    #         title=f"{region_str} - Differentials",
+                    #         xname="Position (binned)"
+                    #     ),
+                    #     "epoch": epoch
+                    # })
 
-                        # if self.plot_methylation:
-                        #     methyl_ys = [hp1_methylation, -hp2_methylation]
-                        #     methyl_keys = ["Haplo 1 Methylation", "Haplo 2 Methylation"]
-                        #     if hp1_target is not None:
-                        #         methyl_ys.extend([hp1_pred_methylation, -hp2_pred_methylation])
-                        #         methyl_keys.extend(["Haplo 1 Imputed Methylation", "Haplo 2 Imputed Methylation"])
+                    # if self.plot_methylation:
+                    #     methyl_ys = [hp1_methylation, -hp2_methylation]
+                    #     methyl_keys = ["Haplo 1 Methylation", "Haplo 2 Methylation"]
+                    #     if hp1_target is not None:
+                    #         methyl_ys.extend([hp1_pred_methylation, -hp2_pred_methylation])
+                    #         methyl_keys.extend(["Haplo 1 Imputed Methylation", "Haplo 2 Imputed Methylation"])
                             
-                        #     run.log({
-                        #         f"haplo_{region_str}/methylation": wandb.plot.line_series(
-                        #             xs=positions,
-                        #             ys=methyl_ys,
-                        #             keys=methyl_keys,
-                        #             title=f"{region_str} - Methylation",
-                        #             xname="Position (binned)"
-                        #         ),
-                        #         "epoch": epoch
-                        #     })
+                    #     run.log({
+                    #         f"haplo_{region_str}/methylation": wandb.plot.line_series(
+                    #             xs=positions,
+                    #             ys=methyl_ys,
+                    #             keys=methyl_keys,
+                    #             title=f"{region_str} - Methylation",
+                    #             xname="Position (binned)"
+                    #         ),
+                    #         "epoch": epoch
+                    #     })
                         
-                        fig, axes = plt.subplots(4, 2, figsize=(30, 15), sharex=True)
-                        fig.suptitle(f"{region_str}, epoch={epoch}")
+                    fig, axes = plt.subplots(4, 2, figsize=(30, 15), sharex=True)
+                    fig.suptitle(f"{region_str}, epoch={epoch}")
                         
-                        # Row 0: Accessibility
-                        if hp1_accessibility_target is not None:
-                            axes[0, 0].plot(positions, hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
-                            axes[0, 0].plot(positions, -hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
-                            axes[0, 0].set_ylabel("hp1,2\ntarget")
-                        axes[0, 0].set_title(r'$\mathbf{GROUND\ TRUTH}$' + '\n\nTrue Accessibility')
+                    # Row 0: Accessibility
+                    if hp1_accessibility_target is not None:
+                        axes[0, 0].plot(positions, hp1_accessibility_target, label="Haplo 1 Target", color='blue', alpha=0.5)
+                        axes[0, 0].plot(positions, -hp2_accessibility_target, label="Haplo 2 Target", color='orange', alpha=0.5)
+                        axes[0, 0].set_ylabel("hp1,2\ntarget")
+                    axes[0, 0].set_title(r'$\mathbf{GROUND\ TRUTH}$' + '\n\nTrue Accessibility')
                         
-                        axes[0, 1].plot(positions, hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
-                        axes[0, 1].plot(positions, -hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
-                        axes[0, 1].set_ylabel("hp1,2\npred")
-                        axes[0, 1].set_title(r'$\mathbf{PREDICTIONS}$' + '\n\nPredicted Accessibility')
+                    axes[0, 1].plot(positions, hp1_accessibility_pred, label="Haplo 1 Prediction", color='blue', alpha=0.5)
+                    axes[0, 1].plot(positions, -hp2_accessibility_pred, label="Haplo 2 Prediction", color='orange', alpha=0.5)
+                    axes[0, 1].set_ylabel("hp1,2\npred")
+                    axes[0, 1].set_title(r'$\mathbf{PREDICTIONS}$' + '\n\nPredicted Accessibility')
                         
-                        # Row 1: Differential Accessibility
-                        if hp1_accessibility_target is not None:
-                            axes[1, 0].plot(positions, hp1_accessibility_target - hp2_accessibility_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
-                            axes[1, 0].set_ylabel("hp1-hp2\ntarget")
-                            axes[1, 0].set_title("True Differential Accessibility")
+                    # Row 1: Differential Accessibility
+                    if hp1_accessibility_target is not None:
+                        axes[1, 0].plot(positions, hp1_accessibility_target - hp2_accessibility_target, label="Haplo 1 - Haplo 2 Target", color='green', alpha=0.5)
+                        axes[1, 0].set_ylabel("hp1-hp2\ntarget")
+                        axes[1, 0].set_title("True Differential Accessibility")
                         
-                        axes[1, 1].plot(positions, hp1_accessibility_pred - hp2_accessibility_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
-                        axes[1, 1].set_ylabel("hp1-2\npred")
-                        axes[1, 1].set_title("Predicted Differential Accessibility")
+                    axes[1, 1].plot(positions, hp1_accessibility_pred - hp2_accessibility_pred, label="Haplo 1 - Haplo 2 Prediction", color='green', alpha=0.5)
+                    axes[1, 1].set_ylabel("hp1-2\npred")
+                    axes[1, 1].set_title("Predicted Differential Accessibility")
                         
-                        # Row 2: Methylation (only if plot_methylation is True)
-                        if self.plot_methylation:
-                            axes[2, 0].plot(positions, hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
-                            axes[2, 0].plot(positions, -hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
-                            axes[2, 0].set_ylabel("hp1,2\ntru methyl")
-                            axes[2, 0].set_title("True Methylation")
+                    # Row 2: Methylation (only if plot_methylation is True)
+                    if self.plot_methylation:
+                        axes[2, 0].plot(positions, hp1_methylation, label="Haplo 1 Methylation", color='blue', alpha=0.5)
+                        axes[2, 0].plot(positions, -hp2_methylation, label="Haplo 2 Methylation", color='orange', alpha=0.5)
+                        axes[2, 0].set_ylabel("hp1,2\ntru methyl")
+                        axes[2, 0].set_title("True Methylation")
                             
-                            axes[2, 1].plot(positions, hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
-                            axes[2, 1].plot(positions, -hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
-                            axes[2, 1].set_ylabel("hp1/2\nimp methyl")
-                            axes[2, 1].set_title("Imputed Methylation")
+                        axes[2, 1].plot(positions, hp1_pred_methylation, label="Haplo 1 Imputed Methylation", color='blue', alpha=0.5)
+                        axes[2, 1].plot(positions, -hp2_pred_methylation, label="Haplo 2 Imputed Methylation", color='orange', alpha=0.5)
+                        axes[2, 1].set_ylabel("hp1/2\nimp methyl")
+                        axes[2, 1].set_title("Imputed Methylation")
 
-                        if self.plot_rna:
-                            # Row 3: RNA
-                            if hp1_rna_target is not None:
-                                axes[3, 0].plot(positions, hp1_rna_target, label="Haplo 1 RNA Target", color='blue', alpha=0.5)
-                                axes[3, 0].plot(positions, -hp2_rna_target, label="Haplo 2 RNA Target", color='orange', alpha=0.5)
-                                axes[3, 0].set_ylabel("hp1,2\nRNA target")
-                                axes[3, 0].set_title("True RNA Expression")
+                    if self.plot_rna:
+                        # Row 3: RNA
+                        if hp1_rna_target is not None:
+                            axes[3, 0].plot(positions, hp1_rna_target, label="Haplo 1 RNA Target", color='blue', alpha=0.5)
+                            axes[3, 0].plot(positions, -hp2_rna_target, label="Haplo 2 RNA Target", color='orange', alpha=0.5)
+                            axes[3, 0].set_ylabel("hp1,2\nRNA target")
+                            axes[3, 0].set_title("True RNA Expression")
                             
-                            if hp1_rna_pred is not None:
-                                axes[3, 1].plot(positions, hp1_rna_pred, label="Haplo 1 RNA Prediction", color='blue', alpha=0.5)
-                                axes[3, 1].plot(positions, -hp2_rna_pred, label="Haplo 2 RNA Prediction", color='orange', alpha=0.5)
-                                axes[3, 1].set_ylabel("hp1,2\nRNA pred")
-                                axes[3, 1].set_title("Predicted RNA Expression")
+                        if hp1_rna_pred is not None:
+                            axes[3, 1].plot(positions, hp1_rna_pred, label="Haplo 1 RNA Prediction", color='blue', alpha=0.5)
+                            axes[3, 1].plot(positions, -hp2_rna_pred, label="Haplo 2 RNA Prediction", color='orange', alpha=0.5)
+                            axes[3, 1].set_ylabel("hp1,2\nRNA pred")
+                            axes[3, 1].set_title("Predicted RNA Expression")
                         
-                        # Set x-label only on bottom row
-                        axes[-1, 0].set_xlabel("Position (binned)")
-                        axes[-1, 1].set_xlabel("Position (binned)")
+                    # Set x-label only on bottom row
+                    axes[-1, 0].set_xlabel("Position (binned)")
+                    axes[-1, 1].set_xlabel("Position (binned)")
                         
-                        fig.canvas.draw()  # guarantee the figure is rendered NOW
-                        w, h = fig.canvas.get_width_height()
-                        run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
-                        plt.close(fig)
-                    if self.log_stats and (hp1_accessibility_target is not None):
-                        # run.log({
-                        #     f"haplo_{region_str}_haplo1_pearson": pearsonr(hp1_target, hp1_pred)[0],
-                        #     f"haplo_{region_str}_haplo2_pearson": pearsonr(hp2_target, hp2_pred)[0],
-                        #     f"haplo_{region_str}_haplo_differential_pearson": pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0],
-                        #     "epoch": epoch,
-                        # })
-                        hp1_pearsons.append(pearsonr(hp1_accessibility_target, hp1_accessibility_pred)[0])
-                        hp2_pearsons.append(pearsonr(hp2_accessibility_target, hp2_accessibility_pred)[0])
-                        differential_pearsons.append(pearsonr(hp1_accessibility_target - hp2_accessibility_target, hp1_accessibility_pred - hp2_accessibility_pred)[0])
+                    fig.canvas.draw()  # guarantee the figure is rendered NOW
+                    w, h = fig.canvas.get_width_height()
+                    run.log({f"haplo/phased_plots_{region_str}": wandb.Image(fig, caption=f"epoch={epoch}"), "epoch": epoch})
+                    plt.close(fig)
                 if self.log_stats and (hp1_accessibility_target is not None):
-                    run.log({
-                        "haplo/haplo1_pearson": np.mean(hp1_pearsons),
-                        "haplo/haplo2_pearson": np.mean(hp2_pearsons),
-                        "haplo/haplo_differential_pearson": np.mean(differential_pearsons),
-                        "epoch": epoch,
-                    })
-            else:
-                print("Wandb run not found, cannot upload.")
+                    # run.log({
+                    #     f"haplo_{region_str}_haplo1_pearson": pearsonr(hp1_target, hp1_pred)[0],
+                    #     f"haplo_{region_str}_haplo2_pearson": pearsonr(hp2_target, hp2_pred)[0],
+                    #     f"haplo_{region_str}_haplo_differential_pearson": pearsonr(hp1_target - hp2_target, hp1_pred - hp2_pred)[0],
+                    #     "epoch": epoch,
+                    # })
+                    hp1_pearsons.append(pearsonr(hp1_accessibility_target, hp1_accessibility_pred)[0])
+                    hp2_pearsons.append(pearsonr(hp2_accessibility_target, hp2_accessibility_pred)[0])
+                    differential_pearsons.append(pearsonr(hp1_accessibility_target - hp2_accessibility_target, hp1_accessibility_pred - hp2_accessibility_pred)[0])
+            if self.log_stats and (hp1_accessibility_target is not None):
+                run.log({
+                    "haplo/haplo1_pearson": np.mean(hp1_pearsons),
+                    "haplo/haplo2_pearson": np.mean(hp2_pearsons),
+                    "haplo/haplo_differential_pearson": np.mean(differential_pearsons),
+                    "epoch": epoch,
+                })
+        else:
+            print("Wandb run not found, cannot upload.")
 
     def _compute_haplo_pred_stats(
         self,
