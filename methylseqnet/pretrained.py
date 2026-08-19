@@ -101,13 +101,13 @@ def borzoi_pytorch(
 @gin.register
 def alphagenome_pytorch(
     pretrained_seq_model_weights,
-    pretrained_seq_model_filename='model_all_folds.safetensors',
     reinitialize=False,
     remove_crop=False,  # no-op: AlphaGenome has no explicit crop layer; kept for API symmetry
     resolution=128,
     ):
     import os
     from alphagenome_pytorch import AlphaGenome
+    from huggingface_hub import hf_hub_download
 
     if resolution not in (1, 128):
         raise ValueError("alphagenome-pytorch only supports embedding resolutions of 1 or 128.")
@@ -137,13 +137,12 @@ def alphagenome_pytorch(
             )
             return embeddings[f'embeddings_{self.resolution}bp']
 
-    if os.path.exists(str(pretrained_seq_model_weights)):
+    if os.path.isfile(pretrained_seq_model_weights):
         local_path = pretrained_seq_model_weights
     else:
-        from huggingface_hub import hf_hub_download
         local_path = hf_hub_download(
-            repo_id=pretrained_seq_model_weights,
-            filename=pretrained_seq_model_filename,
+            repo_id="gtca/alphagenome_pytorch",
+            filename=pretrained_seq_model_weights,
         )
 
     model = AlphaGenome.from_pretrained(local_path)

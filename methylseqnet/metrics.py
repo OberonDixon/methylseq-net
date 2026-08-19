@@ -66,6 +66,17 @@ class GenomicTensorMetric(ABC):
         """Clear all accumulated state."""
         pass
 
+    @abstractmethod
+    def merge(self, other: "GenomicTensorMetric") -> None:
+        """
+        Fold another (possibly never-updated) instance's accumulated sufficient statistics
+        into this one, as if this instance had also processed every batch accumulated into
+        `other`. Used to pool per-rank accumulated state under DDP so compute() can run once
+        on the true combined-epoch statistics, instead of averaging each rank's independently
+        -computed local result (which is not the same statistic when ranks see unequal data).
+        """
+        pass
+
     def __call__(self, targets: torch.Tensor, predictions: torch.Tensor) -> torch.Tensor:
         """
         One-shot evaluation on a single tensor pair. Resets any existing state,
@@ -119,6 +130,24 @@ class PearsonAcrossPositions(GenomicTensorMetric):
         self.sum_xx = None
         self.sum_yy = None
         self.sum_xy = None
+
+    def merge(self, other: "PearsonAcrossPositions") -> None:
+        if other is None or other.n is None:
+            return
+        if self.n is None:
+            self.n      = other.n.clone()
+            self.sum_x  = other.sum_x.clone()
+            self.sum_y  = other.sum_y.clone()
+            self.sum_xx = other.sum_xx.clone()
+            self.sum_yy = other.sum_yy.clone()
+            self.sum_xy = other.sum_xy.clone()
+        else:
+            self.n      = self.n      + other.n
+            self.sum_x  = self.sum_x  + other.sum_x
+            self.sum_y  = self.sum_y  + other.sum_y
+            self.sum_xx = self.sum_xx + other.sum_xx
+            self.sum_yy = self.sum_yy + other.sum_yy
+            self.sum_xy = self.sum_xy + other.sum_xy
 
     def update(self, targets, predictions):
         """
@@ -208,6 +237,12 @@ class PearsonAcrossTasks(GenomicTensorMetric):
         self.weighted_r_sum = 0.0
         self.var_sum = 0.0
 
+    def merge(self, other: "PearsonAcrossTasks") -> None:
+        if other is None:
+            return
+        self.weighted_r_sum += other.weighted_r_sum
+        self.var_sum += other.var_sum
+
     def update(self, targets, predictions):
         """
         targets, predictions: (num_variants, channels, positions)
@@ -290,6 +325,25 @@ class CCCAcrossVariants(GenomicTensorMetric):
         self.sum_yy = None
         self.sum_xy = None
         self.any_active = None   # tracks which features were active in at least one batch
+
+    def merge(self, other: "CCCAcrossVariants") -> None:
+        if other is None or other.sum_x is None:
+            return
+        self.n = self.n + other.n
+        if self.sum_x is None:
+            self.sum_x      = other.sum_x.clone()
+            self.sum_y      = other.sum_y.clone()
+            self.sum_xx     = other.sum_xx.clone()
+            self.sum_yy     = other.sum_yy.clone()
+            self.sum_xy     = other.sum_xy.clone()
+            self.any_active = other.any_active.clone()
+        else:
+            self.sum_x      = self.sum_x  + other.sum_x
+            self.sum_y      = self.sum_y  + other.sum_y
+            self.sum_xx     = self.sum_xx + other.sum_xx
+            self.sum_yy     = self.sum_yy + other.sum_yy
+            self.sum_xy     = self.sum_xy + other.sum_xy
+            self.any_active = self.any_active | other.any_active
 
     def update(self, targets, predictions):
         """

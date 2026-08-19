@@ -1,5 +1,4 @@
 import h5py
-import math
 import os
 import tempfile
 from collections import defaultdict
@@ -78,26 +77,23 @@ class ValidationMetricsLogger(Callback):
             self.metric_instances[key] = cls()  # gin injects parameters at construction time
         return self.metric_instances[key]
 
-    def _nan_aware_sync(self, value: float, pl_module) -> float:
+    def _gather_across_ranks(self, obj) -> list:
         """
-        Average `value` across DDP ranks, treating NaN as "this rank had no data for this
-        key" rather than letting it poison the whole reduction. Ranks whose dataset_key/
-        data_type isn't present in their shard of validation data this epoch log NaN for
-        that key (see on_validation_epoch_start); a plain sync_dist=True all_reduce would
-        turn the combined result NaN even when other ranks had real data, which for a
-        minority dataset can happen most epochs. This instead sums only the valid (non-NaN)
-        contributions and divides by how many ranks actually contributed, so the metric
-        reflects whatever real data was seen this epoch, on however many ranks saw it.
-        Returns a plain float already identical on every rank (or NaN only if no rank had data).
+        Gather `obj` from every DDP rank via all_gather_object, returning a list with one
+        entry per rank (or a single-element list containing just `obj` when not running
+        distributed). Used to pool per-rank epoch-accumulated state (a GenomicTensorMetric
+        instance, or a list of per-sample values) so the true statistic can be computed once
+        over the combined data from every rank, rather than averaging each rank's
+        independently-computed local result — which is not the same statistic when ranks
+        see unequal amounts of data (e.g. a dataset_key some ranks' shard doesn't contain
+        this epoch at all). Must be called identically (same key order) on every rank, which
+        on_validation_epoch_start already guarantees by pre-creating every key on every rank.
         """
         if not (dist.is_available() and dist.is_initialized()):
-            return value
-        is_valid = 0.0 if math.isnan(value) else 1.0
-        safe_value = 0.0 if math.isnan(value) else value
-        tensor = torch.tensor([safe_value, is_valid], dtype=torch.float32, device=pl_module.device)
-        dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
-        total_value, total_valid = tensor.tolist()
-        return total_value / total_valid if total_valid > 0 else float('nan')
+            return [obj]
+        gathered = [None] * dist.get_world_size()
+        dist.all_gather_object(gathered, obj)
+        return gathered
 
     def on_validation_epoch_start(self, train, pl_module):
         for instance in self.metric_instances.values():
@@ -108,11 +104,12 @@ class ValidationMetricsLogger(Callback):
                 for data_type in io_mappings_df[io_mappings_df['dataset_key']==dataset_key]['data_type'].unique():
                     for cls in self.metric_classes:
                         metric_name = cls.__name__
-                        self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"] = [float('nan')]  # initialize with nan to sync_dist issues
+                        self.metric_values_dict[metric_name][f"{dataset_key}_{data_type}"] = [float('nan')]  # initialize with nan in case no samples this epoch
                         # Pre-create the metric_instances entry (rather than lazily in on_validation_batch_end)
-                        # so every rank logs an identical set of sync_dist=True keys in on_validation_epoch_end,
-                        # even if this rank's shard of validation data happens not to contain dataset_key this epoch.
-                        # A never-updated instance's compute() returns NaN, same as metric_values_dict above.
+                        # so every rank has an identical set of keys to gather in on_validation_epoch_end's
+                        # all_gather_object calls, even if this rank's shard of validation data happens not
+                        # to contain dataset_key this epoch (all_gather_object is a collective and must be
+                        # called the same number of times, in the same order, by every rank).
                         if self.metrics_across_dataset and (pl_module.data_types_subset is None or data_type in pl_module.data_types_subset):
                             self._get_or_create_instance(cls, dataset_key, data_type)
             else:
@@ -171,20 +168,26 @@ class ValidationMetricsLogger(Callback):
                 for data_description, metric_values in self.metric_values_dict[metric_name].items():
                     # log the mean
                     if len(metric_values) > 0:
-                        mean_metric_value = float(np.nanmean(metric_values))
+                        # Pool every rank's raw per-sample values before averaging, rather than
+                        # averaging each rank's own nanmean, so the logged value is the true mean
+                        # over every sample seen this epoch (across all ranks), not a mean-of-means
+                        # that implicitly weights ranks equally regardless of how much data each saw.
+                        pooled_values = [v for rank_values in self._gather_across_ranks(metric_values) for v in rank_values]
+                        mean_metric_value = float(np.nanmean(pooled_values))
                         # valid_values = [v for v in metric_values if not np.isnan(v)]
                         # if len(valid_values) == 0:
                         #     print(f"[Rank {train.global_rank}] WARNING: {metric_name} for {data_type} has all NaN values (n={len(metric_values)})")
-                        # sync_dist=False: already reduced by _nan_aware_sync below, which averages
-                        # only over ranks that actually had data for this key instead of letting a
-                        # NaN from a rank without any (a common case for underrepresented datasets)
-                        # poison the whole cross-rank average the way sync_dist=True's plain
-                        # all_reduce would.
-                        mean_metric_value = self._nan_aware_sync(mean_metric_value, pl_module)
                         pl_module.log(f"val/{metric_name}_mean_per_sample_{data_description}", mean_metric_value, prog_bar=True, sync_dist=False)
         if self.metrics_across_dataset:
             for (metric_name, dataset_key, data_type), instance in self.metric_instances.items():
-                result = self._nan_aware_sync(instance.compute().item(), pl_module)
+                # Pool every rank's accumulated sufficient statistics into one, then compute the
+                # metric once over the true combined-epoch data, instead of averaging each rank's
+                # independently-computed local result (not the same statistic when ranks see
+                # unequal data, e.g. a dataset_key some ranks' shard doesn't contain this epoch).
+                pooled = type(instance)()
+                for rank_instance in self._gather_across_ranks(instance):
+                    pooled.merge(rank_instance)
+                result = pooled.compute().item()
                 if data_type is not None:
                     log_key = f"val/{metric_name}_across_dataset_{dataset_key}_{data_type}"
                 else:
