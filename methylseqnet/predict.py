@@ -12,6 +12,7 @@ from multiprocessing import Pool
 import warnings
 from typing import Type, Set
 from functools import partial
+import logging
 
 import torch
 from torch import nn
@@ -30,11 +31,12 @@ from methylseqnet.datamodule import MethylSeqDataModule
 from methylseqnet.builders import SingleFastaHandler, MultiFileCpGHandler
 from methylseqnet.transforms import LoaderTransform, DinucShuffleSyntheticCpG, InsertSyntheticCpG
 from methylseqnet.peaks import selected_peaks_from_target
+from methylseqnet.hub import release_checkpoint_path, DEFAULT_REPO, DEFAULT_BASE, DEFAULT_VERSION
 
 class Predictor:
     def __init__(
         self,
-        model: str | Path | nn.Module,
+        model: str | Path | nn.Module | None = None,
         true_conditioning_state_weight: float | None = None,
         device: str = 'auto',
         supplemental_outputs: set = set(),
@@ -45,12 +47,16 @@ class Predictor:
         else:
             self.device = torch.device(device)
         if isinstance(model, nn.Module):
+            # Pre-loaded model
             self.model = model
             if remove_crop_for_variable_input_length:
                 warnings.warn("Model provided directly as nn.Module; it may be unsafe to change crop settings so this will be skipped.")
         else:
-            from methylseqnet.callbacks import ValidationMetricsLogger, GPUMemoryLogger, CPUMemoryLogger, HaplotypedPredLogger
-            self.model = ConditionedSeqNN.load_from_checkpoint(model, map_location = self.device)
+            # Load from checkpoint
+            if model is None:
+                self.model = ConditionedSeqNN.from_pretrained(map_location=self.device)
+            else:
+                self.model = ConditionedSeqNN.load_from_checkpoint(model, map_location = self.device)
             if remove_crop_for_variable_input_length:
                 self.model.crop_off_output = 0
                 self.model.crop_off_conditioning_input = 0
@@ -66,6 +72,19 @@ class Predictor:
         if true_conditioning_state_weight is not None:
             self.model.true_conditioning_state_weight = true_conditioning_state_weight
         self.model.to(self.device)
+
+    @classmethod
+    def from_release(cls, base=DEFAULT_BASE, version=DEFAULT_VERSION, *,
+                     repo_id=DEFAULT_REPO, filename=None, **predictor_kwargs):
+        path = release_checkpoint_path(base=base, version=version,
+                                       repo_id=repo_id, filename=filename)
+        return cls(model=path, **predictor_kwargs)
+
+    @classmethod
+    def from_local(cls, run_id, *, checkpoints_dir, **predictor_kwargs):
+        ckpt = max(Path(checkpoints_dir, run_id, "checkpoints").glob("best*.ckpt"),
+                   key=lambda p: p.stat().st_mtime)
+        return cls(model=ckpt, **predictor_kwargs)
 
     def to(self, device):
         self.device = torch.device(device)
@@ -485,6 +504,7 @@ class Predictor:
             pass
 
 def main():
+    logging.basicConfig(level=logging.INFO)
     DEFAULT_SUPPLEMENTAL_OUTPUTS = [
         "conditional_seq_rep",
         "unconditional_seq_rep",
@@ -493,12 +513,16 @@ def main():
         "cpg_density",
     ]
     parser = argparse.ArgumentParser(description="Run predictions with a specified model.")
-    parser.add_argument("--model-identifier", required=True, help="e.g. slurm24807693task2; will reference checkpoints dir")
-    parser.add_argument('--checkpoints-dir', type=str, required=False, default='', help='Directory to load trained checkpoints.')
-    parser.add_argument("--true-conditioning-state-weight", type=float, default=None, help="If set, override the model's true_conditioning_state_weight with this value for prediction.")
-    parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--dataset-keys", nargs='+', required=True, help="Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-files)")
     parser.add_argument("--dataset-files", nargs='+', required=True, help="Paths to dataset H5 files (must match length of --dataset-keys)")
+    parser.add_argument("--model-source", choices=["local", "huggingface"], default="huggingface", help="Source from which to load model checkpoint.")
+    parser.add_argument("--model-identifier", default=None, help="e.g. slurm24807693task2; will reference checkpoints dir")
+    parser.add_argument('--checkpoints-dir', type=str, required=False, default='', help='Directory to load trained checkpoints.')
+    parser.add_argument("--hf-base", default=DEFAULT_BASE, help="[hf] model base, e.g. borzoi-rep0")
+    parser.add_argument("--hf-version", default=DEFAULT_VERSION, help="[hf] release tag, e.g. v1.0")
+    parser.add_argument("--hf-repo", default=DEFAULT_REPO, help="[hf] repo id")
+    parser.add_argument("--true-conditioning-state-weight", type=float, default=None, help="If set, override the model's true_conditioning_state_weight with this value for prediction.")
+    parser.add_argument("--no-targets", action='store_true', help="If set, do not include target tracks in the output H5 files.")
     parser.add_argument("--supplemental-outputs", nargs="*", required=False, default=DEFAULT_SUPPLEMENTAL_OUTPUTS, help=f"Supplemental outputs to include in predictions. Default: {DEFAULT_SUPPLEMENTAL_OUTPUTS}")
     parser.add_argument("--synthetic-cpg", action='store_true', help="If set, add synthetic CpG data.")
     parser.add_argument("--variable-input-length", action='store_true', help="If set, sequence length can be any integer multiple of 128 that is >=16384.")
@@ -506,19 +530,37 @@ def main():
     parser.add_argument("--gpus", type=int, default=1, help="Number of GPUs to use")
     parser.add_argument("--num-workers", type=int, default=8, help="Number of data loader workers")
     
-    args = parser.parse_args()    
-
-    if args.checkpoints_dir == '':
-        try:
-            from methylseqnet_repro.paths import model_checkpoints
-        except Exception as e:
-            print(f"Failed to import model_checkpoints path from methylseqnet_repro.paths: {e}. Using hardcoded UC Berkeley HPC directory instead.")
-            model_checkpoints = '/clusterfs/nilah/oberon/lightning/'
-        args.checkpoints_dir = model_checkpoints
-
+    args = parser.parse_args()   
 
     if len(args.dataset_keys) != len(args.dataset_files):
         parser.error(f"--dataset-keys ({len(args.dataset_keys)}) and --dataset-files ({len(args.dataset_files)}) must have the same number of arguments")
+
+    common = dict(
+        true_conditioning_state_weight=args.true_conditioning_state_weight,
+        supplemental_outputs=set(args.supplemental_outputs),
+        remove_crop_for_variable_input_length=args.variable_input_length,
+    ) 
+    if args.model_source == "huggingface":
+        if args.model_identifier is not None:
+            parser.error("--model-identifier cannot be used when --model-source is 'huggingface'")
+        predictor = Predictor.from_release(
+            base=args.hf_base, version=args.hf_version, repo_id=args.hf_repo, **common)
+        output_label = f"{args.hf_base}-{args.hf_version}"
+    elif args.model_source == "local":
+        if not args.model_identifier:
+            parser.error("--model-identifier is required when --model-source is 'local'")
+        if args.checkpoints_dir == "":
+            try:
+                from methylseqnet_repro.paths import model_checkpoints
+            except Exception as e:
+                print(f"Failed to import model_checkpoints path: {e}. Using hardcoded dir.")
+                model_checkpoints = "/clusterfs/nilah/oberon/lightning/"
+            args.checkpoints_dir = model_checkpoints
+        predictor = Predictor.from_local(
+            args.model_identifier, checkpoints_dir=args.checkpoints_dir, **common)
+        output_label = args.model_identifier
+    else:
+        parser.error(f"Unsupported model source: {args.model_source}")
 
     dataset_paths = [
         {dataset_key:dataset_file} for dataset_key, dataset_file in zip(args.dataset_keys, args.dataset_files)
@@ -545,22 +587,12 @@ def main():
         dataset_dir = Path(list(dataset_path.values())[0]).parent
         print(f"Running through {dataset_name}.")
         if args.synthetic_cpg:
-            output_path = dataset_dir / args.model_identifier / f"{dataset_name}_synthetic_{args.center_methyl_frac}"
+            output_path = dataset_dir / output_label / f"{dataset_name}_synthetic_{args.center_methyl_frac}"
         elif args.true_conditioning_state_weight is not None:
-            output_path = dataset_dir / args.model_identifier / f"{dataset_name}_truecondweight_{args.true_conditioning_state_weight}"
+            output_path = dataset_dir / output_label / f"{dataset_name}_truecondweight_{args.true_conditioning_state_weight}"
         else:
-            output_path = dataset_dir / args.model_identifier / dataset_name
-        best_ckpt = max(
-            Path(Path(args.checkpoints_dir) / args.model_identifier / "checkpoints").glob('best*.ckpt'),
-            key=lambda p: p.stat().st_mtime
-        )   
+            output_path = dataset_dir / output_label / dataset_name
 
-        predictor = Predictor(
-            model=best_ckpt,
-            true_conditioning_state_weight=args.true_conditioning_state_weight,
-            supplemental_outputs = set(args.supplemental_outputs),
-            remove_crop_for_variable_input_length = args.variable_input_length,
-        )
         predictor.predict_dataset(
             dataset_path=dataset_path,
             output_path=output_path,

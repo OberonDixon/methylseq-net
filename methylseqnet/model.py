@@ -4,7 +4,7 @@ import inspect
 import math
 import logging
 import warnings
-from typing import Callable, Any, Set, Type
+from typing import Callable, Any, Set, Type, Literal
 logger = logging.getLogger(__name__)
 
 import torch
@@ -23,6 +23,7 @@ from methylseqnet.layers import ActivationCapture
 from methylseqnet.losses import MaskedLoss, PoissonLoss, LogL1Loss, BCELoss, OrthogonalityLoss, MSELoss
 from methylseqnet.pretrained import basenji2_pytorch, borzoi_pytorch
 from methylseqnet.tensor_ops import FEATURE_MODULATION_OPS
+from methylseqnet.hub import release_checkpoint_path, DEFAULT_REPO, DEFAULT_BASE, DEFAULT_VERSION
 
 gin.register(nn.Softplus)
 gin.register(nn.Sigmoid)
@@ -409,6 +410,8 @@ class ConditionedSeqNN(L.LightningModule):
      
     @classmethod
     def load_from_checkpoint(cls, checkpoint_path, *args, **kwargs):
+        # lazy imports to avoid circular dependencies while giving the gin config what it needs
+        from methylseqnet import callbacks
         # Load the checkpoint to extract the gin config
         checkpoint = torch.load(checkpoint_path,map_location=torch.device('cpu'))
         # Parse the gin configuration from the checkpoint
@@ -434,6 +437,38 @@ class ConditionedSeqNN(L.LightningModule):
             *args, 
             **kwargs
         )
+    
+    @classmethod
+    def from_release(
+        cls,
+        base: Literal["borzoi-rep0"] = DEFAULT_BASE,
+        version: str = DEFAULT_VERSION,
+        *,
+        repo_id: str = DEFAULT_REPO,
+        filename: str | None = None,
+        **kwargs,
+    ):
+        ckpt_path = release_checkpoint_path(base, version, repo_id=repo_id, filename=filename)
+        return cls.load_from_checkpoint(ckpt_path, **kwargs)
+
+    @classmethod
+    def from_local(
+        cls, run_id,
+        *,
+        checkpoints_dir,
+        **kwargs,
+    ):
+        ckpt_path = max(Path(checkpoints_dir, run_id, "checkpoints").glob("best*.ckpt"),
+                   key=lambda p: p.stat().st_mtime)
+        return cls.load_from_checkpoint(ckpt_path, **kwargs)
+    
+    @classmethod
+    def from_pretrained(
+        cls,
+        *args,
+        **kwargs,
+    ):
+        return cls.from_release(*args,**kwargs)
 
     def set_io_mappings(self,io_mappings_str):
         self.io_mappings_str = io_mappings_str

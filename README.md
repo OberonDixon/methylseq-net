@@ -11,6 +11,48 @@ To reproduce results presented in Dixon-Luinenburg et al, 2026, reference reprod
 To run the model, you can run `pip install git+https://github.com/OberonDixon/methylseq-net` and use the command line entry points or the exposed submodules. 
 
 ### Entry points
+#### Predictions with a trained checkpoint
+
+Trained checkpoints can either be stored locally, as for newly trained models or models downloaded per the reproducibility instructions, or loaded automatically from [huggingface](https://huggingface.co/OberonDixon/methylseqnet).
+
+The `predict::Predictor` class implements both `from_release(**kwargs)` and `from_local(run_id,checkpoints_dir,**kwargs)` constructors to create `predictor` objects from huggingface or local models respectively. These can then be used to run inference on individual loci, as with `predict_locus`, or on whole datasets, as with `predict_dataset`. The latter can be run from CLI:
+
+```
+usage: methylseqnet-predict [-h] --dataset-keys DATASET_KEYS [DATASET_KEYS ...] --dataset-files DATASET_FILES [DATASET_FILES ...] [--model-source {local,huggingface}] [--model-identifier MODEL_IDENTIFIER] [--checkpoints-dir CHECKPOINTS_DIR] [--hf-base HF_BASE] [--hf-version HF_VERSION] [--hf-repo HF_REPO]
+                            [--true-conditioning-state-weight TRUE_CONDITIONING_STATE_WEIGHT] [--no-targets] [--supplemental-outputs [SUPPLEMENTAL_OUTPUTS ...]] [--synthetic-cpg] [--variable-input-length] [--center-methyl-frac CENTER_METHYL_FRAC] [--gpus GPUS] [--num-workers NUM_WORKERS]
+
+Run predictions with a specified model.
+
+options:
+  -h, --help            show this help message and exit
+  --dataset-keys DATASET_KEYS [DATASET_KEYS ...]
+                        Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-files)
+  --dataset-files DATASET_FILES [DATASET_FILES ...]
+                        Paths to dataset H5 files (must match length of --dataset-keys)
+  --model-source {local,huggingface}
+                        Source from which to load model checkpoint.
+  --model-identifier MODEL_IDENTIFIER
+                        e.g. slurm24807693task2; will reference checkpoints dir
+  --checkpoints-dir CHECKPOINTS_DIR
+                        Directory to load trained checkpoints.
+  --hf-base HF_BASE     [hf] model base, e.g. borzoi-rep0
+  --hf-version HF_VERSION
+                        [hf] release tag, e.g. v1.0
+  --hf-repo HF_REPO     [hf] repo id
+  --true-conditioning-state-weight TRUE_CONDITIONING_STATE_WEIGHT
+                        If set, override the model's true_conditioning_state_weight with this value for prediction.
+  --no-targets          If set, do not include target tracks in the output H5 files.
+  --supplemental-outputs [SUPPLEMENTAL_OUTPUTS ...]
+                        Supplemental outputs to include in predictions. Default: ['conditional_seq_rep', 'unconditional_seq_rep', 'true_conditioning_state_rep', 'imputed_conditioning_state_rep', 'cpg_density']
+  --synthetic-cpg       If set, add synthetic CpG data.
+  --variable-input-length
+                        If set, sequence length can be any integer multiple of 128 that is >=16384.
+  --center-methyl-frac CENTER_METHYL_FRAC
+                        Fraction of CpGs methylated in the center window.
+  --gpus GPUS           Number of GPUs to use
+  --num-workers NUM_WORKERS
+                        Number of data loader workers
+```
 #### Preprocess data
 Preprocessing scripts take in standard bioinformatic files aligned to a reference. Preprocessing is configured using gin config files.
 ```
@@ -62,42 +104,7 @@ options:
   --logging-level {CRITICAL,ERROR,WARNING,INFO,DEBUG,NOTSET}
                         Set the logging level
 ```
-#### Predictions with a trained checkpoint
-```
-usage: methylseqnet-predict [-h] --model-identifier MODEL_IDENTIFIER [--checkpoints-dir CHECKPOINTS_DIR]
-                            [--true-conditioning-state-weight TRUE_CONDITIONING_STATE_WEIGHT] [--no-targets] --dataset-keys DATASET_KEYS
-                            [DATASET_KEYS ...] --dataset-files DATASET_FILES [DATASET_FILES ...]
-                            [--supplemental-outputs [SUPPLEMENTAL_OUTPUTS ...]] [--synthetic-cpg] [--variable-input-length]
-                            [--center-methyl-frac CENTER_METHYL_FRAC] [--gpus GPUS] [--num-workers NUM_WORKERS]
 
-Run predictions with a specified model.
-
-options:
-  -h, --help            show this help message and exit
-  --model-identifier MODEL_IDENTIFIER
-                        e.g. slurm24807693task2; will reference checkpoints dir
-  --checkpoints-dir CHECKPOINTS_DIR
-                        Directory to load trained checkpoints.
-  --true-conditioning-state-weight TRUE_CONDITIONING_STATE_WEIGHT
-                        If set, override the model's true_conditioning_state_weight with this value for prediction.
-  --no-targets          If set, do not include target tracks in the output H5 files.
-  --dataset-keys DATASET_KEYS [DATASET_KEYS ...]
-                        Dataset keys (e.g., atlas, longread) corresponding to the datasets being predicted on (must match length of --dataset-
-                        files)
-  --dataset-files DATASET_FILES [DATASET_FILES ...]
-                        Paths to dataset H5 files (must match length of --dataset-keys)
-  --supplemental-outputs [SUPPLEMENTAL_OUTPUTS ...]
-                        Supplemental outputs to include in predictions. Default: ['conditional_seq_rep', 'unconditional_seq_rep',
-                        'true_conditioning_state_rep', 'imputed_conditioning_state_rep', 'cpg_density']
-  --synthetic-cpg       If set, add synthetic CpG data.
-  --variable-input-length
-                        If set, sequence length can be any integer multiple of 128 that is >=16384.
-  --center-methyl-frac CENTER_METHYL_FRAC
-                        Fraction of CpGs methylated in the center window.
-  --gpus GPUS           Number of GPUs to use
-  --num-workers NUM_WORKERS
-                        Number of data loader workers
-```
 #### Create peak files from preprocessed data
 ```
 usage: methylseqnet-peaks [-h] --dataset-paths DATASET_PATHS [DATASET_PATHS ...] --output-directory OUTPUT_DIRECTORY --label-substrings
